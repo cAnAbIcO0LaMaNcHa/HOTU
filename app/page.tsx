@@ -1,19 +1,19 @@
 import Link from "next/link";
 import { Ticket, Play, ChevronRight, MapPin } from "lucide-react";
 import { DistrictGrid } from "@/components/district-grid";
- 
+
 const events = [
   { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
   { date: "22.06.26", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", lineup: "Páramo Club · Monte Negro · HOTU 138" },
   { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", lineup: "Chía Underground · HOTU Crew" },
 ];
- 
+
 const news = [
   { tag: "RELEASE", date: "02.05.26", title: "HOTU Records anuncia compilatorio de aniversario", excerpt: "12 tracks inéditos de productores residentes de Bogotá, Chía y La Calera." },
   { tag: "GEAR", date: "29.04.26", title: "Llega a Bogotá el primer lote del Analog Rytm MKIII", excerpt: "La nueva drum machine aterriza en tiendas locales." },
   { tag: "CLUB", date: "27.04.26", title: "Subterráneo reabre con sistema Funktion-One", excerpt: "El club bogotano vuelve con line-up de apertura de 24 horas." },
 ];
- 
+
 export default function Home() {
   return (
     <>
@@ -48,9 +48,9 @@ export default function Home() {
           </div>
         </div>
       </section>
- 
+
       <DistrictGrid />
- 
+
       {/* EVENTS */}
       <section className="mx-auto max-w-7xl px-4 py-20">
         <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA SABANA" href="/eventos" />
@@ -70,7 +70,7 @@ export default function Home() {
           ))}
         </div>
       </section>
- 
+
       {/* NEWS */}
       <section className="mx-auto max-w-7xl px-4 py-20">
         <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="DESDE LA PISTA" href="/noticias" />
@@ -90,7 +90,7 @@ export default function Home() {
           ))}
         </div>
       </section>
- 
+
       {/* NEWSLETTER */}
       <section className="border-y border-border bg-card py-16">
         <div className="mx-auto max-w-3xl px-4 text-center">
@@ -115,7 +115,7 @@ export default function Home() {
     </>
   );
 }
- 
+
 function SectionHeading({ number, title, sub, href }: { number: string; title: string; sub: string; href: string }) {
   return (
     <div className="flex items-end justify-between border-b border-border pb-4">
