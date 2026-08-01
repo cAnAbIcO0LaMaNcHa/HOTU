@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Menu, X, Search } from "lucide-react";
+import { SubscribeDialog } from "@/components/subscribe-dialog";
 
 const NAV = [
   { label: "NOTICIAS", href: "/noticias" },
@@ -16,12 +18,21 @@ const NAV = [
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-        <Link href="/" className="flex items-center gap-3">
-          <span className="text-xl font-bold leading-none tracking-tight md:text-2xl text-chrome">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
+        <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="HOTU — Inicio">
+          <Image
+            src="/logo.png"
+            alt="HOTU logo"
+            width={36}
+            height={36}
+            className="h-9 w-9 shrink-0 object-contain"
+            priority
+          />
+          <span className="whitespace-nowrap text-[clamp(0.85rem,2.2vw,1.5rem)] font-bold leading-none tracking-tight text-chrome">
             HOUSE OF THE UNKNOWN
           </span>
         </Link>
@@ -31,19 +42,20 @@ export function SiteHeader() {
             <Link
               key={i.label}
               href={i.href}
-              className="font-mono text-xs tracking-widest text-foreground/80 transition-colors hover:text-primary"
+              className="whitespace-nowrap font-mono text-xs tracking-widest text-foreground/80 transition-colors hover:text-primary"
             >
               {i.label}
             </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           <button className="text-foreground/80 hover:text-primary" aria-label="Buscar">
             <Search className="h-5 w-5" />
           </button>
           <button
-            className="hidden rounded-none px-4 py-2 font-mono text-xs tracking-widest md:inline-flex surface-chrome"
+            onClick={() => setSubOpen(true)}
+            className="hidden whitespace-nowrap rounded-none px-4 py-2 font-mono text-xs tracking-widest md:inline-flex surface-chrome"
           >
             SUSCRIBIRSE
           </button>
@@ -69,8 +81,19 @@ export function SiteHeader() {
               {i.label}
             </Link>
           ))}
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              setSubOpen(true);
+            }}
+            className="mt-2 border border-primary bg-primary px-4 py-3 font-mono text-xs tracking-widest text-primary-foreground"
+          >
+            SUSCRIBIRSE
+          </button>
         </nav>
       )}
+
+      <SubscribeDialog open={subOpen} onClose={() => setSubOpen(false)} />
     </header>
   );
 }
