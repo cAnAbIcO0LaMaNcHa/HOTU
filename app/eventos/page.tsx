@@ -14,8 +14,13 @@ const events = [
   { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", district: "D01" },
 ];
 
-export default function EventosPage({ searchParams }: { searchParams: { d?: string } }) {
-  const active = searchParams.d;
+export default async function EventosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ d?: string }>;
+}) {
+  const params = await searchParams;
+  const active = params.d;
   const filtered = active ? events.filter((e) => e.district === active) : events;
 
   return (
@@ -25,7 +30,6 @@ export default function EventosPage({ searchParams }: { searchParams: { d?: stri
       </span>
       <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">EVENTOS</h1>
 
-      {/* District selector */}
       <div className="mt-8 flex flex-wrap gap-2">
         <Link
           href="/eventos"
