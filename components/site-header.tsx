@@ -25,12 +25,13 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
         <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="HOTU — Inicio">
           <Image
-            src="/logo.png"
+            src="/logo.svg"
             alt="HOTU logo"
             width={36}
             height={36}
             className="h-9 w-9 shrink-0 object-contain"
             priority
+            unoptimized
           />
           <span className="whitespace-nowrap text-[clamp(0.85rem,2.2vw,1.5rem)] font-bold leading-none tracking-tight text-chrome">
             HOUSE OF THE UNKNOWN
