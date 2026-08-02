@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Ticket, Play, ChevronRight, MapPin } from "lucide-react";
 import { DistrictGrid } from "@/components/district-grid";
+import { RecentArtists } from "@/components/recent-artists";
+import { RecentTracks } from "@/components/recent-tracks";
 
 const events = [
   { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
@@ -90,6 +92,10 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      <RecentArtists />
+
+      <RecentTracks />
 
       {/* NEWSLETTER */}
       <section className="border-y border-border bg-card py-16">
