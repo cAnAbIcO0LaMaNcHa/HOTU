@@ -75,7 +75,7 @@ export default function Home() {
 
       {/* NEWS */}
       <section className="mx-auto max-w-7xl px-4 py-20">
-        <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="DESDE LA PISTA" href="/noticias" />
+        <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
         <div className="mt-10 grid gap-8 md:grid-cols-3">
           {news.map((n) => (
             <article key={n.title}>
