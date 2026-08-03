@@ -55,7 +55,7 @@ export default function Home() {
 
       {/* EVENTS */}
       <section className="mx-auto max-w-7xl px-4 py-20">
-        <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA SABANA" href="/eventos" />
+        <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           {events.map((e) => (
             <article key={e.title} className="border border-border bg-card p-5 transition-colors hover:border-primary">
