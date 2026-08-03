@@ -24,26 +24,24 @@ export default function DiscografiaPage() {
 
       <div className="mt-14 divide-y divide-border border-y border-border">
         {tracks.map((t, i) => (
-          <a
-            key={t.slug}
-            href={t.url}
-            className="group flex items-center gap-4 py-5 transition-colors hover:text-primary"
-          >
+          <div key={t.slug} className="flex items-center gap-4 py-5">
             <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">
               {String(i + 1).padStart(2, "0")}
             </span>
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:scale-105">
+            <a
+              href={t.url}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"
+              aria-label={`Reproducir ${t.title}`}
+            >
               <Play className="h-4 w-4 translate-x-0.5" />
-            </div>
+            </a>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-bold">{t.title}</div>
+              <a href={t.url} className="block truncate font-bold hover:text-primary">
+                {t.title}
+              </a>
               <div className="truncate font-mono text-[10px] tracking-widest text-muted-foreground">
                 {t.artistSlug ? (
-                  <Link
-                    href={`/artistas/${t.artistSlug}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="hover:text-primary"
-                  >
+                  <Link href={`/artistas/${t.artistSlug}`} className="hover:text-primary">
                     {t.artistName}
                   </Link>
                 ) : (
@@ -54,7 +52,7 @@ export default function DiscografiaPage() {
             <span className="hidden shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground sm:block">
               {new Date(t.releasedAt).toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "2-digit" })}
             </span>
-          </a>
+          </div>
         ))}
       </div>
     </section>
