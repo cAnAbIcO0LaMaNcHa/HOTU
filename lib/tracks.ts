@@ -39,10 +39,39 @@ export const TRACKS: Track[] = [
     releasedAt: "2026-07-01",
     url: "#",
   },
+  {
+    slug: "trance-en-la-montana",
+    title: "Trance en la Montaña",
+    artistName: "Monte Negro",
+    artistSlug: "monte-negro",
+    releasedAt: "2026-07-03",
+    url: "#",
+  },
+  {
+    slug: "bajo-tierra",
+    title: "Bajo Tierra",
+    artistName: "Subsuelo X",
+    artistSlug: "subsuelo-x",
+    releasedAt: "2026-07-05",
+    url: "#",
+  },
+  {
+    slug: "altura-guaracha",
+    title: "Altura Guaracha",
+    artistName: "Páramo Selecta",
+    artistSlug: "paramo-selecta",
+    releasedAt: "2026-07-07",
+    url: "#",
+  },
 ];
 
 export function getRecentTracks(n = 3): Track[] {
   return [...TRACKS]
     .sort((a, b) => new Date(b.releasedAt).getTime() - new Date(a.releasedAt).getTime())
     .slice(0, n);
+}
+
+/** Full catalog, newest first. Used by /discografia and the Home rotator — single source of truth. */
+export function getAllTracksSorted(): Track[] {
+  return [...TRACKS].sort((a, b) => new Date(b.releasedAt).getTime() - new Date(a.releasedAt).getTime());
 }
