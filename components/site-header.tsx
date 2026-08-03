@@ -33,7 +33,7 @@ export function SiteHeader() {
             priority
             unoptimized
           />
-          <span className="whitespace-nowrap text-[clamp(0.85rem,2.2vw,1.5rem)] font-bold leading-none tracking-tight text-chrome">
+          <span className="whitespace-nowrap text-[clamp(0.85rem,2.2vw,1.5rem)] font-bold leading-none tracking-tight text-white">
             HOUSE OF THE UNKNOWN
           </span>
         </Link>
