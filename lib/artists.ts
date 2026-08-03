@@ -36,7 +36,7 @@ export const ARTISTS: Artist[] = [
   {
     slug: "nina-acid",
     name: "Nina Acid",
-    genre: "Acid / Techno",
+    genre: "Hard Tech",
     district: "D07",
     city: "Bogotá",
     bio: "Productora y DJ bogotana referente del sonido acid techno en la sabana. Residente de HOTU desde sus inicios, su sonido cruza líneas ácidas del 303 con groove industrial.",
@@ -67,7 +67,7 @@ export const ARTISTS: Artist[] = [
   {
     slug: "spf-bog",
     name: "SPF/BOG",
-    genre: "Hard Techno",
+    genre: "Hard Tech",
     district: "D07",
     city: "Bogotá",
     bio: "Uno de los actos más contundentes de la escena hard techno bogotana. Sets crudos, rápidos y sin concesiones.",
@@ -122,4 +122,9 @@ export function getRecentArtists(n = 3): Artist[] {
   return [...ARTISTS]
     .sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime())
     .slice(0, n);
+}
+
+/** Full artist catalog, newest first. Used by the Home rotator and /artistas. */
+export function getAllArtistsSorted(): Artist[] {
+  return [...ARTISTS].sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime());
 }
