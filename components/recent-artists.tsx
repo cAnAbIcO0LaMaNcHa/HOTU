@@ -1,17 +1,43 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { getRecentArtists } from "@/lib/artists";
+import { getAllArtistsSorted } from "@/lib/artists";
 import { ArtistBubble } from "@/components/artist-bubble";
 
+const PAGE_SIZE = 6;
+const ROTATE_MS = 20_000;
+
+/**
+ * Same catalog-rotation mechanic as the tracks widget: cycles PAGE_SIZE
+ * artists at a time through the FULL roster, advancing every ROTATE_MS.
+ * No artist repeats until the whole roster has been shown once.
+ */
 export function RecentArtists() {
-  const artists = getRecentArtists(6);
+  const allArtists = getAllArtistsSorted();
+  const pageCount = Math.max(1, Math.ceil(allArtists.length / PAGE_SIZE));
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    if (pageCount <= 1) return;
+    const id = setInterval(() => {
+      setPage((p) => (p + 1) % pageCount);
+    }, ROTATE_MS);
+    return () => clearInterval(id);
+  }, [pageCount]);
+
+  const start = page * PAGE_SIZE;
+  const visible = allArtists.slice(start, start + PAGE_SIZE);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-20">
       <div className="flex items-end justify-between border-b border-border pb-4">
         <div>
-          <div className="font-mono text-[10px] tracking-[0.3em] text-primary">/ 03 — NUEVOS EN LA CASA</div>
-          <h2 className="mt-2 text-3xl font-bold md:text-4xl">DESCONOCIDOS</h2>
+          <div className="font-mono text-[10px] tracking-[0.3em] text-primary">
+            / 03 — NUEVOS EN LA CASA{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
+          </div>
+          <h2 className="mt-2 text-3xl font-bold md:text-4xl">ARTISTAS</h2>
         </div>
         <Link
           href="/artistas"
@@ -21,7 +47,7 @@ export function RecentArtists() {
         </Link>
       </div>
       <div className="mt-10 grid grid-cols-2 justify-items-center gap-x-4 gap-y-10 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6">
-        {artists.map((a) => (
+        {visible.map((a) => (
           <ArtistBubble key={a.slug} artist={a} size="sm" />
         ))}
       </div>
