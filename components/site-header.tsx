@@ -5,20 +5,23 @@ import Link from "next/link";
 import Image from "next/image";
 import { Menu, X, Search } from "lucide-react";
 import { SubscribeDialog } from "@/components/subscribe-dialog";
-
-const NAV = [
-  { label: "NOTICIAS", href: "/noticias" },
-  { label: "EVENTOS", href: "/eventos" },
-  { label: "ARTISTAS", href: "/artistas" },
-  { label: "COLECTIVOS", href: "/colectivos" },
-  { label: "SETS", href: "/sets" },
-  { label: "DISCOGRAFÍA", href: "/discografia" },
-  { label: "TIENDA", href: "/tienda" },
-];
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useLanguage } from "@/lib/i18n";
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
+  const { t } = useLanguage();
+
+  const NAV = [
+    { label: t("noticias"), href: "/noticias" },
+    { label: t("eventos"), href: "/eventos" },
+    { label: t("artistas"), href: "/artistas" },
+    { label: t("colectivos"), href: "/colectivos" },
+    { label: t("sets"), href: "/sets" },
+    { label: t("discografia"), href: "/discografia" },
+    { label: t("tienda"), href: "/tienda" },
+  ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
@@ -42,7 +45,7 @@ export function SiteHeader() {
         <nav className="hidden items-center gap-6 lg:flex">
           {NAV.map((i) => (
             <Link
-              key={i.label}
+              key={i.href}
               href={i.href}
               className="whitespace-nowrap font-mono text-xs tracking-widest text-foreground/80 transition-colors hover:text-primary"
             >
@@ -52,20 +55,21 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-3">
-          <button className="text-foreground/80 hover:text-primary" aria-label="Buscar">
+          <LanguageSwitcher />
+          <button className="text-foreground/80 hover:text-primary" aria-label={t("buscar")}>
             <Search className="h-5 w-5" />
           </button>
           <button
             onClick={() => setSubOpen(true)}
             className="hidden whitespace-nowrap rounded-none px-4 py-2 font-mono text-xs tracking-widest md:inline-flex surface-chrome"
           >
-            SUSCRIBIRSE
+            {t("suscribirse")}
           </button>
           {/* Dropdown trigger: always visible (desktop + mobile) */}
           <button
             className="text-foreground"
             onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Menú"
+            aria-label={t("menu")}
             aria-expanded={menuOpen}
           >
             {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -78,7 +82,7 @@ export function SiteHeader() {
         <nav className="flex flex-col gap-4 border-t border-border bg-background px-4 py-4">
           {NAV.map((i) => (
             <Link
-              key={i.label}
+              key={i.href}
               href={i.href}
               onClick={() => setMenuOpen(false)}
               className="font-mono text-sm tracking-widest"
@@ -91,7 +95,7 @@ export function SiteHeader() {
             onClick={() => setMenuOpen(false)}
             className="font-mono text-sm tracking-widest"
           >
-            SOBRE NOSOTROS
+            {t("sobreNosotros")}
           </Link>
           <button
             onClick={() => {
@@ -100,14 +104,14 @@ export function SiteHeader() {
             }}
             className="border border-border px-4 py-3 font-mono text-xs tracking-widest md:hidden"
           >
-            SUSCRIBIRSE
+            {t("suscribirse")}
           </button>
           <Link
             href="/aliados"
             onClick={() => setMenuOpen(false)}
             className="mt-2 inline-flex items-center justify-center border border-primary bg-primary px-4 py-3 font-mono text-xs tracking-widest text-primary-foreground"
           >
-            ÚNETE A NOSOTROS
+            {t("uneteANosotros")}
           </Link>
         </nav>
       )}
