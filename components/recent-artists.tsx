@@ -35,7 +35,7 @@ export function RecentArtists() {
       <div className="flex items-end justify-between border-b border-border pb-4">
         <div>
           <div className="font-mono text-[10px] tracking-[0.3em] text-primary">
-            / 03 — NUEVOS EN LA CASA{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
+            / 03 — NUEVOS{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
           </div>
           <h2 className="mt-2 text-3xl font-bold md:text-4xl">ARTISTAS</h2>
         </div>
