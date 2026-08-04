@@ -38,6 +38,7 @@ export function SiteHeader() {
           </span>
         </Link>
 
+        {/* Top bar: only the 7 main sections */}
         <nav className="hidden items-center gap-6 lg:flex">
           {NAV.map((i) => (
             <Link
@@ -60,18 +61,21 @@ export function SiteHeader() {
           >
             SUSCRIBIRSE
           </button>
+          {/* Dropdown trigger: always visible (desktop + mobile) */}
           <button
-            className="text-foreground lg:hidden"
+            className="text-foreground"
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="Menú"
+            aria-expanded={menuOpen}
           >
             {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
       </div>
 
+      {/* Dropdown: the 7 main sections + Sobre Nosotros + Únete a Nosotros (these two ONLY live here) */}
       {menuOpen && (
-        <nav className="flex flex-col gap-4 border-t border-border bg-background px-4 py-4 lg:hidden">
+        <nav className="flex flex-col gap-4 border-t border-border bg-background px-4 py-4">
           {NAV.map((i) => (
             <Link
               key={i.label}
@@ -82,15 +86,29 @@ export function SiteHeader() {
               {i.label}
             </Link>
           ))}
+          <Link
+            href="/sobre-nosotros"
+            onClick={() => setMenuOpen(false)}
+            className="font-mono text-sm tracking-widest"
+          >
+            SOBRE NOSOTROS
+          </Link>
           <button
             onClick={() => {
               setMenuOpen(false);
               setSubOpen(true);
             }}
-            className="mt-2 border border-primary bg-primary px-4 py-3 font-mono text-xs tracking-widest text-primary-foreground"
+            className="border border-border px-4 py-3 font-mono text-xs tracking-widest md:hidden"
           >
             SUSCRIBIRSE
           </button>
+          <Link
+            href="/aliados"
+            onClick={() => setMenuOpen(false)}
+            className="mt-2 inline-flex items-center justify-center border border-primary bg-primary px-4 py-3 font-mono text-xs tracking-widest text-primary-foreground"
+          >
+            ÚNETE A NOSOTROS
+          </Link>
         </nav>
       )}
 
