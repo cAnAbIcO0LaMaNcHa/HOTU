@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Play, MapPin } from "lucide-react";
 import { ARTISTS, getArtistBySlug } from "@/lib/artists";
+import { AutoTranslate } from "@/components/auto-translate";
 
 export function generateStaticParams() {
   return ARTISTS.map((a) => ({ slug: a.slug }));
@@ -60,7 +61,7 @@ export default async function ArtistPage({
       </div>
 
       <p className="mt-10 max-w-3xl font-mono text-sm leading-relaxed text-muted-foreground">
-        {artist.bio}
+        <AutoTranslate text={artist.bio} />
       </p>
 
       {artist.sets.length > 0 && (
