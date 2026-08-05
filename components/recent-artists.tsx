@@ -1,10 +1,9 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getAllArtistsSorted } from "@/lib/artists";
 import { ArtistBubble } from "@/components/artist-bubble";
+import { useLanguage } from "@/lib/i18n";
 
 const PAGE_SIZE = 6;
 const ROTATE_MS = 20_000;
@@ -18,6 +17,7 @@ export function RecentArtists() {
   const allArtists = getAllArtistsSorted();
   const pageCount = Math.max(1, Math.ceil(allArtists.length / PAGE_SIZE));
   const [page, setPage] = useState(0);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (pageCount <= 1) return;
@@ -35,15 +35,15 @@ export function RecentArtists() {
       <div className="flex items-end justify-between border-b border-border pb-4">
         <div>
           <div className="font-mono text-[10px] tracking-[0.3em] text-primary">
-            / 03 — NUEVOS{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
+            / 03 — {t("nuevos")}{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
           </div>
-          <h2 className="mt-2 text-3xl font-bold md:text-4xl">ARTISTAS</h2>
+          <h2 className="mt-2 text-3xl font-bold md:text-4xl">{t("artistas")}</h2>
         </div>
         <Link
           href="/artistas"
           className="hidden items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary md:inline-flex"
         >
-          VER TODOS <ChevronRight className="h-3 w-3" />
+          {t("verTodos")} <ChevronRight className="h-3 w-3" />
         </Link>
       </div>
       <div className="mt-10 grid grid-cols-2 justify-items-center gap-x-4 gap-y-10 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6">
