@@ -17,7 +17,8 @@ export const LANGUAGES: { code: Lang; label: string; apiCode: string }[] = [
 type DictKey =
   | "noticias" | "eventos" | "artistas" | "colectivos" | "sets" | "discografia" | "tienda"
   | "sobreNosotros" | "uneteANosotros" | "suscribirse" | "buscar" | "menu" | "verTodos"
-  | "footerSecciones" | "footerComunidad" | "footerDesc" | "footerRights";
+  | "footerSecciones" | "footerComunidad" | "footerDesc" | "footerRights"
+  | "heroLine1" | "heroLine2" | "nuevos" | "nueva";
 
 const DICT: Record<Lang, Record<DictKey, string>> = {
   es: {
@@ -28,6 +29,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "SECCIONES", footerComunidad: "COMUNIDAD",
     footerDesc: "Hub digital de cultura electrónica y techno desde Bogotá. HOTU · 2026.",
     footerRights: "TODOS LOS DERECHOS RESERVADOS",
+    heroLine1: "BIENVENIDO", heroLine2: "A LA CASA", nuevos: "NUEVOS", nueva: "NUEVA",
   },
   en: {
     noticias: "NEWS", eventos: "EVENTS", artistas: "ARTISTS", colectivos: "COLLECTIVES",
@@ -37,6 +39,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "SECTIONS", footerComunidad: "COMMUNITY",
     footerDesc: "Digital hub for electronic and techno culture from Bogotá. HOTU · 2026.",
     footerRights: "ALL RIGHTS RESERVED",
+    heroLine1: "WELCOME", heroLine2: "HOME", nuevos: "NEW", nueva: "NEW",
   },
   pt: {
     noticias: "NOTÍCIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLETIVOS",
@@ -46,6 +49,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "SEÇÕES", footerComunidad: "COMUNIDADE",
     footerDesc: "Hub digital de cultura eletrônica e techno de Bogotá. HOTU · 2026.",
     footerRights: "TODOS OS DIREITOS RESERVADOS",
+    heroLine1: "BEM-VINDO", heroLine2: "À CASA", nuevos: "NOVOS", nueva: "NOVA",
   },
   fr: {
     noticias: "ACTUALITÉS", eventos: "ÉVÉNEMENTS", artistas: "ARTISTES", colectivos: "COLLECTIFS",
@@ -55,6 +59,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "SECTIONS", footerComunidad: "COMMUNAUTÉ",
     footerDesc: "Hub numérique de culture électronique et techno depuis Bogotá. HOTU · 2026.",
     footerRights: "TOUS DROITS RÉSERVÉS",
+    heroLine1: "BIENVENUE", heroLine2: "CHEZ TOI", nuevos: "NOUVEAUX", nueva: "NOUVEAU",
   },
   ru: {
     noticias: "НОВОСТИ", eventos: "СОБҫТИЯ", artistas: "АРТИСТҫ", colectivos: "КОЛЛЕКТИВҫ",
@@ -64,6 +69,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "РАЗДЕЛү", footerComunidad: "СООБЩЕСтВО",
     footerDesc: "Цифровой центр электронной и техно-культуры из Боготы. HOTU · 2026.",
     footerRights: "ВСЕ ПРАВА ЗАЩИЩЕНү",
+    heroLine1: "ДОБРО ПОЖАЛОВАТЬ", heroLine2: "ДОМОЙ", nuevos: "НОВЫE", nueva: "НОВОЕ",
   },
   ja: {
     noticias: "ニュース", eventos: "イベント", artistas: "アーティスト", colectivos: "コレクティブ",
@@ -73,6 +79,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "セックション", footerComunidad: "コミュニティ",
     footerDesc: "ボゴタ発、エレクトロニック＆テノ文化のデジタルハブ。HOTU・2026年。",
     footerRights: "全著作権所有",
+    heroLine1: "ようこそ", heroLine2: "我が家へ", nuevos: "新着", nueva: "新着",
   },
   zh: {
     noticias: "新闻", eventos: "活动", artistas: "艺术家", colectivos: "团体",
@@ -82,6 +89,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     footerSecciones: "板块", footerComunidad: "社区",
     footerDesc: "来自波哥大的电子与techno文化数字中心。HOTU · 2026年。",
     footerRights: "版权所有",
+    heroLine1: "欢迎", heroLine2: "回家", nuevos: "最新", nueva: "最新",
   },
 };
 
