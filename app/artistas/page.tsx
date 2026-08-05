@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AutoTranslate } from "@/components/auto-translate";
 import Link from "next/link";
 import { ARTISTS } from "@/lib/artists";
 import { DISTRICTS } from "@/lib/districts";
@@ -21,11 +22,11 @@ export default async function ArtistasPage({
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-        ▶ VOICES OF BOGOTÁ
+        ▶ <AutoTranslate text="VOICES OF BOGOTÁ" />
       </span>
-      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">ARTISTAS</h1>
+      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="ARTISTAS" /></h1>
       <p className="mt-6 max-w-2xl font-mono text-sm text-muted-foreground">
-        Filtrá por distrito o tocá una burbuja para ver la biografía, sets y tracks de cada artista.
+        <AutoTranslate text="Filtrá por distrito o tocá una burbuja para ver la biografía, sets y tracks de cada artista." />
       </p>
 
       <div className="mt-8 flex flex-wrap gap-2">
@@ -33,7 +34,7 @@ export default async function ArtistasPage({
           href="/artistas"
           className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
         >
-          TODOS
+          <AutoTranslate text="TODOS" />
         </Link>
         {DISTRICTS.map((d) => (
           <Link
@@ -42,7 +43,7 @@ export default async function ArtistasPage({
             data-district={d.id}
             className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
           >
-            {d.title} · {d.genre}
+            {d.title} · <AutoTranslate text={d.genre} />
           </Link>
         ))}
       </div>
@@ -52,7 +53,7 @@ export default async function ArtistasPage({
           <ArtistBubble key={a.slug} artist={a} size="lg" />
         ))}
         {filtered.length === 0 && (
-          <p className="font-mono text-sm text-muted-foreground">No hay artistas en este distrito todavía.</p>
+          <p className="font-mono text-sm text-muted-foreground"><AutoTranslate text="No hay artistas en este distrito todavía." /></p>
         )}
       </div>
     </section>
