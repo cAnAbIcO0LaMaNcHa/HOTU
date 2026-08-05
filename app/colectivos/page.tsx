@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCollectivesBySector } from "@/lib/collectives";
 import { getArtistBySlug } from "@/lib/artists";
+import { AutoTranslate } from "@/components/auto-translate";
 
 export const metadata: Metadata = {
   title: "Colectivos electrónicos",
@@ -14,19 +15,18 @@ export default function ColectivosPage() {
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-        ▶ COMUNIDAD
+        ▶ <AutoTranslate text="COMUNIDAD" />
       </span>
       <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">COLECTIVOS</h1>
       <p className="mt-6 max-w-2xl font-mono text-sm text-muted-foreground">
-        Organizados por sector. <span className="text-chrome font-bold">BY HOTU</span> son colectivos propios de la marca —{" "}
-        <span className="text-foreground font-bold">LOCAL</span> son crews independientes de la escena actual.
+        <AutoTranslate text="Organizados por sector. BY HOTU son colectivos propios de la marca — LOCAL son crews independientes de la escena actual." />
       </p>
 
       <div className="mt-16 space-y-20">
         {Array.from(bySector.entries()).map(([sector, collectives]) => (
           <div key={sector}>
             <h2 className="border-b border-border pb-4 text-2xl font-bold tracking-tight">
-              / {sector.toUpperCase()}
+              / <AutoTranslate text={sector.toUpperCase()} />
             </h2>
             <div className="mt-8 grid gap-6 md:grid-cols-2">
               {collectives.map((c) => {
@@ -48,12 +48,12 @@ export default function ColectivosPage() {
                       </span>
                     </div>
                     <p className="mt-3 font-mono text-xs leading-relaxed text-muted-foreground">
-                      {c.bio}
+                      <AutoTranslate text={c.bio} />
                     </p>
                     {artists.length > 0 && (
                       <div className="mt-4">
                         <div className="font-mono text-[9px] tracking-widest text-primary">
-                          ARTISTAS DE LA MARCA
+                          <AutoTranslate text="ARTISTAS DE LA MARCA" />
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {artists.map((a) => (
@@ -62,7 +62,7 @@ export default function ColectivosPage() {
                               href={`/artistas/${a.slug}`}
                               className="border border-border px-2 py-1 font-mono text-[10px] tracking-widest hover:border-primary hover:text-primary"
                             >
-                              {a.name}
+                              <AutoTranslate text={a.name} />
                             </Link>
                           ))}
                         </div>
