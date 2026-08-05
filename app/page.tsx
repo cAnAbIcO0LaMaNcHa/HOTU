@@ -4,6 +4,7 @@ import { DistrictGrid } from "@/components/district-grid";
 import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
+import { HeroTitle } from "@/components/hero-title";
 
 const events = [
   { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
@@ -27,10 +28,7 @@ export default function Home() {
             <span className="mb-4 inline-flex w-fit border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
               ▶ <AutoTranslate text="COVER STORY" />
             </span>
-            <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl lg:text-8xl">
-              <span className="block"><AutoTranslate text="BIENVENIDO" /></span>
-              <span className="block"><AutoTranslate text="A LA CASA" /></span>
-            </h1>
+            <HeroTitle />
             <p className="mt-6 max-w-xl font-mono text-sm text-muted-foreground md:text-base">
               <AutoTranslate text="La nueva generación de DJs que está redefiniendo el sonido de la capital." />
             </p>
