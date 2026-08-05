@@ -3,6 +3,7 @@ import { Ticket, Play, ChevronRight, MapPin } from "lucide-react";
 import { DistrictGrid } from "@/components/district-grid";
 import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
+import { AutoTranslate } from "@/components/auto-translate";
 
 const events = [
   { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
@@ -24,27 +25,27 @@ export default function Home() {
         <div className="flex h-[60vh] min-h-[420px] w-full items-end bg-gradient-to-br from-[var(--bg-elevated)] to-[var(--bg-base)] p-6 md:p-12">
           <div>
             <span className="mb-4 inline-flex w-fit border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-              ▶ COVER STORY
+              ▶ <AutoTranslate text="COVER STORY" />
             </span>
             <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl lg:text-8xl">
-              <span className="block">BIENVENIDO</span>
-              <span className="block">A LA CASA</span>
+              <span className="block"><AutoTranslate text="BIENVENIDO" /></span>
+              <span className="block"><AutoTranslate text="A LA CASA" /></span>
             </h1>
             <p className="mt-6 max-w-xl font-mono text-sm text-muted-foreground md:text-base">
-              La nueva generación de DJs que está redefiniendo el sonido de la capital.
+              <AutoTranslate text="La nueva generación de DJs que está redefiniendo el sonido de la capital." />
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/eventos"
                 className="inline-flex items-center gap-2 rounded-none px-6 py-3 font-mono text-xs tracking-widest surface-chrome"
               >
-                <Ticket className="h-4 w-4" /> COMPRAR ENTRADAS
+                <Ticket className="h-4 w-4" /> <AutoTranslate text="COMPRAR ENTRADAS" />
               </Link>
               <Link
                 href="/sets"
                 className="inline-flex items-center gap-2 rounded-none border border-foreground px-6 py-3 font-mono text-xs tracking-widest text-foreground hover:bg-foreground hover:text-background"
               >
-                <Play className="h-4 w-4" /> ESCUCHAR AHORA
+                <Play className="h-4 w-4" /> <AutoTranslate text="ESCUCHAR AHORA" />
               </Link>
             </div>
           </div>
@@ -63,10 +64,10 @@ export default function Home() {
               <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
                 <MapPin className="h-3 w-3" /> {e.city} · {e.venue}
               </div>
-              <h3 className="mt-3 text-xl font-bold">{e.title}</h3>
+              <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
               <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
               <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary">
-                COMPRAR ENTRADAS <ChevronRight className="h-3 w-3" />
+                <AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" />
               </Link>
             </article>
           ))}
@@ -83,10 +84,10 @@ export default function Home() {
                 {n.tag}
               </span>
               <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{n.date}</div>
-              <h3 className="mt-2 text-xl font-bold leading-tight">{n.title}</h3>
-              <p className="mt-2 font-mono text-xs text-muted-foreground">{n.excerpt}</p>
+              <h3 className="mt-2 text-xl font-bold leading-tight"><AutoTranslate text={n.title} /></h3>
+              <p className="mt-2 font-mono text-xs text-muted-foreground"><AutoTranslate text={n.excerpt} /></p>
               <Link href="/noticias" className="mt-4 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary">
-                LEER MÁS <ChevronRight className="h-3 w-3" />
+                <AutoTranslate text="LEER MÁS" /> <ChevronRight className="h-3 w-3" />
               </Link>
             </article>
           ))}
@@ -101,9 +102,9 @@ export default function Home() {
       <section className="border-y border-border bg-card py-16">
         <div className="mx-auto max-w-3xl px-4 text-center">
           <span className="font-mono text-[10px] tracking-[0.3em] text-primary">/ NEWSLETTER</span>
-          <h2 className="mt-3 text-3xl font-bold md:text-4xl">CONECTA CON TU CASA</h2>
+          <h2 className="mt-3 text-3xl font-bold md:text-4xl"><AutoTranslate text="CONECTA CON TU CASA" /></h2>
           <p className="mt-3 font-mono text-sm text-muted-foreground">
-            Eventos, lanzamientos y sets exclusivos cada viernes en tu inbox.
+            <AutoTranslate text="Eventos, lanzamientos y sets exclusivos cada viernes en tu inbox." />
           </p>
           <form className="mt-6 flex flex-col gap-3 sm:flex-row">
             <input
@@ -113,7 +114,7 @@ export default function Home() {
               className="flex-1 border border-border bg-background px-4 py-3 font-mono text-sm focus:border-primary focus:outline-none"
             />
             <button type="submit" className="px-6 py-3 font-mono text-xs tracking-widest surface-chrome">
-              SUBSCRIBIR
+              <AutoTranslate text="SUBSCRIBIR" />
             </button>
           </form>
         </div>
@@ -126,11 +127,11 @@ function SectionHeading({ number, title, sub, href }: { number: string; title: s
   return (
     <div className="flex items-end justify-between border-b border-border pb-4">
       <div>
-        <div className="font-mono text-[10px] tracking-[0.3em] text-primary">/ {number} — {sub}</div>
-        <h2 className="mt-2 text-3xl font-bold md:text-4xl">{title}</h2>
+        <div className="font-mono text-[10px] tracking-[0.3em] text-primary">/ {number} — <AutoTranslate text={sub} /></div>
+        <h2 className="mt-2 text-3xl font-bold md:text-4xl"><AutoTranslate text={title} /></h2>
       </div>
       <Link href={href} className="hidden items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary md:inline-flex">
-        VER TODO <ChevronRight className="h-3 w-3" />
+        <AutoTranslate text="VER TODO" /> <ChevronRight className="h-3 w-3" />
       </Link>
     </div>
   );
