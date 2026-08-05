@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Artist } from "@/lib/artists";
+import { AutoTranslate } from "@/components/auto-translate";
 
 function initials(name: string) {
   return name
@@ -26,8 +27,12 @@ export function ArtistBubble({ artist, size = "md" }: { artist: Artist; size?: "
         )}
       </div>
       <div>
-        <div className="font-bold leading-tight">{artist.name}</div>
-        <div className="font-mono text-[10px] tracking-widest text-muted-foreground">{artist.genre}</div>
+        <div className="font-bold leading-tight">
+          <AutoTranslate text={artist.name} />
+        </div>
+        <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+          <AutoTranslate text={artist.genre} />
+        </div>
       </div>
     </Link>
   );
