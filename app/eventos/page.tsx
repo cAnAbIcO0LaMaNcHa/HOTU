@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DISTRICTS } from "@/lib/districts";
 import { MapPin } from "lucide-react";
+import { AutoTranslate } from "@/components/auto-translate";
 
 export const metadata: Metadata = {
   title: "Eventos y raves en Bogotá",
@@ -9,9 +10,9 @@ export const metadata: Metadata = {
 };
 
 const events = [
-  { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", district: "D07" },
-  { date: "22.06.26", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", district: "D04" },
-  { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", district: "D01" },
+  { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents", district: "D07" },
+  { date: "22.06.26", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", lineup: "Páramo Club · Monte Negro · HOTU 138", district: "D04" },
+  { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", lineup: "Chía Underground · HOTU Crew", district: "D01" },
 ];
 
 export default async function EventosPage({
@@ -26,16 +27,18 @@ export default async function EventosPage({
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-        ▶ AGENDA SABANA
+        ▶ <AutoTranslate text="AGENDA SABANA" />
       </span>
-      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">EVENTOS</h1>
+      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">
+        <AutoTranslate text="EVENTOS" />
+      </h1>
 
       <div className="mt-8 flex flex-wrap gap-2">
         <Link
           href="/eventos"
           className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
         >
-          TODOS
+          <AutoTranslate text="TODOS" />
         </Link>
         {DISTRICTS.map((d) => (
           <Link
@@ -44,7 +47,7 @@ export default async function EventosPage({
             data-district={d.id}
             className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
           >
-            {d.title} · {d.genre}
+            {d.title} · <AutoTranslate text={d.genre} />
           </Link>
         ))}
       </div>
@@ -56,11 +59,18 @@ export default async function EventosPage({
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
               <MapPin className="h-3 w-3" /> {e.city} · {e.venue}
             </div>
-            <h3 className="mt-3 text-xl font-bold">{e.title}</h3>
+            <h3 className="mt-3 text-xl font-bold">
+              <AutoTranslate text={e.title} />
+            </h3>
+            <p className="mt-2 font-mono text-xs text-muted-foreground">
+              <AutoTranslate text={e.lineup} />
+            </p>
           </article>
         ))}
         {filtered.length === 0 && (
-          <p className="font-mono text-sm text-muted-foreground">No hay eventos en este distrito todavía.</p>
+          <p className="font-mono text-sm text-muted-foreground">
+            <AutoTranslate text="No hay eventos en este distrito todavía." />
+          </p>
         )}
       </div>
     </section>
