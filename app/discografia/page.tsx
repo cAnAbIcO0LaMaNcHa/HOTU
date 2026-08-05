@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AutoTranslate } from "@/components/auto-translate";
 import Link from "next/link";
 import { Play } from "lucide-react";
 import { getAllTracksSorted } from "@/lib/tracks";
@@ -22,12 +23,11 @@ export default async function DiscografiaPage({
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-        ▶ RELEASES
+        ▶ <AutoTranslate text="RELEASES" />
       </span>
-      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">DISCOGRAFÍA</h1>
+      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="DISCOGRAFÍA" /></h1>
       <p className="mt-6 max-w-2xl font-mono text-sm text-muted-foreground">
-        Catálogo completo de HOTU, del más reciente al primero. Este mismo catálogo es el que
-        rota cada 20 segundos en la sección "Nueva" del inicio.
+        <AutoTranslate text={'Catálogo completo de HOTU, del más reciente al primero. Este mismo catálogo es el que rota cada 20 segundos en la sección "Nueva" del inicio.'} />
       </p>
 
       <div className="mt-8 flex flex-wrap gap-2">
@@ -35,7 +35,7 @@ export default async function DiscografiaPage({
           href="/discografia"
           className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
         >
-          TODOS
+          <AutoTranslate text="TODOS" />
         </Link>
         {DISTRICTS.map((d) => (
           <Link
@@ -44,7 +44,7 @@ export default async function DiscografiaPage({
             data-district={d.id}
             className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}
           >
-            {d.title} · {d.genre}
+            {d.title} · <AutoTranslate text={d.genre} />
           </Link>
         ))}
       </div>
@@ -64,15 +64,15 @@ export default async function DiscografiaPage({
             </a>
             <div className="min-w-0 flex-1">
               <a href={t.url} className="block truncate font-bold hover:text-primary">
-                {t.title}
+                <AutoTranslate text={t.title} />
               </a>
               <div className="truncate font-mono text-[10px] tracking-widest text-muted-foreground">
                 {t.artistSlug ? (
                   <Link href={`/artistas/${t.artistSlug}`} className="hover:text-primary">
-                    {t.artistName}
+                    <AutoTranslate text={t.artistName} />
                   </Link>
                 ) : (
-                  t.artistName
+                  <AutoTranslate text={t.artistName} />
                 )}
               </div>
             </div>
@@ -82,7 +82,7 @@ export default async function DiscografiaPage({
           </div>
         ))}
         {tracks.length === 0 && (
-          <p className="py-8 font-mono text-sm text-muted-foreground">No hay tracks en este distrito todavía.</p>
+          <p className="py-8 font-mono text-sm text-muted-foreground"><AutoTranslate text="No hay tracks en este distrito todavía." /></p>
         )}
       </div>
     </section>
