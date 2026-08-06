@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import { signIn, signOut, useSession } from "next-auth/react";
 
 export function SubscribeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { data: session, status } = useSession();
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [formStatus, setFormStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setStatus("error");
+      setFormStatus("error");
       return;
     }
-    setStatus("loading");
+    setFormStatus("loading");
     await new Promise((r) => setTimeout(r, 600));
-    setStatus("success");
+    setFormStatus("success");
     setEmail("");
   };
 
@@ -41,59 +43,76 @@ export function SubscribeDialog({ open, onClose }: { open: boolean; onClose: () 
 
           <span className="font-mono text-[10px] tracking-[0.3em] text-primary">/ ÚNETE A LA CASA</span>
           <h3 className="mt-2 text-2xl font-bold text-chrome">CONECTA CON HOTU</h3>
-          <p className="mt-2 font-mono text-xs text-muted-foreground">
-            Eventos, lanzamientos y sets exclusivos cada viernes en tu inbox.
-          </p>
 
-          <div className="mt-6 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => alert("Falta conectar Google OAuth — próximo paso")}
-              className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
-            >
-              CONTINUAR CON GOOGLE
-            </button>
-            <button
-              type="button"
-              onClick={() => alert("Falta conectar Apple Sign In — próximo paso")}
-              className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
-            >
-              CONTINUAR CON APPLE
-            </button>
-          </div>
+          {status === "authenticated" && session?.user ? (
+            <div className="mt-6">
+              <p className="font-mono text-sm text-muted-foreground">
+                Ya estás conectado como <span className="text-foreground">{session.user.email}</span>.
+              </p>
+              <button
+                onClick={() => signOut()}
+                className="mt-4 w-full border border-border px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
+              >
+                CERRAR SESIÓN
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="mt-2 font-mono text-xs text-muted-foreground">
+                Eventos, lanzamientos y sets exclusivos cada viernes en tu inbox.
+              </p>
 
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="font-mono text-[10px] text-muted-foreground">O CON TU EMAIL</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => signIn("google", { callbackUrl: "/" })}
+                  className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
+                >
+                  CONTINUAR CON GOOGLE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alert("Falta conectar Apple Sign In — próximo paso")}
+                  className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
+                >
+                  CONTINUAR CON APPLE
+                </button>
+              </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setStatus("idle");
-              }}
-              placeholder="tu@email.com"
-              className="border border-border bg-background px-4 py-3 font-mono text-sm focus:border-primary focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={status === "loading"}
-              className="px-6 py-3 font-mono text-xs tracking-widest surface-chrome disabled:opacity-50"
-            >
-              {status === "loading" ? "ENVIANDO..." : "SUBSCRIBIR"}
-            </button>
-            {status === "error" && (
-              <p className="font-mono text-xs text-red-400">Ingresa un email válido.</p>
-            )}
-            {status === "success" && (
-              <p className="font-mono text-xs text-primary">¡Bienvenido a la casa! Revisa tu inbox.</p>
-            )}
-          </form>
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="font-mono text-[10px] text-muted-foreground">O CON TU EMAIL</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFormStatus("idle");
+                  }}
+                  placeholder="tu@email.com"
+                  className="border border-border bg-background px-4 py-3 font-mono text-sm focus:border-primary focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={formStatus === "loading"}
+                  className="px-6 py-3 font-mono text-xs tracking-widest surface-chrome disabled:opacity-50"
+                >
+                  {formStatus === "loading" ? "ENVIANDO..." : "SUBSCRIBIR"}
+                </button>
+                {formStatus === "error" && (
+                  <p className="font-mono text-xs text-red-400">Ingresa un email válido.</p>
+                )}
+                {formStatus === "success" && (
+                  <p className="font-mono text-xs text-primary">¡Bienvenido a la casa! Revisa tu inbox.</p>
+                )}
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>
