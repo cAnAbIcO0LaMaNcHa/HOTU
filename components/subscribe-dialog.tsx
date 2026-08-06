@@ -62,20 +62,13 @@ export function SubscribeDialog({ open, onClose }: { open: boolean; onClose: () 
                 Eventos, lanzamientos y sets exclusivos cada viernes en tu inbox.
               </p>
 
-              <div className="mt-6 flex flex-col gap-2">
+              <div className="mt-6">
                 <button
                   type="button"
                   onClick={() => signIn("google", { callbackUrl: "/" })}
-                  className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
+                  className="flex w-full items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
                 >
                   CONTINUAR CON GOOGLE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => alert("Falta conectar Apple Sign In — próximo paso")}
-                  className="flex items-center justify-center gap-2 border border-border bg-background px-4 py-3 font-mono text-xs tracking-widest hover:border-primary"
-                >
-                  CONTINUAR CON APPLE
                 </button>
               </div>
 
