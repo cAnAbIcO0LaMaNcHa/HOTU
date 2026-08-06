@@ -24,6 +24,7 @@ export function SiteHeader() {
   ];
 
   return (
+    <>
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4">
         <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3" aria-label="HOTU — Inicio">
@@ -115,8 +116,9 @@ export function SiteHeader() {
           </Link>
         </nav>
       )}
-
-      <SubscribeDialog open={subOpen} onClose={() => setSubOpen(false)} />
     </header>
+
+    <SubscribeDialog open={subOpen} onClose={() => setSubOpen(false)} />
+    </>
   );
 }
