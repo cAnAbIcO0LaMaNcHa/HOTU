@@ -3,6 +3,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { LanguageProvider } from "@/lib/i18n";
+import { AuthSessionProvider } from "@/components/session-provider";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hotu.com.co"), // TODO: cambiar por tu dominio real
@@ -57,11 +58,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="concrete min-h-screen">
-        <LanguageProvider>
-          <SiteHeader />
-          {children}
-          <SiteFooter />
-        </LanguageProvider>
+        <AuthSessionProvider>
+          <LanguageProvider>
+            <SiteHeader />
+            {children}
+            <SiteFooter />
+          </LanguageProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );
