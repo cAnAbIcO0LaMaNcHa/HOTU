@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Play, MapPin } from "lucide-react";
-import { ARTISTS, getArtistBySlug } from "@/lib/artists";
 import { AutoTranslate } from "@/components/auto-translate";
+import { getArtistBySlug } from "@/lib/db";
 
-export function generateStaticParams() {
-  return ARTISTS.map((a) => ({ slug: a.slug }));
-}
+export const revalidate = 0;
 
 export async function generateMetadata({
   params,
@@ -14,7 +12,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const artist = getArtistBySlug(slug);
+  const artist = await getArtistBySlug(slug);
   if (!artist) return {};
   return {
     title: `${artist.name} — Bio, sets y tracks`,
@@ -32,7 +30,7 @@ export default async function ArtistPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const artist = getArtistBySlug(slug);
+  const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
 
   return (
@@ -69,20 +67,14 @@ export default async function ArtistPage({
           <h2 className="text-2xl font-bold">SETS</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {artist.sets.map((s) => (
-              <a
-                key={s.title}
-                href={s.url}
-                className="sheen border-chrome flex items-center gap-4 p-4"
-              >
+              <a key={s.title} href={s.url} className="sheen border-chrome flex items-center gap-4 p-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                   <Play className="h-4 w-4 translate-x-0.5" />
                 </div>
                 <div>
                   <div className="font-bold">{s.title}</div>
                   {s.duration && (
-                    <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                      {s.duration}
-                    </div>
+                    <div className="font-mono text-[10px] tracking-widest text-muted-foreground">{s.duration}</div>
                   )}
                 </div>
               </a>
@@ -96,14 +88,8 @@ export default async function ArtistPage({
           <h2 className="text-2xl font-bold">TRACKS DESTACADOS</h2>
           <div className="mt-6 divide-y divide-border border-y border-border">
             {artist.topTracks.map((t, i) => (
-              <a
-                key={t.title}
-                href={t.url}
-                className="flex items-center gap-4 py-4 transition-colors hover:text-primary"
-              >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
+              <a key={t.title} href={t.url} className="flex items-center gap-4 py-4 transition-colors hover:text-primary">
+                <span className="font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
                 <span className="font-bold">{t.title}</span>
               </a>
             ))}
