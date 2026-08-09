@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { AutoTranslate } from "@/components/auto-translate";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { getAllSetsSorted } from "@/lib/sets";
 import { DISTRICTS } from "@/lib/districts";
+import { AutoTranslate } from "@/components/auto-translate";
+import { getAllSets } from "@/lib/db";
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Sets y grabaciones en vivo",
@@ -17,7 +19,7 @@ export default async function SetsPage({
 }) {
   const params = await searchParams;
   const active = params.d;
-  const allSets = getAllSetsSorted();
+  const allSets = await getAllSets();
   const sets = active ? allSets.filter((s) => s.district === active) : allSets;
 
   return (
@@ -51,12 +53,8 @@ export default async function SetsPage({
 
       <div className="mt-10 grid gap-4 md:grid-cols-2">
         {sets.map((s) => (
-          <div
-            key={s.slug}
-            data-district={s.district}
-            className="sheen border-chrome flex items-center gap-4 p-4"
-          >
-            <a
+          <div key={s.slug} data-district={s.district} className="sheen border-chrome flex items-center gap-4 p-4">
+            
               href={s.url}
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"
               aria-label={`Reproducir ${s.title}`}
