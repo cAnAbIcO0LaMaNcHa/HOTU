@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DISTRICTS } from "@/lib/districts";
 import { MapPin } from "lucide-react";
+import { DISTRICTS } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
+import { getAllEvents, formatShortDate } from "@/lib/db";
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Eventos y raves en Bogotá",
   description: "Agenda de eventos techno y música electrónica en Bogotá, Chía, La Calera y la sabana.",
 };
-
-const events = [
-  { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents", district: "D07" },
-  { date: "22.06.26", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", lineup: "Páramo Club · Monte Negro · HOTU 138", district: "D04" },
-  { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", lineup: "Chía Underground · HOTU Crew", district: "D01" },
-];
 
 export default async function EventosPage({
   searchParams,
@@ -22,6 +19,7 @@ export default async function EventosPage({
 }) {
   const params = await searchParams;
   const active = params.d;
+  const events = await getAllEvents();
   const filtered = active ? events.filter((e) => e.district === active) : events;
 
   return (
@@ -54,8 +52,8 @@ export default async function EventosPage({
 
       <div className="mt-12 grid gap-6 md:grid-cols-3">
         {filtered.map((e) => (
-          <article key={e.title} className="border border-border bg-card p-5">
-            <div className="font-mono text-xs tracking-widest text-primary">{e.date}</div>
+          <article key={e.id} className="border border-border bg-card p-5">
+            <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
               <MapPin className="h-3 w-3" /> {e.city} · {e.venue}
             </div>
