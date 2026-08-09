@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { AutoTranslate } from "@/components/auto-translate";
 import Link from "next/link";
-import { ARTISTS } from "@/lib/artists";
 import { DISTRICTS } from "@/lib/districts";
 import { ArtistBubble } from "@/components/artist-bubble";
+import { AutoTranslate } from "@/components/auto-translate";
+import { getAllArtists } from "@/lib/db";
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Artistas de la escena Bogotá",
@@ -17,7 +19,8 @@ export default async function ArtistasPage({
 }) {
   const params = await searchParams;
   const active = params.d;
-  const filtered = active ? ARTISTS.filter((a) => a.district === active) : ARTISTS;
+  const artists = await getAllArtists();
+  const filtered = active ? artists.filter((a) => a.district === active) : artists;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
