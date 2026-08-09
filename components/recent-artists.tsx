@@ -1,57 +1,39 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { ArtistBubble } from "@/components/artist-bubble";
-import { useLanguage } from "@/lib/i18n";
 import type { Artist } from "@/lib/db";
+import { AutoTranslate } from "@/components/auto-translate";
 
-const PAGE_SIZE = 6;
-const ROTATE_MS = 20_000;
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
-/**
- * Catalog rotation: cycles PAGE_SIZE artists at a time through the FULL
- * roster, advancing every ROTATE_MS. Data is fetched on the server and
- * passed in as a prop, so the DB stays server-side.
- */
-export function RecentArtists({ artists }: { artists: Artist[] }) {
-  const pageCount = Math.max(1, Math.ceil(artists.length / PAGE_SIZE));
-  const [page, setPage] = useState(0);
-  const { t } = useLanguage();
-
-  useEffect(() => {
-    if (pageCount <= 1) return;
-    const id = setInterval(() => {
-      setPage((p) => (p + 1) % pageCount);
-    }, ROTATE_MS);
-    return () => clearInterval(id);
-  }, [pageCount]);
-
-  const start = page * PAGE_SIZE;
-  const visible = artists.slice(start, start + PAGE_SIZE);
-
+export function ArtistBubble({ artist, size = "md" }: { artist: Artist; size?: "sm" | "md" | "lg" }) {
+  const dims = size === "lg" ? "h-40 w-40 text-3xl" : size === "sm" ? "h-24 w-24 text-lg" : "h-32 w-32 text-2xl";
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20">
-      <div className="flex items-end justify-between border-b border-border pb-4">
-        <div>
-          <div className="font-mono text-[10px] tracking-[0.3em] text-primary">
-            / 03 — {t("nuevos")}{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
-          </div>
-          <h2 className="mt-2 text-3xl font-bold md:text-4xl">{t("artistas")}</h2>
+    <Link href={`/artistas/${artist.slug}`} className="group flex flex-col items-center gap-3 text-center">
+      <div
+        data-district={artist.district}
+        className={`sheen border-chrome relative flex ${dims} shrink-0 items-center justify-center overflow-hidden rounded-full transition-transform group-hover:scale-105`}
+      >
+        {artist.photo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={artist.photo} alt={artist.name} className="h-full w-full object-cover" />
+        ) : (
+          <span className="font-bold text-chrome">{initials(artist.name)}</span>
+        )}
+      </div>
+      <div>
+        <div className="font-bold leading-tight">
+          <AutoTranslate text={artist.name} />
         </div>
-        <Link
-          href="/artistas"
-          className="hidden items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary md:inline-flex"
-        >
-          {t("verTodos")} <ChevronRight className="h-3 w-3" />
-        </Link>
+        <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+          <AutoTranslate text={artist.genre} />
+        </div>
       </div>
-      <div className="mt-10 grid grid-cols-2 justify-items-center gap-x-4 gap-y-10 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-6">
-        {visible.map((a) => (
-          <ArtistBubble key={a.slug} artist={a} size="sm" />
-        ))}
-      </div>
-    </section>
+    </Link>
   );
 }
