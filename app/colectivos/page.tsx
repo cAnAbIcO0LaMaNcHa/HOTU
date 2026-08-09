@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCollectivesBySector } from "@/lib/collectives";
-import { getArtistBySlug } from "@/lib/artists";
 import { AutoTranslate } from "@/components/auto-translate";
+import { getCollectivesBySector, getAllArtists } from "@/lib/db";
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Colectivos electrónicos",
   description: "Colectivos y crews que mueven la cultura electrónica underground en Bogotá y la sabana, organizados por sector.",
 };
 
-export default function ColectivosPage() {
-  const bySector = getCollectivesBySector();
+export default async function ColectivosPage() {
+  const [bySector, artists] = await Promise.all([getCollectivesBySector(), getAllArtists()]);
+  const artistBySlug = new Map(artists.map((a) => [a.slug, a]));
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
@@ -30,8 +32,8 @@ export default function ColectivosPage() {
             </h2>
             <div className="mt-8 grid gap-6 md:grid-cols-2">
               {collectives.map((c) => {
-                const artists = c.artistSlugs
-                  .map((s) => getArtistBySlug(s))
+                const members = c.artistSlugs
+                  .map((s) => artistBySlug.get(s))
                   .filter((a): a is NonNullable<typeof a> => Boolean(a));
                 return (
                   <article key={c.slug} className="border border-border bg-card p-6">
@@ -50,13 +52,13 @@ export default function ColectivosPage() {
                     <p className="mt-3 font-mono text-xs leading-relaxed text-muted-foreground">
                       <AutoTranslate text={c.bio} />
                     </p>
-                    {artists.length > 0 && (
+                    {members.length > 0 && (
                       <div className="mt-4">
                         <div className="font-mono text-[9px] tracking-widest text-primary">
                           <AutoTranslate text="ARTISTAS DE LA MARCA" />
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {artists.map((a) => (
+                          {members.map((a) => (
                             <Link
                               key={a.slug}
                               href={`/artistas/${a.slug}`}
