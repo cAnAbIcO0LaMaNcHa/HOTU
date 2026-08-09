@@ -3,21 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { getAllArtistsSorted } from "@/lib/artists";
 import { ArtistBubble } from "@/components/artist-bubble";
 import { useLanguage } from "@/lib/i18n";
+import type { Artist } from "@/lib/db";
 
 const PAGE_SIZE = 6;
 const ROTATE_MS = 20_000;
 
 /**
- * Same catalog-rotation mechanic as the tracks widget: cycles PAGE_SIZE
- * artists at a time through the FULL roster, advancing every ROTATE_MS.
- * No artist repeats until the whole roster has been shown once.
+ * Catalog rotation: cycles PAGE_SIZE artists at a time through the FULL
+ * roster, advancing every ROTATE_MS. Data is fetched on the server and
+ * passed in as a prop, so the DB stays server-side.
  */
-export function RecentArtists() {
-  const allArtists = getAllArtistsSorted();
-  const pageCount = Math.max(1, Math.ceil(allArtists.length / PAGE_SIZE));
+export function RecentArtists({ artists }: { artists: Artist[] }) {
+  const pageCount = Math.max(1, Math.ceil(artists.length / PAGE_SIZE));
   const [page, setPage] = useState(0);
   const { t } = useLanguage();
 
@@ -30,7 +29,7 @@ export function RecentArtists() {
   }, [pageCount]);
 
   const start = page * PAGE_SIZE;
-  const visible = allArtists.slice(start, start + PAGE_SIZE);
+  const visible = artists.slice(start, start + PAGE_SIZE);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-20">
