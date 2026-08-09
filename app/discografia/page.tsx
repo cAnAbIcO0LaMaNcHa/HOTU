@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { AutoTranslate } from "@/components/auto-translate";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { getAllTracksSorted } from "@/lib/tracks";
 import { DISTRICTS } from "@/lib/districts";
+import { AutoTranslate } from "@/components/auto-translate";
+import { getAllTracks, formatShortDate } from "@/lib/db";
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Discografía y releases",
@@ -17,7 +19,7 @@ export default async function DiscografiaPage({
 }) {
   const params = await searchParams;
   const active = params.d;
-  const allTracks = getAllTracksSorted();
+  const allTracks = await getAllTracks();
   const tracks = active ? allTracks.filter((t) => t.district === active) : allTracks;
 
   return (
@@ -55,7 +57,7 @@ export default async function DiscografiaPage({
             <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">
               {String(i + 1).padStart(2, "0")}
             </span>
-            <a
+            
               href={t.url}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"
               aria-label={`Reproducir ${t.title}`}
@@ -77,7 +79,7 @@ export default async function DiscografiaPage({
               </div>
             </div>
             <span className="hidden shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground sm:block">
-              {new Date(t.releasedAt).toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+              {formatShortDate(t.releasedAt)}
             </span>
           </div>
         ))}
