@@ -3,22 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Play } from "lucide-react";
-import { getAllTracksSorted } from "@/lib/tracks";
 import { useLanguage } from "@/lib/i18n";
+import type { Track } from "@/lib/db";
 
 const PAGE_SIZE = 3;
 const ROTATE_MS = 20_000;
 
 /**
- * CATALOG ROTATION: shows PAGE_SIZE tracks at a time from the FULL published
- * catalog (not just the newest). Every ROTATE_MS it advances to the next
- * page. Because it steps sequentially through the whole array and wraps
- * back to 0 only after the last page, no track repeats until the entire
- * catalog has been shown once — then it starts over from the top.
+ * Catalog rotation for released tracks. Data is fetched on the server
+ * and passed in as a prop.
  */
-export function RecentTracks() {
-  const allTracks = getAllTracksSorted();
-  const pageCount = Math.max(1, Math.ceil(allTracks.length / PAGE_SIZE));
+export function RecentTracks({ tracks }: { tracks: Track[] }) {
+  const pageCount = Math.max(1, Math.ceil(tracks.length / PAGE_SIZE));
   const [page, setPage] = useState(0);
   const { t } = useLanguage();
 
@@ -31,7 +27,7 @@ export function RecentTracks() {
   }, [pageCount]);
 
   const start = page * PAGE_SIZE;
-  const visible = allTracks.slice(start, start + PAGE_SIZE);
+  const visible = tracks.slice(start, start + PAGE_SIZE);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-20">
@@ -50,24 +46,24 @@ export function RecentTracks() {
         </Link>
       </div>
       <div className="mt-10 grid gap-6 md:grid-cols-3">
-        {visible.map((t2) => (
-          <a
-            key={t2.slug}
-            href={t2.url}
+        {visible.map((tr) => (
+          
+            key={tr.slug}
+            href={tr.url}
             className="sheen border-chrome group flex items-center gap-4 p-4"
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:scale-105">
               <Play className="h-5 w-5 translate-x-0.5" />
             </div>
             <div className="min-w-0">
-              <div className="truncate font-bold">{t2.title}</div>
+              <div className="truncate font-bold">{tr.title}</div>
               <div className="truncate font-mono text-[10px] tracking-widest text-muted-foreground">
-                {t2.artistSlug ? (
-                  <Link href={`/artistas/${t2.artistSlug}`} className="hover:text-primary">
-                    {t2.artistName}
+                {tr.artistSlug ? (
+                  <Link href={`/artistas/${tr.artistSlug}`} className="hover:text-primary">
+                    {tr.artistName}
                   </Link>
                 ) : (
-                  t2.artistName
+                  tr.artistName
                 )}
               </div>
             </div>
