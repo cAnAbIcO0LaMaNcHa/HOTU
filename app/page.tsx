@@ -5,20 +5,21 @@ import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
+import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate } from "@/lib/db";
 
-const events = [
-  { date: "14.06.26", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
-  { date: "22.06.26", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", lineup: "Páramo Club · Monte Negro · HOTU 138" },
-  { date: "05.07.26", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", lineup: "Chía Underground · HOTU Crew" },
-];
+export const revalidate = 0;
 
-const news = [
-  { tag: "RELEASE", date: "02.05.26", title: "HOTU Records anuncia compilatorio de aniversario", excerpt: "12 tracks inéditos de productores residentes de Bogotá, Chía y La Calera." },
-  { tag: "GEAR", date: "29.04.26", title: "Llega a Bogotá el primer lote del Analog Rytm MKIII", excerpt: "La nueva drum machine aterriza en tiendas locales." },
-  { tag: "CLUB", date: "27.04.26", title: "Subterráneo reabre con sistema Funktion-One", excerpt: "El club bogotano vuelve con line-up de apertura de 24 horas." },
-];
+export default async function Home() {
+  const [artists, tracks, allEvents, allNews] = await Promise.all([
+    getAllArtists(),
+    getAllTracks(),
+    getAllEvents(),
+    getAllNews(),
+  ]);
 
-export default function Home() {
+  const events = allEvents.slice(0, 3);
+  const news = allNews.slice(0, 3);
+
   return (
     <>
       {/* HERO */}
@@ -57,8 +58,8 @@ export default function Home() {
         <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           {events.map((e) => (
-            <article key={e.title} className="border border-border bg-card p-5 transition-colors hover:border-primary">
-              <div className="font-mono text-xs tracking-widest text-primary">{e.date}</div>
+            <article key={e.id} className="border border-border bg-card p-5 transition-colors hover:border-primary">
+              <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
               <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
                 <MapPin className="h-3 w-3" /> {e.city} · {e.venue}
               </div>
@@ -77,11 +78,11 @@ export default function Home() {
         <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
         <div className="mt-10 grid gap-8 md:grid-cols-3">
           {news.map((n) => (
-            <article key={n.title}>
+            <article key={n.id}>
               <span className="inline-block bg-primary px-2 py-1 font-mono text-[10px] tracking-widest text-primary-foreground">
                 {n.tag}
               </span>
-              <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{n.date}</div>
+              <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{formatShortDate(n.date)}</div>
               <h3 className="mt-2 text-xl font-bold leading-tight"><AutoTranslate text={n.title} /></h3>
               <p className="mt-2 font-mono text-xs text-muted-foreground"><AutoTranslate text={n.excerpt} /></p>
               <Link href="/noticias" className="mt-4 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary">
@@ -92,9 +93,9 @@ export default function Home() {
         </div>
       </section>
 
-      <RecentArtists />
+      <RecentArtists artists={artists} />
 
-      <RecentTracks />
+      <RecentTracks tracks={tracks} />
 
       {/* NEWSLETTER */}
       <section className="border-y border-border bg-card py-16">
