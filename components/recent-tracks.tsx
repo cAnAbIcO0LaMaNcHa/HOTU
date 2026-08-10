@@ -9,10 +9,6 @@ import type { Track } from "@/lib/db";
 const PAGE_SIZE = 3;
 const ROTATE_MS = 20_000;
 
-/**
- * Catalog rotation for released tracks. Data is fetched on the server
- * and passed in as a prop.
- */
 export function RecentTracks({ tracks }: { tracks: Track[] }) {
   const pageCount = Math.max(1, Math.ceil(tracks.length / PAGE_SIZE));
   const [page, setPage] = useState(0);
@@ -33,38 +29,19 @@ export function RecentTracks({ tracks }: { tracks: Track[] }) {
     <section className="mx-auto max-w-7xl px-4 py-20">
       <div className="flex items-end justify-between border-b border-border pb-4">
         <div>
-          <div className="font-mono text-[10px] tracking-[0.3em] text-primary">
-            / 04 — {t("nueva")}{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}
-          </div>
+          <div className="font-mono text-[10px] tracking-[0.3em] text-primary">/ 04 — {t("nueva")}{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}</div>
           <h2 className="mt-2 text-3xl font-bold md:text-4xl">{t("discografia")}</h2>
         </div>
-        <Link
-          href="/discografia"
-          className="hidden items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary md:inline-flex"
-        >
-          {t("verTodos")} <ChevronRight className="h-3 w-3" />
-        </Link>
+        <Link href="/discografia" className="hidden items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary md:inline-flex">{t("verTodos")} <ChevronRight className="h-3 w-3" /></Link>
       </div>
       <div className="mt-10 grid gap-6 md:grid-cols-3">
         {visible.map((tr) => (
-          
-            key={tr.slug}
-            href={tr.url}
-            className="sheen border-chrome group flex items-center gap-4 p-4"
-          >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:scale-105">
-              <Play className="h-5 w-5 translate-x-0.5" />
-            </div>
+          <a key={tr.slug} href={tr.url} className="sheen border-chrome group flex items-center gap-4 p-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:scale-105"><Play className="h-5 w-5 translate-x-0.5" /></div>
             <div className="min-w-0">
               <div className="truncate font-bold">{tr.title}</div>
               <div className="truncate font-mono text-[10px] tracking-widest text-muted-foreground">
-                {tr.artistSlug ? (
-                  <Link href={`/artistas/${tr.artistSlug}`} className="hover:text-primary">
-                    {tr.artistName}
-                  </Link>
-                ) : (
-                  tr.artistName
-                )}
+                {tr.artistSlug ? (<Link href={`/artistas/${tr.artistSlug}`} className="hover:text-primary">{tr.artistName}</Link>) : (tr.artistName)}
               </div>
             </div>
           </a>
