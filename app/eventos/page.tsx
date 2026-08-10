@@ -44,4 +44,3 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
     </section>
   );
 }
-artistasartistas/page
