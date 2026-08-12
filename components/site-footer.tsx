@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useLanguage } from "@/lib/i18n";
 
+const CONTACT_EMAIL = "hotuhouseoftheunknow@gmail.com";
+const INSTAGRAM_URL =
+  "https://www.instagram.com/house_of_the_unknown?igsh=MTU1cjJqdDMxMzdidw==";
+const INSTAGRAM_HANDLE = "@house_of_the_unknown";
+
 export function SiteFooter() {
   const { t } = useLanguage();
 
@@ -49,6 +54,29 @@ export function SiteFooter() {
             </ul>
           </div>
         ))}
+        <div>
+          <h4 className="font-mono text-[10px] tracking-widest text-primary">{t("footerContacto")}</h4>
+          <ul className="mt-4 space-y-2 font-mono text-xs">
+            <li>
+              <Link
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="text-foreground/80 hover:text-primary"
+              >
+                {CONTACT_EMAIL}
+              </Link>
+            </li>
+            <li>
+              <Link
+                href={INSTAGRAM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground/80 hover:text-primary"
+              >
+                {INSTAGRAM_HANDLE}
+              </Link>
+            </li>
+          </ul>
+        </div>
       </div>
       <div className="border-t border-border">
         <div className="mx-auto max-w-7xl px-4 py-6 font-mono text-[10px] tracking-widest text-muted-foreground">
