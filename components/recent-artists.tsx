@@ -27,7 +27,7 @@ export function RecentArtists({ artists }: { artists: Artist[] }) {
   const visible = artists.slice(start, start + PAGE_SIZE);
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20">
+    <section className="py-16">
       <div className="flex items-end justify-between border-b border-border pb-4">
         <div>
           <div className="font-mono text-[10px] tracking-[0.3em] text-primary">/ 03 — {t("nuevos")}{pageCount > 1 ? ` · ${page + 1}/${pageCount}` : ""}</div>

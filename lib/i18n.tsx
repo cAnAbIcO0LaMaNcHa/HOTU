@@ -16,7 +16,7 @@ export const LANGUAGES: { code: Lang; label: string; apiCode: string }[] = [
 
 type DictKey =
   | "noticias" | "eventos" | "artistas" | "colectivos" | "sets" | "discografia" | "tienda"
-  | "sobreNosotros" | "uneteANosotros" | "suscribirse" | "buscar" | "menu" | "verTodos"
+  | "sobreNosotros" | "uneteANosotros" | "suscribirse" | "buscar" | "menu" | "verTodos" | "tema" | "perfil" | "tickets"
   | "footerSecciones" | "footerComunidad" | "footerContacto" | "footerDesc" | "footerRights"
   | "heroLine1" | "heroLine2" | "nuevos" | "nueva";
 
@@ -25,7 +25,8 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     noticias: "NOTICIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLECTIVOS",
     sets: "SETS", discografia: "DISCOGRAFÍA", tienda: "TIENDA",
     sobreNosotros: "SOBRE NOSOTROS", uneteANosotros: "ÚNETE A NOSOTROS",
-    suscribirse: "SUSCRIBIRSE", buscar: "Buscar", menu: "Menuú", verTodos: "VER TODOS",
+    suscribirse: "SUSCRIBIRSE", buscar: "Buscar", menu: "Menú", verTodos: "VER TODOS",
+    tema: "Cambiar tema", perfil: "Mi cuenta", tickets: "Entradas",
     footerSecciones: "SECCIONES", footerComunidad: "COMUNIDAD", footerContacto: "CONTÁCTANOS",
     footerDesc: "Hub digital de cultura electrónica y techno desde Bogotá. HOTU · 2026.",
     footerRights: "TODOS LOS DERECHOS RESERVADOS",
@@ -36,6 +37,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     sets: "SETS", discografia: "DISCOGRAPHY", tienda: "STORE",
     sobreNosotros: "ABOUT US", uneteANosotros: "JOIN US",
     suscribirse: "SUBSCRIBE", buscar: "Search", menu: "Menu", verTodos: "VIEW ALL",
+    tema: "Toggle theme", perfil: "My account", tickets: "Tickets",
     footerSecciones: "SECTIONS", footerComunidad: "COMMUNITY", footerContacto: "CONTACT US",
     footerDesc: "Digital hub for electronic and techno culture from Bogotá. HOTU · 2026.",
     footerRights: "ALL RIGHTS RESERVED",
@@ -46,6 +48,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     sets: "SETS", discografia: "DISCOGRAFIA", tienda: "LOJA",
     sobreNosotros: "SOBRE NÓS", uneteANosotros: "JUNTE-SE A NÓS",
     suscribirse: "INSCREVER-SE", buscar: "Buscar", menu: "Menu", verTodos: "VER TODOS",
+    tema: "Alternar tema", perfil: "Minha conta", tickets: "Ingressos",
     footerSecciones: "SEÇÕES", footerComunidad: "COMUNIDADE", footerContacto: "CONTATO",
     footerDesc: "Hub digital de cultura eletrônica e techno de Bogotá. HOTU · 2026.",
     footerRights: "TODOS OS DIREITOS RESERVADOS",
@@ -56,6 +59,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     sets: "SETS", discografia: "DISCOGRAPHIE", tienda: "BOUTIQUE",
     sobreNosotros: "À PROPOS", uneteANosotros: "REJOIGNEZ-NOUS",
     suscribirse: "S'ABONNER", buscar: "Rechercher", menu: "Menu", verTodos: "VOIR TOUT",
+    tema: "Changer de thème", perfil: "Mon compte", tickets: "Billets",
     footerSecciones: "SECTIONS", footerComunidad: "COMMUNAUTÉ", footerContacto: "CONTACT",
     footerDesc: "Hub numérique de culture électronique et techno depuis Bogotá. HOTU · 2026.",
     footerRights: "TOUS DROITS RÉSERVÉS",
@@ -64,20 +68,22 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
   ru: {
     noticias: "НОВОСТИ", eventos: "СОБҫТИЯ", artistas: "АРТИСТҫ", colectivos: "КОЛЛЕКТИВҫ",
     sets: "СЕТҫ", discografia: "ДИСКОГРАФИЯ", tienda: "МАГАЗИН",
-    sobreNosotros: "О НАС", uneteANosotros: "ПРИСОЕДИНүИТЕСЬ",
-    suscribirse: "ПОДПИСАТҬСя", buscar: "Поиск", menu: "Меню", verTodos: "СМОТРЕТҬ ВСЕ",
-    footerSecciones: "РАЗДЕЛү", footerComunidad: "СООБЩЕСтВО", footerContacto: "КОНТАКТЫ",
-    footerDesc: "Цифровой центр электронной и 0tehno-культуры из Боготы. HOTU · 2026.",
-    footerRights: "ВСЕ ПРАВА ЗАЩИЩЕНү",
-    heroLine1: "ДОБРО ПОЖАЛОВАТЬ", heroLine2: "ДОМОЙ", nuevos: "НОВЫE", nueva: "НОВОЕ",
+    sobreNosotros: "О НАС", uneteANosotros: "ПРИСОЕДИНЯЙТЕСЬ",
+    suscribirse: "ПОДПИСАТЬСЯ", buscar: "Поиск", menu: "Меню", verTodos: "СМОТРЕТЬ ВСЕ",
+    tema: "Сменить тему", perfil: "Мой аккаунт", tickets: "Билеты",
+    footerSecciones: "РАЗДЕЛЫ", footerComunidad: "СООБЩЕСТВО", footerContacto: "КОНТАКТЫ",
+    footerDesc: "Цифровой центр электронной и techno-культуры из Боготы. HOTU · 2026.",
+    footerRights: "ВСЕ ПРАВА ЗАЩИЩЕНЫ",
+    heroLine1: "ДОБРО ПОЖАЛОВАТЬ", heroLine2: "ДОМОЙ", nuevos: "НОВЫЕ", nueva: "НОВОЕ",
   },
   ja: {
     noticias: "ニュース", eventos: "イベント", artistas: "アーティスト", colectivos: "コレクティブ",
     sets: "セット", discografia: "ディスコグレフィー", tienda: "ストア",
     sobreNosotros: "私たちについて", uneteANosotros: "参加する",
     suscribirse: "登録する", buscar: "検索", menu: "メニュー", verTodos: "すべて見る",
+    tema: "テーマを切り替え", perfil: "マイアカウント", tickets: "チケット",
     footerSecciones: "セックション", footerComunidad: "コミュニティ", footerContacto: "お問い合わせ",
-    footerDesc: "ボゴタ発、エレクトロニック＆テノ文化のデジタルハブ。HOTU・2026年。",
+    footerDesc: "ボゴタ発、エレクトロニック＆テクノ文化のデジタルハブ。HOTU・2026年。",
     footerRights: "全著作権所有",
     heroLine1: "ようこそ", heroLine2: "我が家へ", nuevos: "新着", nueva: "新着",
   },
@@ -86,6 +92,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     sets: "现场演出", discografia: "唱片目录", tienda: "商店",
     sobreNosotros: "关于我们", uneteANosotros: "加入我们",
     suscribirse: "订阅", buscar: "搜索", menu: "菜单", verTodos: "查看全部",
+    tema: "切换主题", perfil: "我的账户", tickets: "门票",
     footerSecciones: "板块", footerComunidad: "社区", footerContacto: "联系我们",
     footerDesc: "来自波哥大的电子与techno文化数字中心。HOTU · 2026年。",
     footerRights: "版权所有",

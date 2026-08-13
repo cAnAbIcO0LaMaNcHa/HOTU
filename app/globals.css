@@ -115,6 +115,28 @@
   --accent-contrast: oklch(0.06 0 0);
 }
 
+/* ---------- Light theme (toggle) ---------- */
+[data-theme="light"] {
+  --bg-base: oklch(0.97 0.002 260);
+  --bg-elevated: oklch(0.995 0.002 260);
+
+  --background: var(--bg-base);
+  --foreground: oklch(0.11 0 0);
+  --card: var(--bg-elevated);
+  --muted: oklch(0.93 0.003 260);
+  --muted-foreground: oklch(0.38 0.004 260);
+  --border: oklch(0.85 0.004 260);
+}
+[data-theme="light"] .concrete {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(0, 0, 0, 0.02), transparent 45%),
+    radial-gradient(circle at 85% 70%, rgba(0, 0, 0, 0.015), transparent 50%),
+    repeating-linear-gradient(115deg, rgba(0, 0, 0, 0.008) 0 1px, transparent 1px 3px);
+}
+[data-theme="light"] .text-chrome {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.15));
+}
+
 * {
   border-color: var(--border);
 }

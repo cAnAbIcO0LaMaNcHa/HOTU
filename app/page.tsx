@@ -5,6 +5,7 @@ import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
+import { SectionSidebar } from "@/components/section-sidebar";
 import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate } from "@/lib/db";
 
 export const revalidate = 0;
@@ -30,41 +31,47 @@ export default async function Home() {
         </div>
       </section>
 
-      <DistrictGrid />
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-y-8 px-4 py-16 lg:grid-cols-[200px_1fr] lg:gap-x-16">
+        <SectionSidebar />
 
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {events.map((e) => (
-            <article key={e.id} className="border border-border bg-card p-5 transition-colors hover:border-primary">
-              <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
-              <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
-              <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
-              <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
-              <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" /></Link>
-            </article>
-          ))}
+        <div className="min-w-0 divide-y divide-border">
+          <DistrictGrid />
+
+          <section className="py-16">
+            <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
+            <div className="mt-10 grid gap-6 md:grid-cols-3">
+              {events.map((e) => (
+                <article key={e.id} className="border border-border bg-card p-5 transition-colors hover:border-primary">
+                  <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
+                  <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
+                  <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
+                  <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
+                  <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" /></Link>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="py-16">
+            <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
+            <div className="mt-10 grid gap-8 md:grid-cols-3">
+              {news.map((n) => (
+                <article key={n.id}>
+                  <span className="inline-block bg-primary px-2 py-1 font-mono text-[10px] tracking-widest text-primary-foreground">{n.tag}</span>
+                  <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{formatShortDate(n.date)}</div>
+                  <h3 className="mt-2 text-xl font-bold leading-tight"><AutoTranslate text={n.title} /></h3>
+                  <p className="mt-2 font-mono text-xs text-muted-foreground"><AutoTranslate text={n.excerpt} /></p>
+                  <Link href="/noticias" className="mt-4 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="LEER MÁS" /> <ChevronRight className="h-3 w-3" /></Link>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <RecentArtists artists={artists} />
+
+          <RecentTracks tracks={tracks} />
         </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-20">
-        <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
-        <div className="mt-10 grid gap-8 md:grid-cols-3">
-          {news.map((n) => (
-            <article key={n.id}>
-              <span className="inline-block bg-primary px-2 py-1 font-mono text-[10px] tracking-widest text-primary-foreground">{n.tag}</span>
-              <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{formatShortDate(n.date)}</div>
-              <h3 className="mt-2 text-xl font-bold leading-tight"><AutoTranslate text={n.title} /></h3>
-              <p className="mt-2 font-mono text-xs text-muted-foreground"><AutoTranslate text={n.excerpt} /></p>
-              <Link href="/noticias" className="mt-4 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="LEER MÁS" /> <ChevronRight className="h-3 w-3" /></Link>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <RecentArtists artists={artists} />
-
-      <RecentTracks tracks={tracks} />
+      </div>
 
       <section className="border-y border-border bg-card py-16">
         <div className="mx-auto max-w-3xl px-4 text-center">

@@ -6,7 +6,7 @@ import { AutoTranslate } from "@/components/auto-translate";
 
 export function DistrictGrid() {
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20">
+    <section className="py-16">
       <span className="font-mono text-[10px] tracking-[0.3em] text-primary">
         / <AutoTranslate text="EL MAPA · 10 DISTRITOS" />
       </span>
@@ -16,7 +16,7 @@ export function DistrictGrid() {
       <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
         <AutoTranslate text="Cada distrito es una identidad sonora. Elige el tuyo y filtra eventos, artistas, sets y releases por el mood que compartes." />
       </p>
-      <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-10 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         {DISTRICTS.map((d) => (
           <Link
             key={d.id}
