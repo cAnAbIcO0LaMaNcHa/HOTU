@@ -1,5 +1,3 @@
-"use server";
-
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import type { DistrictId } from "./districts";
@@ -124,11 +122,13 @@ export async function getMyTrophies(): Promise<Trophy[]> {
 }
 
 /**
- * Creates a pending order from the cart. This does NOT charge anything yet —
+ * Creates a pending order from the cart. This does NOT charge anything yet -
  * it just reserves the order row so the checkout page can hand off to the
  * payment provider (Bold) once that integration is wired in.
  */
 export async function createPendingOrder(items: CartItem[]): Promise<{ orderId: number } | { error: string }> {
+  "use server";
+
   const session = await auth();
   const email = session?.user?.email;
   if (!email) return { error: "not_authenticated" };
