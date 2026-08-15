@@ -2,7 +2,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
-import type { CartItem } from "./orders";
+import type { CartItem } from "./commerce-types";
 
 const sql = neon(process.env.DATABASE_URL!);
 

@@ -1,40 +1,9 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
+import type { MerchItem, OrderRecord, Trophy } from "./commerce-types";
 import type { DistrictId } from "./districts";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-export type MerchCategory = "camiseta" | "saco" | "pasamontanas" | "buckethat" | "abanico" | "earplugs" | "arte";
-
-export type MerchItem = {
-  slug: string;
-  name: string;
-  category: MerchCategory;
-  priceCop: number;
-  image?: string;
-};
-
-export const TICKET_PRICES = { normal: 30000, vip: 50000 } as const;
-export type TicketTier = keyof typeof TICKET_PRICES;
-
-export type CartTicketItem = {
-  kind: "ticket";
-  eventId: number;
-  eventTitle: string;
-  tier: TicketTier;
-  unitPriceCop: number;
-  quantity: number;
-};
-
-export type CartMerchItem = {
-  kind: "merch";
-  slug: string;
-  name: string;
-  unitPriceCop: number;
-  quantity: number;
-};
-
-export type CartItem = CartTicketItem | CartMerchItem;
 
 export async function getMerchCatalog(): Promise<MerchItem[]> {
   const rows = await sql`SELECT * FROM merch_items WHERE active = true ORDER BY category, name`;
@@ -46,24 +15,6 @@ export async function getMerchCatalog(): Promise<MerchItem[]> {
     image: r.image ?? undefined,
   }));
 }
-
-export type OrderItemRecord = {
-  itemType: "ticket" | "merch";
-  name: string;
-  unitPriceCop: number;
-  quantity: number;
-  ticketTier: TicketTier | null;
-};
-
-export type OrderRecord = {
-  id: number;
-  status: "pending" | "paid" | "cancelled";
-  amountCop: number;
-  currency: string;
-  createdAt: string;
-  paidAt: string | null;
-  items: OrderItemRecord[];
-};
 
 export async function getMyOrders(): Promise<OrderRecord[]> {
   const session = await auth();
@@ -92,13 +43,6 @@ export async function getMyOrders(): Promise<OrderRecord[]> {
   }
   return result;
 }
-
-export type Trophy = {
-  eventId: number;
-  eventTitle: string;
-  eventDate: string;
-  district: DistrictId;
-};
 
 export async function getMyTrophies(): Promise<Trophy[]> {
   const session = await auth();

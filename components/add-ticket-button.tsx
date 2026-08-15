@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useCart } from "@/components/cart-context";
-import { TICKET_PRICES, type TicketTier } from "@/lib/orders";
+import { TICKET_PRICES, type TicketTier } from "@/lib/commerce-types";
 
 export function AddTicketButton({ eventId, eventTitle }: { eventId: number; eventTitle: string }) {
   const { addTicket } = useCart();
