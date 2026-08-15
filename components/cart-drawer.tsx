@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { X, Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { useCart, formatCop } from "@/components/cart-context";
-import { createPendingOrder } from "@/lib/orders";
+import { createPendingOrder } from "@/lib/actions";
 import { useLanguage } from "@/lib/i18n";
 
 export function CartDrawer() {
