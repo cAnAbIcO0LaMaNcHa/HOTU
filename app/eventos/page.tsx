@@ -4,6 +4,7 @@ import { MapPin } from "lucide-react";
 import { DISTRICTS } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
 import { getAllEvents, formatShortDate } from "@/lib/db";
+import { AddTicketButton } from "@/components/add-ticket-button";
 
 export const revalidate = 0;
 
@@ -37,6 +38,7 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
             <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
             <p className="mt-2 font-mono text-xs text-muted-foreground"><AutoTranslate text={e.lineup} /></p>
+            <AddTicketButton eventId={e.id} eventTitle={e.title} />
           </article>
         ))}
         {filtered.length === 0 && (<p className="font-mono text-sm text-muted-foreground"><AutoTranslate text="No hay eventos en este distrito todavía." /></p>)}

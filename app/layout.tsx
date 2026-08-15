@@ -4,6 +4,8 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { LanguageProvider } from "@/lib/i18n";
 import { AuthSessionProvider } from "@/components/session-provider";
+import { CartProvider } from "@/components/cart-context";
+import { CartDrawer } from "@/components/cart-drawer";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hotu.com.co"), // TODO: cambiar por tu dominio real
@@ -60,9 +62,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="concrete min-h-screen">
         <AuthSessionProvider>
           <LanguageProvider>
-            <SiteHeader />
-            {children}
-            <SiteFooter />
+            <CartProvider>
+              <SiteHeader />
+              {children}
+              <SiteFooter />
+              <CartDrawer />
+            </CartProvider>
           </LanguageProvider>
         </AuthSessionProvider>
       </body>

@@ -5,7 +5,6 @@ import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
-import { SectionSidebar } from "@/components/section-sidebar";
 import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate } from "@/lib/db";
 
 export const revalidate = 0;
@@ -31,11 +30,8 @@ export default async function Home() {
         </div>
       </section>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-y-8 px-4 py-16 lg:grid-cols-[200px_1fr] lg:gap-x-16">
-        <SectionSidebar />
-
-        <div className="min-w-0 divide-y divide-border">
-          <DistrictGrid />
+      <div className="mx-auto max-w-7xl divide-y divide-border px-4 py-16">
+        <DistrictGrid />
 
           <section className="py-16">
             <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
@@ -70,7 +66,6 @@ export default async function Home() {
           <RecentArtists artists={artists} />
 
           <RecentTracks tracks={tracks} />
-        </div>
       </div>
 
       <section className="border-y border-border bg-card py-16">

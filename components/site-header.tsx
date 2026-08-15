@@ -3,16 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, X, Ticket, CircleUser } from "lucide-react";
+import { Menu, X, ShoppingBag, CircleUser } from "lucide-react";
 import { SubscribeDialog } from "@/components/subscribe-dialog";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLanguage } from "@/lib/i18n";
+import { useCart } from "@/components/cart-context";
 
 export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const { t } = useLanguage();
+  const { count, setOpen: setCartOpen } = useCart();
 
   const NAV = [
     { label: t("noticias"), href: "/noticias" },
@@ -55,17 +57,22 @@ export function SiteHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/eventos"
+          <button
+            onClick={() => setCartOpen(true)}
             aria-label={t("tickets")}
-            className="border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
+            className="relative border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
           >
-            <Ticket className="h-4 w-4" />
-          </Link>
+            <ShoppingBag className="h-4 w-4" />
+            {count > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 font-mono text-[9px] font-bold text-primary-foreground">
+                {count}
+              </span>
+            )}
+          </button>
           <LanguageSwitcher />
           <ThemeToggle />
           <Link
-            href="/admin"
+            href="/perfil"
             aria-label={t("perfil")}
             className="border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
           >
