@@ -50,9 +50,21 @@ export type OrderRecord = {
   items: OrderItemRecord[];
 };
 
-export type Trophy = {
+/** A single purchased ticket line — this is what fills up the /perfil/tiquetes wall. */
+export type PurchasedTicket = {
+  orderItemId: number;
   eventId: number;
   eventTitle: string;
   eventDate: string;
+  venue: string;
+  city: string;
   district: DistrictId;
+  tier: TicketTier;
+  quantity: number;
+  purchasedAt: string;
+};
+
+export type UserProfile = {
+  phone: string | null;
+  cedula: string | null;
 };

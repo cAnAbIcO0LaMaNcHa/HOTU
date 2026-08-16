@@ -42,3 +42,31 @@ export async function createPendingOrder(items: CartItem[]): Promise<{ orderId: 
 
   return { orderId: order.id };
 }
+
+/**
+ * Updates the signed-in user's contact phone and cedula (Colombian national ID).
+ * - Only ever writes to the row matching the caller's own session email -
+ *   nobody can update another user's data through this action.
+ * - Validates format before writing anything.
+ * - The cedula is stored as digits-only; the UI is responsible for masking
+ *   it on display (only the owner ever sees their own row anyway).
+ */
+export async function updateMyProfile(data: { phone: string; cedula: string }): Promise<{ ok: true } | { error: string }> {
+  const session = await auth();
+  const email = session?.user?.email;
+  if (!email) return { error: "not_authenticated" };
+
+  const phone = data.phone.trim().slice(0, 20);
+  const cedula = data.cedula.trim().replace(/[^0-9]/g, "").slice(0, 15);
+
+  if (phone && !/^[0-9+()\-\s]{7,20}$/.test(phone)) return { error: "invalid_phone" };
+  if (cedula && !/^[0-9]{5,15}$/.test(cedula)) return { error: "invalid_cedula" };
+
+  await sql`
+    INSERT INTO user_profiles (email, phone, cedula, updated_at)
+    VALUES (${email}, ${phone || null}, ${cedula || null}, now())
+    ON CONFLICT (email) DO UPDATE SET phone = ${phone || null}, cedula = ${cedula || null}, updated_at = now()
+  `;
+
+  return { ok: true };
+}

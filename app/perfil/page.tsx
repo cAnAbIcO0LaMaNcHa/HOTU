@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Trophy, Package, LogIn } from "lucide-react";
+import { Package, Ticket as TicketIcon, LogIn, MapPin, ChevronRight } from "lucide-react";
 import { auth } from "@/auth";
-import { getMyOrders, getMyTrophies } from "@/lib/orders";
+import { getMyOrders, getMyTickets, getMyProfile } from "@/lib/orders";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
+import { ProfileHeader } from "@/components/profile-header";
 
 export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Mi perfil",
-  description: "Tus pedidos y las fiestas HOTU a las que has asistido.",
+  description: "Tus pedidos y tiquetes en HOTU.",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -28,7 +29,7 @@ export default async function PerfilPage() {
         <LogIn className="h-8 w-8 text-primary" />
         <h1 className="mt-4 text-3xl font-bold">Inicia sesion</h1>
         <p className="mt-3 font-mono text-sm text-muted-foreground">
-          Entra con tu cuenta de Google para ver tus pedidos y las fiestas a las que has asistido.
+          Entra con tu cuenta de Google para ver tus pedidos y tiquetes.
         </p>
         <Link
           href="/auth/signin?callbackUrl=/perfil"
@@ -40,51 +41,22 @@ export default async function PerfilPage() {
     );
   }
 
-  const [orders, trophies] = await Promise.all([getMyOrders(), getMyTrophies()]);
+  const [orders, tickets, profile] = await Promise.all([getMyOrders(), getMyTickets(), getMyProfile()]);
+  const ticketsPreview = tickets.slice(0, 3);
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
-      <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
-        MI CASA
-      </span>
-      <h1 className="mt-6 text-4xl font-bold leading-[0.95] md:text-6xl">
-        {session.user.name?.split(" ")[0]?.toUpperCase() ?? "PERFIL"}
-      </h1>
-      <p className="mt-3 font-mono text-xs text-muted-foreground">{session.user.email}</p>
+      <ProfileHeader
+        name={session.user.name ?? "Perfil"}
+        email={session.user.email ?? ""}
+        image={session.user.image}
+        ordersCount={orders.length}
+        ticketsCount={tickets.length}
+        initialPhone={profile.phone}
+        initialCedula={profile.cedula}
+      />
 
-      <div className="mt-16">
-        <div className="flex items-center gap-2 border-b border-border pb-4">
-          <Trophy className="h-4 w-4 text-primary" />
-          <h2 className="font-mono text-[10px] tracking-[0.3em] text-primary">TROFEOS - FIESTAS A LAS QUE HAS IDO</h2>
-        </div>
-
-        {trophies.length === 0 ? (
-          <p className="mt-6 font-mono text-sm text-muted-foreground">
-            Todavia no tenes trofeos. Se desbloquean automaticamente cuando compras y pagas una entrada.
-          </p>
-        ) : (
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-            {trophies.map((tr) => (
-              <div
-                key={tr.eventId}
-                data-district={tr.district}
-                className="sheen border-chrome flex flex-col justify-between p-5"
-              >
-                <Trophy className="h-6 w-6 text-chrome" />
-                <div className="mt-6">
-                  <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {formatShortDate(tr.eventDate)}
-                  </div>
-                  <div className="mt-1 font-bold leading-tight">
-                    <AutoTranslate text={tr.eventTitle} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
+      {/* Mis pedidos */}
       <div className="mt-16">
         <div className="flex items-center gap-2 border-b border-border pb-4">
           <Package className="h-4 w-4 text-primary" />
@@ -131,6 +103,53 @@ export default async function PerfilPage() {
                 <div className="mt-3 border-t border-border pt-3 text-right font-mono text-sm font-bold">
                   TOTAL:{" "}
                   {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(o.amountCop)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Mis tiquetes */}
+      <div className="mt-16">
+        <div className="flex items-center justify-between border-b border-border pb-4">
+          <div className="flex items-center gap-2">
+            <TicketIcon className="h-4 w-4 text-primary" />
+            <h2 className="font-mono text-[10px] tracking-[0.3em] text-primary">MIS TIQUETES</h2>
+          </div>
+          {tickets.length > 0 && (
+            <Link
+              href="/perfil/tiquetes"
+              className="inline-flex items-center gap-1 font-mono text-[10px] tracking-widest text-foreground/70 hover:text-primary"
+            >
+              VER TODOS <ChevronRight className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
+
+        {tickets.length === 0 ? (
+          <p className="mt-6 font-mono text-sm text-muted-foreground">
+            Todavia no tenes tiquetes. Se agregan automaticamente cuando compras y pagas una entrada.
+          </p>
+        ) : (
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+            {ticketsPreview.map((t) => (
+              <div
+                key={t.orderItemId}
+                data-district={t.district}
+                className="sheen border-chrome flex flex-col justify-between p-5"
+              >
+                <TicketIcon className="h-6 w-6 text-chrome" />
+                <div className="mt-6">
+                  <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+                    {formatShortDate(t.eventDate)}
+                  </div>
+                  <div className="mt-1 font-bold leading-tight">
+                    <AutoTranslate text={t.eventTitle} />
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 font-mono text-[9px] tracking-widest text-muted-foreground">
+                    <MapPin className="h-3 w-3" /> {t.city}
+                  </div>
                 </div>
               </div>
             ))}

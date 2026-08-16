@@ -1,9 +1,8 @@
 /**
  * ONE-TIME SETUP ENDPOINT — creates the commerce tables (orders, order_items,
- * merch_items) and seeds the merch catalog. Protected by MIGRATE_SECRET.
- * Call it as: /api/setup-commerce?secret=YOUR_SECRET
+ * merch_items, user_profiles) and seeds the merch catalog. Protected by
+ * MIGRATE_SECRET. Call it as: /api/setup-commerce?secret=YOUR_SECRET
  * Safe to re-run: every statement is idempotent (IF NOT EXISTS / ON CONFLICT).
- * DELETE THIS FILE once it has run successfully in production.
  */
 
 import { NextResponse } from "next/server";
@@ -77,6 +76,16 @@ export async function GET(request: Request) {
     `;
     log.push("table order_items ready");
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        email TEXT PRIMARY KEY,
+        phone TEXT,
+        cedula TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    log.push("table user_profiles ready");
+
     for (const m of MERCH_SEED) {
       await sql`
         INSERT INTO merch_items (slug, name, category, price_cop)
@@ -90,7 +99,8 @@ export async function GET(request: Request) {
       SELECT
         (SELECT COUNT(*) FROM merch_items) AS merch_items,
         (SELECT COUNT(*) FROM orders) AS orders,
-        (SELECT COUNT(*) FROM order_items) AS order_items
+        (SELECT COUNT(*) FROM order_items) AS order_items,
+        (SELECT COUNT(*) FROM user_profiles) AS user_profiles
     `;
 
     return NextResponse.json({ ok: true, log, counts: counts[0] });
