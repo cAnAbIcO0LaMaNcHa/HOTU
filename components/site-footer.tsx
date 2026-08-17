@@ -29,6 +29,7 @@ export function SiteFooter() {
         { label: t("tienda"), href: "/tienda" },
         { label: t("sobreNosotros"), href: "/sobre-nosotros" },
         { label: t("uneteANosotros"), href: "/aliados" },
+        { label: "Privacidad", href: "/privacidad" },
       ],
     },
   ];

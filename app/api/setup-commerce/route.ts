@@ -84,7 +84,18 @@ export async function GET(request: Request) {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `;
+    await sql`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS consent_at TIMESTAMPTZ`;
     log.push("table user_profiles ready");
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        action TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    log.push("table audit_log ready");
 
     for (const m of MERCH_SEED) {
       await sql`
@@ -100,7 +111,8 @@ export async function GET(request: Request) {
         (SELECT COUNT(*) FROM merch_items) AS merch_items,
         (SELECT COUNT(*) FROM orders) AS orders,
         (SELECT COUNT(*) FROM order_items) AS order_items,
-        (SELECT COUNT(*) FROM user_profiles) AS user_profiles
+        (SELECT COUNT(*) FROM user_profiles) AS user_profiles,
+        (SELECT COUNT(*) FROM audit_log) AS audit_log
     `;
 
     return NextResponse.json({ ok: true, log, counts: counts[0] });

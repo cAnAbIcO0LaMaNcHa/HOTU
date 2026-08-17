@@ -54,6 +54,7 @@ export default async function PerfilPage() {
         ticketsCount={tickets.length}
         initialPhone={profile.phone}
         initialCedula={profile.cedula}
+        initialHasConsent={profile.hasConsent}
       />
 
       {/* Mis pedidos */}

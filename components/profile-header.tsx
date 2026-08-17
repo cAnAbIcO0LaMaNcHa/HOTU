@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Pencil, Eye, EyeOff, Check, X } from "lucide-react";
 import { updateMyProfile } from "@/lib/actions";
 
@@ -17,6 +18,7 @@ export function ProfileHeader({
   ticketsCount,
   initialPhone,
   initialCedula,
+  initialHasConsent,
 }: {
   name: string;
   email: string;
@@ -25,32 +27,46 @@ export function ProfileHeader({
   ticketsCount: number;
   initialPhone: string | null;
   initialCedula: string | null;
+  initialHasConsent: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState(initialPhone ?? "");
   const [cedula, setCedula] = useState(initialCedula ?? "");
   const [savedPhone, setSavedPhone] = useState(initialPhone ?? "");
   const [savedCedula, setSavedCedula] = useState(initialCedula ?? "");
+  const [hasConsent, setHasConsent] = useState(initialHasConsent);
+  const [consentChecked, setConsentChecked] = useState(false);
   const [showCedula, setShowCedula] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const needsConsent = !hasConsent && (phone.trim() || cedula.trim());
+
   const save = () => {
     setError(null);
+    if (needsConsent && !consentChecked) {
+      setError("Marcá la casilla de autorización para guardar estos datos.");
+      return;
+    }
     startTransition(async () => {
-      const result = await updateMyProfile({ phone, cedula });
+      const result = await updateMyProfile({ phone, cedula, consent: consentChecked });
       if ("error" in result) {
         setError(
           result.error === "invalid_phone"
             ? "Ese número de teléfono no se ve válido."
             : result.error === "invalid_cedula"
               ? "Esa cédula no se ve válida (solo números)."
-              : "Algo falló. Probá de nuevo."
+              : result.error === "consent_required"
+                ? "Marcá la casilla de autorización para guardar estos datos."
+                : result.error === "rate_limited"
+                  ? "Esperá unos segundos antes de guardar de nuevo."
+                  : "Algo falló. Probá de nuevo."
         );
         return;
       }
       setSavedPhone(phone);
       setSavedCedula(cedula);
+      if (consentChecked) setHasConsent(true);
       setEditing(false);
     });
   };
@@ -58,6 +74,7 @@ export function ProfileHeader({
   const cancel = () => {
     setPhone(savedPhone);
     setCedula(savedCedula);
+    setConsentChecked(false);
     setError(null);
     setEditing(false);
   };
@@ -143,6 +160,25 @@ export function ProfileHeader({
                 className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
               />
             </div>
+
+            {needsConsent && (
+              <label className="flex items-start gap-2 font-mono text-[11px] leading-snug text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={consentChecked}
+                  onChange={(e) => setConsentChecked(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Autorizo el tratamiento de mis datos personales conforme a la{" "}
+                  <Link href="/privacidad" target="_blank" className="text-primary underline">
+                    Política de Privacidad
+                  </Link>
+                  .
+                </span>
+              </label>
+            )}
+
             {error && <p className="font-mono text-xs text-primary">{error}</p>}
             <div className="flex gap-2">
               <button
