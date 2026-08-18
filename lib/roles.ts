@@ -32,13 +32,13 @@ export async function getMyRoleAssignments(): Promise<RoleAssignment[]> {
   const email = session?.user?.email;
   if (!email) return [];
   const rows = await sql`SELECT email, role, country_code FROM user_roles WHERE email = ${email}`;
-  return rows.map(mapRow);
+  return rows.map((r) => mapRow(r));
 }
 
 /** Every role row in the system — only meant to be called after an isSuperAdmin() check. */
 export async function getAllRoleAssignments(): Promise<RoleAssignment[]> {
   const rows = await sql`SELECT email, role, country_code FROM user_roles ORDER BY email, role`;
-  return rows.map(mapRow);
+  return rows.map((r) => mapRow(r));
 }
 
 /**
