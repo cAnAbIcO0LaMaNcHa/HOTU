@@ -22,23 +22,19 @@ export type RoleAssignment = {
   countryCode: string;
 };
 
-function mapRow(r: { email: string; role: string; country_code: string }): RoleAssignment {
-  return { email: r.email, role: r.role as Role, countryCode: r.country_code };
-}
-
 /** All role rows for the signed-in user. Empty array if not signed in. */
 export async function getMyRoleAssignments(): Promise<RoleAssignment[]> {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) return [];
   const rows = await sql`SELECT email, role, country_code FROM user_roles WHERE email = ${email}`;
-  return rows.map((r) => mapRow(r));
+  return rows.map((r) => ({ email: r.email, role: r.role as Role, countryCode: r.country_code }));
 }
 
 /** Every role row in the system — only meant to be called after an isSuperAdmin() check. */
 export async function getAllRoleAssignments(): Promise<RoleAssignment[]> {
   const rows = await sql`SELECT email, role, country_code FROM user_roles ORDER BY email, role`;
-  return rows.map((r) => mapRow(r));
+  return rows.map((r) => ({ email: r.email, role: r.role as Role, countryCode: r.country_code }));
 }
 
 /**
