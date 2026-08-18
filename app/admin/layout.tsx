@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth, signIn } from "@/auth";
-import { isAdminEmail } from "@/lib/admin";
+import { isSuperAdmin } from "@/lib/roles";
 
 export const metadata: Metadata = {
   title: "Panel de administración",
@@ -27,7 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     );
   }
 
-  if (!isAdminEmail(email)) {
+  if (!(await isSuperAdmin(email))) {
     return (
       <section className="mx-auto max-w-md px-4 py-24 text-center">
         <span className="font-mono text-[10px] tracking-[0.3em] text-red-400">/ SIN PERMISO</span>
