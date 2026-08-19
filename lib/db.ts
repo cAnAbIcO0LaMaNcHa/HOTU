@@ -6,7 +6,17 @@ const sql = neon(process.env.DATABASE_URL!);
 export type ArtistSet = { title: string; url: string; duration?: string };
 export type ArtistTrack = { title: string; url: string };
 
-export type Artist = {
+/** Shared editorial fields every content entity now carries. */
+export type ContentMeta = {
+  scope: "global" | "country";
+  countryCode: string;
+  language: string;
+  status: "draft" | "published" | "archived";
+  featured: boolean;
+  priorityAt: string | null;
+};
+
+export type Artist = ContentMeta & {
   slug: string;
   name: string;
   genre: string;
@@ -19,7 +29,7 @@ export type Artist = {
   topTracks: ArtistTrack[];
 };
 
-export type Track = {
+export type Track = ContentMeta & {
   slug: string;
   title: string;
   artistName: string;
@@ -29,7 +39,7 @@ export type Track = {
   url: string;
 };
 
-export type DjSet = {
+export type DjSet = ContentMeta & {
   slug: string;
   title: string;
   artistName: string;
@@ -40,7 +50,7 @@ export type DjSet = {
   url: string;
 };
 
-export type Collective = {
+export type Collective = ContentMeta & {
   slug: string;
   name: string;
   type: "HOTU" | "LOCAL";
@@ -49,7 +59,7 @@ export type Collective = {
   artistSlugs: string[];
 };
 
-export type EventItem = {
+export type EventItem = ContentMeta & {
   id: number;
   date: string;
   city: string;
@@ -59,12 +69,18 @@ export type EventItem = {
   district: DistrictId;
 };
 
-export type NewsItem = {
+export type NewsItem = ContentMeta & {
   id: number;
   tag: string;
   date: string;
   title: string;
   excerpt: string;
+};
+
+/** Options accepted by every list-read function below. */
+export type ReadOptions = {
+  /** When true, returns drafts/archived rows too — for admin screens only. */
+  includeAll?: boolean;
 };
 
 /** Postgres DATE columns come back as Date objects; normalise to YYYY-MM-DD. */
@@ -79,9 +95,23 @@ export function formatShortDate(iso: string): string {
   return `${d}.${m}.${y.slice(2)}`;
 }
 
-export async function getAllArtists(): Promise<Artist[]> {
-  const rows = await sql`SELECT * FROM artists ORDER BY joined_at DESC`;
+function mapMeta(r: Record<string, unknown>): ContentMeta {
+  return {
+    scope: (r.scope as ContentMeta["scope"]) ?? "country",
+    countryCode: (r.country_code as string) ?? "COL",
+    language: (r.language as string) ?? "es",
+    status: (r.status as ContentMeta["status"]) ?? "published",
+    featured: Boolean(r.featured),
+    priorityAt: r.priority_at ? new Date(r.priority_at as string).toISOString() : null,
+  };
+}
+
+export async function getAllArtists(opts: ReadOptions = {}): Promise<Artist[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM artists ORDER BY joined_at DESC`
+    : await sql`SELECT * FROM artists WHERE status = 'published' ORDER BY joined_at DESC`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     slug: r.slug,
     name: r.name,
     genre: r.genre,
@@ -96,10 +126,11 @@ export async function getAllArtists(): Promise<Artist[]> {
 }
 
 export async function getArtistBySlug(slug: string): Promise<Artist | undefined> {
-  const rows = await sql`SELECT * FROM artists WHERE slug = ${slug}`;
+  const rows = await sql`SELECT * FROM artists WHERE slug = ${slug} AND status = 'published'`;
   if (rows.length === 0) return undefined;
   const r = rows[0];
   return {
+    ...mapMeta(r),
     slug: r.slug,
     name: r.name,
     genre: r.genre,
@@ -113,9 +144,12 @@ export async function getArtistBySlug(slug: string): Promise<Artist | undefined>
   };
 }
 
-export async function getAllTracks(): Promise<Track[]> {
-  const rows = await sql`SELECT * FROM tracks ORDER BY released_at DESC`;
+export async function getAllTracks(opts: ReadOptions = {}): Promise<Track[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM tracks ORDER BY released_at DESC`
+    : await sql`SELECT * FROM tracks WHERE status = 'published' ORDER BY released_at DESC`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     slug: r.slug,
     title: r.title,
     artistName: r.artist_name,
@@ -126,9 +160,12 @@ export async function getAllTracks(): Promise<Track[]> {
   }));
 }
 
-export async function getAllSets(): Promise<DjSet[]> {
-  const rows = await sql`SELECT * FROM dj_sets ORDER BY recorded_at DESC`;
+export async function getAllSets(opts: ReadOptions = {}): Promise<DjSet[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM dj_sets ORDER BY recorded_at DESC`
+    : await sql`SELECT * FROM dj_sets WHERE status = 'published' ORDER BY recorded_at DESC`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     slug: r.slug,
     title: r.title,
     artistName: r.artist_name,
@@ -140,9 +177,12 @@ export async function getAllSets(): Promise<DjSet[]> {
   }));
 }
 
-export async function getAllCollectives(): Promise<Collective[]> {
-  const rows = await sql`SELECT * FROM collectives ORDER BY sector, name`;
+export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collective[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM collectives ORDER BY sector, name`
+    : await sql`SELECT * FROM collectives WHERE status = 'published' ORDER BY sector, name`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     slug: r.slug,
     name: r.name,
     type: r.type as "HOTU" | "LOCAL",
@@ -162,9 +202,12 @@ export async function getCollectivesBySector(): Promise<Map<string, Collective[]
   return sectors;
 }
 
-export async function getAllEvents(): Promise<EventItem[]> {
-  const rows = await sql`SELECT * FROM events ORDER BY event_date ASC`;
+export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM events ORDER BY event_date ASC`
+    : await sql`SELECT * FROM events WHERE status = 'published' ORDER BY event_date ASC`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     id: r.id,
     date: toISODate(r.event_date),
     city: r.city,
@@ -175,9 +218,12 @@ export async function getAllEvents(): Promise<EventItem[]> {
   }));
 }
 
-export async function getAllNews(): Promise<NewsItem[]> {
-  const rows = await sql`SELECT * FROM news ORDER BY news_date DESC`;
+export async function getAllNews(opts: ReadOptions = {}): Promise<NewsItem[]> {
+  const rows = opts.includeAll
+    ? await sql`SELECT * FROM news ORDER BY news_date DESC`
+    : await sql`SELECT * FROM news WHERE status = 'published' ORDER BY news_date DESC`;
   return rows.map((r) => ({
+    ...mapMeta(r),
     id: r.id,
     tag: r.tag,
     date: toISODate(r.news_date),

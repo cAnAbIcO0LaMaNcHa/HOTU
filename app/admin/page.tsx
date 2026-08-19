@@ -5,7 +5,12 @@ export const revalidate = 0;
 
 export default async function AdminHome() {
   const [events, news, artists, tracks, sets, collectives] = await Promise.all([
-    getAllEvents(), getAllNews(), getAllArtists(), getAllTracks(), getAllSets(), getAllCollectives(),
+    getAllEvents({ includeAll: true }),
+    getAllNews({ includeAll: true }),
+    getAllArtists({ includeAll: true }),
+    getAllTracks({ includeAll: true }),
+    getAllSets({ includeAll: true }),
+    getAllCollectives({ includeAll: true }),
   ]);
 
   const stats = [

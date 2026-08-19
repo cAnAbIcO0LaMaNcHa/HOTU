@@ -10,15 +10,49 @@ function refreshAll() {
   revalidatePath("/", "layout");
 }
 
+/** Reads the shared editorial fields out of a form submission. */
+function readMeta(formData: FormData) {
+  const scope = String(formData.get("scope") ?? "country");
+  const countryCode = scope === "global" ? "" : String(formData.get("countryCode") ?? "COL");
+  const language = String(formData.get("language") ?? "es");
+  const status = String(formData.get("status") ?? "published");
+  const featured = formData.get("featured") === "on";
+  // While featured, priority_at carries a timestamp so it can be ranked
+  // against other featured items; the moment it's unfeatured, priority_at
+  // goes back to null and normal date ordering takes over automatically.
+  const priorityAt = featured ? new Date().toISOString() : null;
+  return { scope, countryCode, language, status, featured, priorityAt };
+}
+
 export async function createEvent(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
-  await sql`INSERT INTO events (event_date, city, venue, title, lineup, district) VALUES (${String(formData.get("date"))}, ${String(formData.get("city"))}, ${String(formData.get("venue"))}, ${String(formData.get("title"))}, ${String(formData.get("lineup"))}, ${String(formData.get("district"))})`;
+  const m = readMeta(formData);
+  await sql`
+    INSERT INTO events (event_date, city, venue, title, lineup, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("date"))}, ${String(formData.get("city"))}, ${String(formData.get("venue"))}, ${String(formData.get("title"))}, ${String(formData.get("lineup"))}, ${String(formData.get("district"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+  `;
   refreshAll();
 }
 
 export async function updateEvent(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
-  await sql`UPDATE events SET event_date = ${String(formData.get("date"))}, city = ${String(formData.get("city"))}, venue = ${String(formData.get("venue"))}, title = ${String(formData.get("title"))}, lineup = ${String(formData.get("lineup"))}, district = ${String(formData.get("district"))} WHERE id = ${Number(formData.get("id"))}`;
+  const m = readMeta(formData);
+  await sql`
+    UPDATE events SET
+      event_date = ${String(formData.get("date"))},
+      city = ${String(formData.get("city"))},
+      venue = ${String(formData.get("venue"))},
+      title = ${String(formData.get("title"))},
+      lineup = ${String(formData.get("lineup"))},
+      district = ${String(formData.get("district"))},
+      scope = ${m.scope},
+      country_code = ${m.countryCode},
+      language = ${m.language},
+      status = ${m.status},
+      featured = ${m.featured},
+      priority_at = ${m.priorityAt}
+    WHERE id = ${Number(formData.get("id"))}
+  `;
   refreshAll();
 }
 
@@ -30,13 +64,31 @@ export async function deleteEvent(formData: FormData): Promise<void> {
 
 export async function createNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
-  await sql`INSERT INTO news (tag, news_date, title, excerpt) VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))})`;
+  const m = readMeta(formData);
+  await sql`
+    INSERT INTO news (tag, news_date, title, excerpt, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+  `;
   refreshAll();
 }
 
 export async function updateNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
-  await sql`UPDATE news SET tag = ${String(formData.get("tag"))}, news_date = ${String(formData.get("date"))}, title = ${String(formData.get("title"))}, excerpt = ${String(formData.get("excerpt"))} WHERE id = ${Number(formData.get("id"))}`;
+  const m = readMeta(formData);
+  await sql`
+    UPDATE news SET
+      tag = ${String(formData.get("tag"))},
+      news_date = ${String(formData.get("date"))},
+      title = ${String(formData.get("title"))},
+      excerpt = ${String(formData.get("excerpt"))},
+      scope = ${m.scope},
+      country_code = ${m.countryCode},
+      language = ${m.language},
+      status = ${m.status},
+      featured = ${m.featured},
+      priority_at = ${m.priorityAt}
+    WHERE id = ${Number(formData.get("id"))}
+  `;
   refreshAll();
 }
 
