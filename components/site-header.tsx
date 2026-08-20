@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, X, ShoppingBag, CircleUser } from "lucide-react";
+import { Menu, X, ShoppingBag, Ticket, CircleUser } from "lucide-react";
 import { SubscribeDialog } from "@/components/subscribe-dialog";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -57,9 +57,16 @@ export function SiteHeader() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/perfil/tiquetes"
+            aria-label={t("tickets")}
+            className="border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
+          >
+            <Ticket className="h-4 w-4" />
+          </Link>
           <button
             onClick={() => setCartOpen(true)}
-            aria-label={t("tickets")}
+            aria-label="Carrito"
             className="relative border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
           >
             <ShoppingBag className="h-4 w-4" />
