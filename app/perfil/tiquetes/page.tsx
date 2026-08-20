@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Ticket as TicketIcon, MapPin, LogIn } from "lucide-react";
+import { ArrowLeft, Ticket as TicketIcon, MapPin, LogIn, QrCode } from "lucide-react";
 import { auth } from "@/auth";
-import { getMyTickets } from "@/lib/orders";
+import { getMyTicketInstances } from "@/lib/tickets";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 
@@ -34,7 +34,7 @@ export default async function TiquetesPage() {
     );
   }
 
-  const tickets = await getMyTickets();
+  const tickets = await getMyTicketInstances();
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 md:py-24">
@@ -51,7 +51,7 @@ export default async function TiquetesPage() {
       </div>
       <h1 className="mt-3 text-4xl font-bold leading-[0.95] md:text-6xl">TUS BOLETAS</h1>
       <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
-        Acá se va llenando cada boleta que compras y pagas en HOTU — tu colección de fiestas.
+        Cada boleta que compras y pagas en HOTU aparece acá con su propio código QR para entrar a la fiesta.
       </p>
 
       {tickets.length === 0 ? (
@@ -61,17 +61,24 @@ export default async function TiquetesPage() {
       ) : (
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {tickets.map((t) => (
-            <div
-              key={t.orderItemId}
+            <Link
+              key={t.id}
+              href={`/perfil/tiquetes/${t.ticketCode}`}
               data-district={t.district}
-              className="sheen border-chrome relative flex flex-col justify-between overflow-hidden p-6"
+              className="sheen border-chrome relative flex flex-col justify-between overflow-hidden p-6 transition-transform hover:-translate-y-0.5"
             >
               <div className="flex items-start justify-between">
                 <TicketIcon className="h-6 w-6 text-chrome" />
-                <span className="border border-primary px-2 py-1 font-mono text-[9px] tracking-widest text-primary">
-                  {t.tier === "vip" ? "VIP" : "NORMAL"}
-                  {t.quantity > 1 ? ` ×${t.quantity}` : ""}
-                </span>
+                <div className="flex items-center gap-2">
+                  {t.status === "checked_in" && (
+                    <span className="border border-muted-foreground px-2 py-1 font-mono text-[9px] tracking-widest text-muted-foreground">
+                      USADA
+                    </span>
+                  )}
+                  <span className="border border-primary px-2 py-1 font-mono text-[9px] tracking-widest text-primary">
+                    {t.tier === "vip" ? "VIP" : "NORMAL"}
+                  </span>
+                </div>
               </div>
               <div className="mt-8">
                 <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
@@ -83,8 +90,11 @@ export default async function TiquetesPage() {
                 <div className="mt-2 flex items-center gap-1 font-mono text-[10px] tracking-widest text-muted-foreground">
                   <MapPin className="h-3 w-3" /> {t.city} · {t.venue}
                 </div>
+                <div className="mt-4 inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-primary">
+                  <QrCode className="h-3 w-3" /> VER ENTRADA Y QR
+                </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
