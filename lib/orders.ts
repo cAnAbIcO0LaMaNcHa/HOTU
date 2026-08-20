@@ -91,3 +91,33 @@ export async function getMyProfile(): Promise<UserProfile> {
     hasConsent: !!rows[0].consent_at,
   };
 }
+
+/**
+ * Admin-only: every order in the system, across all users, newest first.
+ * Callers must gate this behind requireAdmin() themselves — this function
+ * has no auth check of its own since it's meant for a page that already did.
+ */
+export async function getAllOrdersAdmin(): Promise<(OrderRecord & { userEmail: string })[]> {
+  const orders = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
+  const result: (OrderRecord & { userEmail: string })[] = [];
+  for (const o of orders) {
+    const items = await sql`SELECT * FROM order_items WHERE order_id = ${o.id}`;
+    result.push({
+      id: o.id,
+      status: o.status,
+      amountCop: o.amount_cop,
+      currency: o.currency,
+      createdAt: o.created_at,
+      paidAt: o.paid_at,
+      userEmail: o.user_email,
+      items: items.map((i) => ({
+        itemType: i.item_type,
+        name: i.name,
+        unitPriceCop: i.unit_price_cop,
+        quantity: i.quantity,
+        ticketTier: i.ticket_tier,
+      })),
+    });
+  }
+  return result;
+}
