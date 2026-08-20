@@ -43,6 +43,15 @@ export async function GET(request: Request) {
     await sql`CREATE INDEX IF NOT EXISTS tickets_order_item_id_idx ON tickets (order_item_id)`;
     log.push("indexes ready");
 
+    // Friendly sequential ticket number shown on the ticket (e.g. AA0001).
+    // Kept separate from ticket_code on purpose — see lib/tickets-write.ts.
+    await sql`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS display_code TEXT`;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS tickets_display_code_idx
+      ON tickets (display_code) WHERE display_code IS NOT NULL
+    `;
+    log.push("display_code column + index ready");
+
     const counts = await sql`SELECT COUNT(*) AS n FROM tickets`;
     return NextResponse.json({ ok: true, log, counts: { tickets: counts[0].n } });
   } catch (err) {
