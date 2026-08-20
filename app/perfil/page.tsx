@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Package, Ticket as TicketIcon, LogIn, MapPin, ChevronRight } from "lucide-react";
 import { auth } from "@/auth";
-import { getMyOrders, getMyTickets, getMyProfile } from "@/lib/orders";
+import { getMyOrders, getMyProfile } from "@/lib/orders";
+import { getMyTicketInstances } from "@/lib/tickets";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
@@ -41,7 +42,7 @@ export default async function PerfilPage() {
     );
   }
 
-  const [orders, tickets, profile] = await Promise.all([getMyOrders(), getMyTickets(), getMyProfile()]);
+  const [orders, tickets, profile] = await Promise.all([getMyOrders(), getMyTicketInstances(), getMyProfile()]);
   const ticketsPreview = tickets.slice(0, 3);
 
   return (
@@ -135,8 +136,9 @@ export default async function PerfilPage() {
         ) : (
           <div className="mt-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             {ticketsPreview.map((t) => (
-              <div
-                key={t.orderItemId}
+              <Link
+                key={t.id}
+                href={`/perfil/tiquetes/${t.ticketCode}`}
                 data-district={t.district}
                 className="sheen border-chrome flex flex-col justify-between p-5"
               >
@@ -152,7 +154,7 @@ export default async function PerfilPage() {
                     <MapPin className="h-3 w-3" /> {t.city}
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
