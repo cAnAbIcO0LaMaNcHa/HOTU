@@ -14,6 +14,7 @@ export type TicketInstance = {
   eventId: number;
   eventTitle: string;
   eventDate: string;
+  eventEndAt: string | null;
   venue: string;
   city: string;
   district: DistrictId;
@@ -35,7 +36,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
 
   const rows = await sql`
     SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
-           e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district
+           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city, e.district
     FROM tickets t
     JOIN events e ON e.id = t.event_id
     WHERE t.user_email = ${email} AND t.status != 'cancelled'
@@ -48,6 +49,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
     eventId: r.event_id,
     eventTitle: r.title,
     eventDate: toISODate(r.event_date),
+    eventEndAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
     venue: r.venue,
     city: r.city,
     district: r.district as DistrictId,
@@ -79,7 +81,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketDetail | nu
 
   const rows = await sql`
     SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
-           e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district, e.flyer_url
+           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city, e.district, e.flyer_url
     FROM tickets t
     JOIN events e ON e.id = t.event_id
     WHERE t.ticket_code = ${code} AND t.user_email = ${email}
@@ -93,6 +95,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketDetail | nu
     eventId: r.event_id,
     eventTitle: r.title,
     eventDate: toISODate(r.event_date),
+    eventEndAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
     venue: r.venue,
     city: r.city,
     district: r.district as DistrictId,
