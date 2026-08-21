@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Ticket as TicketIcon, MapPin, LogIn, QrCode } from "lucide-react";
 import { auth } from "@/auth";
-import { getMyTicketInstances } from "@/lib/tickets";
+import { getMyTicketInstances, type TicketInstance } from "@/lib/tickets";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 
@@ -12,6 +12,51 @@ export const metadata: Metadata = {
   title: "Mis tiquetes",
   description: "Todas las boletas que has comprado en HOTU.",
 };
+
+function TicketCard({ t, isMemory }: { t: TicketInstance; isMemory: boolean }) {
+  return (
+    <Link
+      href={`/perfil/tiquetes/${t.ticketCode}`}
+      data-district={t.district}
+      className={`sheen border-chrome relative flex flex-col justify-between overflow-hidden p-6 transition-transform hover:-translate-y-0.5 ${
+        isMemory ? "opacity-70 grayscale" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <TicketIcon className="h-6 w-6 text-chrome" />
+        <div className="flex items-center gap-2">
+          {t.status === "checked_in" && (
+            <span className="border border-muted-foreground px-2 py-1 font-mono text-[9px] tracking-widest text-muted-foreground">
+              USADA
+            </span>
+          )}
+          <span className="border border-primary px-2 py-1 font-mono text-[9px] tracking-widest text-primary">
+            {t.tier === "vip" ? "VIP" : "NORMAL"}
+          </span>
+        </div>
+      </div>
+      <div className="mt-8">
+        <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+          {formatShortDate(t.eventDate)}
+        </div>
+        <h3 className="mt-1 text-xl font-bold leading-tight">
+          <AutoTranslate text={t.eventTitle} />
+        </h3>
+        <div className="mt-2 flex items-center gap-1 font-mono text-[10px] tracking-widest text-muted-foreground">
+          <MapPin className="h-3 w-3" /> {t.city} · {t.venue}
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <span className="font-mono text-xs tracking-[0.15em] text-foreground">
+            {t.displayCode}
+          </span>
+          <div className="inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-primary">
+            <QrCode className="h-3 w-3" /> {isMemory ? "VER RECUERDO" : "VER QR"}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 export default async function TiquetesPage() {
   const session = await auth();
@@ -34,7 +79,14 @@ export default async function TiquetesPage() {
     );
   }
 
-  const tickets = await getMyTicketInstances();
+  const allTickets = await getMyTicketInstances();
+
+  // Once an event's date passes, its tickets stop being "entradas" and
+  // become "recuerdos" — a keepsake of the party, not something anyone
+  // needs to scan anymore. Split purely by date, nothing to maintain.
+  const today = new Date().toISOString().slice(0, 10);
+  const tickets = allTickets.filter((t) => t.eventDate >= today);
+  const memories = allTickets.filter((t) => t.eventDate < today);
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 md:py-24">
@@ -56,51 +108,30 @@ export default async function TiquetesPage() {
 
       {tickets.length === 0 ? (
         <p className="mt-16 font-mono text-sm text-muted-foreground">
-          Todavía no tenés tiquetes. Se agregan automáticamente cuando compras y pagás una entrada.
+          Todavía no tenés tiquetes activos. Se agregan automáticamente cuando compras y pagás una entrada.
         </p>
       ) : (
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {tickets.map((t) => (
-            <Link
-              key={t.id}
-              href={`/perfil/tiquetes/${t.ticketCode}`}
-              data-district={t.district}
-              className="sheen border-chrome relative flex flex-col justify-between overflow-hidden p-6 transition-transform hover:-translate-y-0.5"
-            >
-              <div className="flex items-start justify-between">
-                <TicketIcon className="h-6 w-6 text-chrome" />
-                <div className="flex items-center gap-2">
-                  {t.status === "checked_in" && (
-                    <span className="border border-muted-foreground px-2 py-1 font-mono text-[9px] tracking-widest text-muted-foreground">
-                      USADA
-                    </span>
-                  )}
-                  <span className="border border-primary px-2 py-1 font-mono text-[9px] tracking-widest text-primary">
-                    {t.tier === "vip" ? "VIP" : "NORMAL"}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-8">
-                <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                  {formatShortDate(t.eventDate)}
-                </div>
-                <h3 className="mt-1 text-xl font-bold leading-tight">
-                  <AutoTranslate text={t.eventTitle} />
-                </h3>
-                <div className="mt-2 flex items-center gap-1 font-mono text-[10px] tracking-widest text-muted-foreground">
-                  <MapPin className="h-3 w-3" /> {t.city} · {t.venue}
-                </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="font-mono text-xs tracking-[0.15em] text-foreground">
-                    {t.displayCode}
-                  </span>
-                  <div className="inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-primary">
-                    <QrCode className="h-3 w-3" /> VER QR
-                  </div>
-                </div>
-              </div>
-            </Link>
+            <TicketCard key={t.id} t={t} isMemory={false} />
           ))}
+        </div>
+      )}
+
+      {memories.length > 0 && (
+        <div className="mt-20">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] tracking-[0.3em] text-muted-foreground">RECUERDOS</span>
+          </div>
+          <h2 className="mt-2 text-2xl font-bold leading-tight md:text-4xl">FIESTAS A LAS QUE FUISTE</h2>
+          <p className="mt-3 max-w-2xl font-mono text-sm text-muted-foreground">
+            Estas boletas ya cumplieron su función — el evento pasó. Quedan acá como recuerdo.
+          </p>
+          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {memories.map((t) => (
+              <TicketCard key={t.id} t={t} isMemory={true} />
+            ))}
+          </div>
         </div>
       )}
     </section>
