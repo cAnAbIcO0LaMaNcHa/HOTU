@@ -99,18 +99,16 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           flyer art is. */}
       <div
         data-district={ticket.district}
-        className={`sheen relative mx-auto mt-6 aspect-[9/16] w-full max-w-[400px] overflow-hidden rounded-lg ${
-          ticket.flyerUrl ? "" : "border-chrome"
+        className={`sheen relative mx-auto mt-6 w-full max-w-[400px] overflow-hidden rounded-lg ${
+          ticket.flyerUrl ? "" : "aspect-[9/16] border-chrome"
         }`}
       >
         {ticket.flyerUrl ? (
-          <>
-            <div
-              className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-              style={{ backgroundImage: `url(${ticket.flyerUrl})` }}
-            />
-            <div className="absolute inset-0 bg-black/10" />
-          </>
+          // A real <img>, not a background-image — its own natural
+          // dimensions set the box's height at this width, so the flyer
+          // always shows in full at its real proportions. No forced ratio,
+          // no cropping: whatever size the flyer is IS the box.
+          <img src={ticket.flyerUrl} alt="" className="block w-full h-auto" />
         ) : null}
 
         {/* Top bar: brand + tier/status, readable over any background */}
