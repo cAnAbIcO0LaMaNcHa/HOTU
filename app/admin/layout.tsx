@@ -50,6 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <nav className="mt-6 flex flex-wrap gap-2">
         <Link href="/admin" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">INICIO</Link>
         <Link href="/admin/eventos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">EVENTOS</Link>
+        <Link href="/admin/eventos-pasados" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">ARCHIVO</Link>
         <Link href="/admin/noticias" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">NOTICIAS</Link>
         <Link href="/admin/roles" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">ROLES</Link>
         <Link href="/admin/pedidos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">PEDIDOS</Link>
