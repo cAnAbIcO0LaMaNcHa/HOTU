@@ -84,7 +84,7 @@ export type ReadOptions = {
 };
 
 /** Postgres DATE columns come back as Date objects; normalise to YYYY-MM-DD. */
-function toISODate(value: unknown): string {
+export function toISODate(value: unknown): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
 }
