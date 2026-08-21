@@ -52,6 +52,13 @@ export async function GET(request: Request) {
     `;
     log.push("display_code column + index ready");
 
+    // Optional per-event flyer image — becomes the ticket's background once
+    // set. No admin upload UI yet; this just reserves the column so the
+    // ticket page can start reading it. Null falls back to the district
+    // theme, same as today.
+    await sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS flyer_url TEXT`;
+    log.push("events.flyer_url column ready");
+
     const counts = await sql`SELECT COUNT(*) AS n FROM tickets`;
     return NextResponse.json({ ok: true, log, counts: { tickets: counts[0].n } });
   } catch (err) {
