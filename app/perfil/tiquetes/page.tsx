@@ -90,8 +90,13 @@ export default async function TiquetesPage() {
                 <div className="mt-2 flex items-center gap-1 font-mono text-[10px] tracking-widest text-muted-foreground">
                   <MapPin className="h-3 w-3" /> {t.city} · {t.venue}
                 </div>
-                <div className="mt-4 inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-primary">
-                  <QrCode className="h-3 w-3" /> VER ENTRADA Y QR
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="font-mono text-xs tracking-[0.15em] text-foreground">
+                    {t.displayCode}
+                  </span>
+                  <div className="inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-primary">
+                    <QrCode className="h-3 w-3" /> VER QR
+                  </div>
                 </div>
               </div>
             </Link>
