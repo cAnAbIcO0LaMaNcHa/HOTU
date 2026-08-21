@@ -132,8 +132,8 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         </div>
 
         {/* Main panel: info on the left, QR pinned right */}
-        <div className="absolute inset-x-0 bottom-0 top-12 z-10 flex gap-3 bg-black/55 p-4 backdrop-blur-sm">
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-3 font-mono text-white">
+        <div className="absolute inset-x-0 bottom-0 z-10 flex gap-3 bg-black/70 p-4 backdrop-blur-sm">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 font-mono text-white">
             <div>
               <div className="text-[9px] tracking-widest text-white/60">
                 {formatShortDate(ticket.eventDate)}
@@ -175,7 +175,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           {/* QR: pinned to the right, solid black box, white code — the
               "standard" safe-zone every flyer background has to leave
               alone once real flyer art gets wired in. */}
-          <div className="flex w-[34%] shrink-0 flex-col items-center justify-center gap-2">
+          <div className="flex w-[34%] shrink-0 flex-col items-center justify-center gap-1.5">
             <div className="w-full rounded bg-black p-[8%] shadow-lg">
               <div
                 className={`w-full [&_svg]:h-auto [&_svg]:w-full ${isUsed ? "opacity-30 grayscale" : ""}`}
