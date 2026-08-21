@@ -62,6 +62,8 @@ export type Collective = ContentMeta & {
 export type EventItem = ContentMeta & {
   id: number;
   date: string;
+  endAt: string | null;
+  flyerUrl: string | null;
   city: string;
   venue: string;
   title: string;
@@ -93,6 +95,19 @@ export function toISODate(value: unknown): string {
 export function formatShortDate(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y.slice(2)}`;
+}
+
+/**
+ * Whether an event is over, for archiving purposes. If it has an explicit
+ * end_at timestamp, that decides it exactly (handles parties that run past
+ * midnight). Otherwise it falls back to the end of the event's calendar
+ * day — the old behaviour, kept for events nobody has set a close time on.
+ */
+export function eventHasEnded(dateIso: string, endAt: string | null): boolean {
+  const now = new Date();
+  if (endAt) return now >= new Date(endAt);
+  const endOfDay = new Date(`${dateIso}T23:59:59`);
+  return now > endOfDay;
 }
 
 function mapMeta(r: Record<string, unknown>): ContentMeta {
@@ -210,6 +225,8 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
     ...mapMeta(r),
     id: r.id,
     date: toISODate(r.event_date),
+    endAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
+    flyerUrl: (r.flyer_url as string | null) ?? null,
     city: r.city,
     venue: r.venue,
     title: r.title,
