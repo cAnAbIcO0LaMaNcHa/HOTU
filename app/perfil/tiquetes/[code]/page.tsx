@@ -65,8 +65,8 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
 
   // Light modules stay white on purpose — a QR needs that contrast to
   // scan reliably no matter what's behind it. It renders at a fixed pixel
-  // size and then scales via CSS to fill the safe-zone box below, so it
-  // stays crisp at any container width.
+  // size and then scales via CSS to fill its box, so it stays crisp at
+  // any container width.
   const qrSvg = await QRCode.toString(verifyUrl, {
     type: "svg",
     margin: 1,
@@ -89,14 +89,14 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
       {/* THE TICKET CANVAS — fixed 9:16, the same ratio as a phone screen
           and the standard size promoters already use for flyer art
           (1080x1920, Instagram Story format). This is the piece meant to
-          connect to the app later: same ratio, same QR safe-zone, so a
-          flyer built for one just works in the other.
+          connect to the app later.
 
           Background: the event's flyer image if it has one, else the
-          current district-themed placeholder. The QR always sits in a
-          fixed white square dead center — that square is solid white no
-          matter what's behind it, so scanning never depends on how busy
-          or dark the flyer art is. */}
+          current district-themed placeholder. Content sits in a single
+          panel over it: info on the left, the QR pinned to the right in
+          its own solid-black box — that box stays solid no matter what's
+          behind it, so scanning never depends on how busy or dark the
+          flyer art is. */}
       <div
         data-district={ticket.district}
         className={`sheen relative mx-auto mt-6 aspect-[9/16] w-full max-w-[400px] overflow-hidden rounded-lg ${
@@ -113,7 +113,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           </>
         ) : null}
 
-        {/* Top bar: tier + status, readable over any background */}
+        {/* Top bar: brand + tier/status, readable over any background */}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-black/45 px-4 py-3 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <TicketIcon className="h-4 w-4 text-white" />
@@ -131,55 +131,59 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           </div>
         </div>
 
-        {/* QR safe-zone: fixed % of the canvas, always centered, always
-            solid white. This is the "standard" — every flyer background
-            has to leave this area alone. */}
-        <div className="absolute left-1/2 top-1/2 z-10 flex w-[36%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 rounded bg-black p-[5%] shadow-lg">
-          <div
-            className={`w-full [&_svg]:h-auto [&_svg]:w-full ${isUsed ? "opacity-30 grayscale" : ""}`}
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
-          />
-          <div className="font-mono text-[10px] tracking-[0.15em] text-white">{displayCode}</div>
-        </div>
-
-        {/* Bottom bar: event + attendee info, readable over any background */}
-        <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-black/60 px-4 py-4 backdrop-blur-sm">
-          <div>
-            <div className="font-mono text-[9px] tracking-widest text-white/60">
-              {formatShortDate(ticket.eventDate)}
-            </div>
-            <h1 className="text-lg font-bold leading-tight text-white">
-              <AutoTranslate text={ticket.eventTitle} />
-            </h1>
-            <div className="mt-1 flex items-center gap-1 font-mono text-[9px] tracking-widest text-white/60">
-              <MapPin className="h-3 w-3 shrink-0" /> {ticket.venue} · {ticket.city}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-0.5 border-t border-white/20 pt-2 font-mono text-[9px] text-white/70">
-            <div className="flex items-center gap-2">
-              <User className="h-3 w-3 shrink-0" /> {session.user.name ?? "—"}
-            </div>
-            {profile.phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="h-3 w-3 shrink-0" /> {profile.phone}
+        {/* Main panel: info on the left, QR pinned right */}
+        <div className="absolute inset-x-0 bottom-0 top-12 z-10 flex gap-3 bg-black/55 p-4 backdrop-blur-sm">
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-3 font-mono text-white">
+            <div>
+              <div className="text-[9px] tracking-widest text-white/60">
+                {formatShortDate(ticket.eventDate)}
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Mail className="h-3 w-3 shrink-0" /> {session.user.email}
+              <h1 className="text-xl font-bold leading-tight">
+                <AutoTranslate text={ticket.eventTitle} />
+              </h1>
+              <div className="mt-1 flex items-center gap-1 text-[9px] tracking-widest text-white/60">
+                <MapPin className="h-3 w-3 shrink-0" /> {ticket.venue} · {ticket.city}
+              </div>
             </div>
+
+            <div className="flex flex-col gap-0.5 border-t border-white/20 pt-2 text-[9px] text-white/70">
+              <div className="flex items-center gap-2">
+                <User className="h-3 w-3 shrink-0" /> {session.user.name ?? "—"}
+              </div>
+              {profile.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3 w-3 shrink-0" /> {profile.phone}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Mail className="h-3 w-3 shrink-0" /> {session.user.email}
+              </div>
+            </div>
+
+            {isUsed ? (
+              <p className="text-[9px] tracking-widest text-white/60">
+                ⬤ YA FUE USADA
+                {ticket.checkedInAt && <> — {new Date(ticket.checkedInAt).toLocaleString("es-CO")}</>}
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-[9px] tracking-widest text-primary">
+                <ShieldCheck className="h-3 w-3" /> ENTRADA VÁLIDA
+              </p>
+            )}
           </div>
 
-          {isUsed ? (
-            <p className="font-mono text-[9px] tracking-widest text-white/60">
-              ⬤ YA FUE USADA
-              {ticket.checkedInAt && <> — {new Date(ticket.checkedInAt).toLocaleString("es-CO")}</>}
-            </p>
-          ) : (
-            <p className="flex items-center gap-2 font-mono text-[9px] tracking-widest text-primary">
-              <ShieldCheck className="h-3 w-3" /> ENTRADA VÁLIDA
-            </p>
-          )}
+          {/* QR: pinned to the right, solid black box, white code — the
+              "standard" safe-zone every flyer background has to leave
+              alone once real flyer art gets wired in. */}
+          <div className="flex w-[34%] shrink-0 flex-col items-center justify-center gap-2">
+            <div className="w-full rounded bg-black p-[8%] shadow-lg">
+              <div
+                className={`w-full [&_svg]:h-auto [&_svg]:w-full ${isUsed ? "opacity-30 grayscale" : ""}`}
+                dangerouslySetInnerHTML={{ __html: qrSvg }}
+              />
+            </div>
+            <div className="text-center font-mono text-[9px] tracking-[0.1em] text-white">{displayCode}</div>
+          </div>
         </div>
       </div>
 
