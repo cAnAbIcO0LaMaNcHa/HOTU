@@ -71,7 +71,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
     type: "svg",
     margin: 1,
     width: 240,
-    color: { dark: "#000000", light: "#ffffff" },
+    color: { dark: "#ffffff", light: "#000000" },
   });
 
   const displayCode = ticket.displayCode ?? `HOTU-${String(ticket.id).padStart(6, "0")}`;
@@ -134,12 +134,12 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         {/* QR safe-zone: fixed % of the canvas, always centered, always
             solid white. This is the "standard" — every flyer background
             has to leave this area alone. */}
-        <div className="absolute left-1/2 top-1/2 z-10 flex w-[46%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded bg-white p-[6%] shadow-lg">
+        <div className="absolute left-1/2 top-1/2 z-10 flex w-[46%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded bg-black p-[6%] shadow-lg">
           <div
             className={`w-full [&_svg]:h-auto [&_svg]:w-full ${isUsed ? "opacity-30 grayscale" : ""}`}
             dangerouslySetInnerHTML={{ __html: qrSvg }}
           />
-          <div className="font-mono text-[10px] tracking-[0.15em] text-black">{displayCode}</div>
+          <div className="font-mono text-[10px] tracking-[0.15em] text-white">{displayCode}</div>
         </div>
 
         {/* Bottom bar: event + attendee info, readable over any background */}
