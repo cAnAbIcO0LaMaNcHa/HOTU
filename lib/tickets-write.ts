@@ -73,7 +73,7 @@ export async function markOrderPaid(formData: FormData): Promise<void> {
     for (let i = 0; i < toCreate; i++) {
       seq += 1;
       const code = generateTicketCode();
-      const displayCode = `${prefix}${String(seq).padStart(4, "0")}`;
+      const displayCode = `HOTU-${prefix}${String(seq).padStart(4, "0")}`;
       await sql`
         INSERT INTO tickets (ticket_code, display_code, order_id, order_item_id, user_email, event_id, tier)
         VALUES (${code}, ${displayCode}, ${orderId}, ${item.id}, ${order.user_email}, ${item.event_id}, ${item.ticket_tier})
