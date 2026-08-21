@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import QRCode from "qrcode";
-import { ArrowLeft, MapPin, Calendar, Ticket as TicketIcon, ShieldCheck } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, Ticket as TicketIcon, ShieldCheck, User, Phone, Mail } from "lucide-react";
 import { auth } from "@/auth";
 import { getMyTicketByCode } from "@/lib/tickets";
+import { getMyProfile } from "@/lib/orders";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 
@@ -35,7 +36,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
     );
   }
 
-  const ticket = await getMyTicketByCode(code);
+  const [ticket, profile] = await Promise.all([getMyTicketByCode(code), getMyProfile()]);
 
   if (!ticket) {
     return (
@@ -62,13 +63,19 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
   const proto = host.startsWith("localhost") ? "http" : "https";
   const verifyUrl = `${proto}://${host}/verificar/${ticket.ticketCode}`;
 
+  // Light modules stay white on purpose — a QR needs that contrast to
+  // scan reliably no matter what background sits behind it. We don't wrap
+  // it in a big white card though: just a tight white square around the
+  // code itself, sized to the code, so it drops cleanly into a flyer-style
+  // background later without fighting the design.
   const qrSvg = await QRCode.toString(verifyUrl, {
     type: "svg",
-    margin: 1,
+    margin: 2,
+    width: 200,
     color: { dark: "#000000", light: "#ffffff" },
   });
 
-  const ticketNumber = `HOTU-${String(ticket.id).padStart(6, "0")}`;
+  const displayCode = ticket.displayCode ?? `HOTU-${String(ticket.id).padStart(6, "0")}`;
   const isUsed = ticket.status === "checked_in";
 
   return (
@@ -80,6 +87,10 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         <ArrowLeft className="h-3 w-3" /> MIS TIQUETES
       </Link>
 
+      {/* Everything inside this card is the "ticket" — the background,
+          colors and layout here are just a placeholder design. Once you
+          send over a flyer reference we can restyle this freely; the QR
+          and the data underneath it don't need to change. */}
       <div data-district={ticket.district} className="sheen border-chrome mt-6 overflow-hidden">
         <div className="flex items-center justify-between p-6 pb-0">
           <TicketIcon className="h-6 w-6 text-chrome" />
@@ -109,16 +120,29 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
               <MapPin className="h-3 w-3 shrink-0" /> {ticket.venue} · {ticket.city}
             </div>
           </div>
+
+          {/* Attendee info */}
+          <div className="mt-5 flex flex-col gap-1 border-t border-border/60 pt-4 font-mono text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <User className="h-3 w-3 shrink-0" /> {session.user.name ?? "—"}
+            </div>
+            {profile.phone && (
+              <div className="flex items-center gap-2">
+                <Phone className="h-3 w-3 shrink-0" /> {profile.phone}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Mail className="h-3 w-3 shrink-0" /> {session.user.email}
+            </div>
+          </div>
         </div>
 
-        {/* QR always sits on a plain white card, regardless of site theme or
-            district color, so it scans reliably under any light. */}
-        <div className="flex flex-col items-center gap-3 bg-white p-6">
+        <div className="flex flex-col items-center gap-3 py-6">
           <div
-            className={`h-56 w-56 ${isUsed ? "opacity-30 grayscale" : ""}`}
+            className={`inline-block bg-white p-3 ${isUsed ? "opacity-30 grayscale" : ""}`}
             dangerouslySetInnerHTML={{ __html: qrSvg }}
           />
-          <div className="font-mono text-[10px] tracking-widest text-black/60">{ticketNumber}</div>
+          <div className="font-mono text-sm tracking-[0.2em] text-foreground">{displayCode}</div>
         </div>
 
         <div className="border-t border-border/60 p-6">
