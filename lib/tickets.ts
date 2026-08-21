@@ -9,6 +9,7 @@ export type TicketStatus = "valid" | "checked_in" | "cancelled";
 export type TicketInstance = {
   id: number;
   ticketCode: string;
+  displayCode: string | null;
   eventId: number;
   eventTitle: string;
   eventDate: string;
@@ -32,7 +33,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
   if (!email) return [];
 
   const rows = await sql`
-    SELECT t.id, t.ticket_code, t.tier, t.status, t.checked_in_at, t.created_at,
+    SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
            e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district
     FROM tickets t
     JOIN events e ON e.id = t.event_id
@@ -42,6 +43,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
   return rows.map((r) => ({
     id: r.id,
     ticketCode: r.ticket_code,
+    displayCode: r.display_code,
     eventId: r.event_id,
     eventTitle: r.title,
     eventDate: String(r.event_date),
@@ -67,7 +69,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketInstance | 
   if (!email) return null;
 
   const rows = await sql`
-    SELECT t.id, t.ticket_code, t.tier, t.status, t.checked_in_at, t.created_at,
+    SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
            e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district
     FROM tickets t
     JOIN events e ON e.id = t.event_id
@@ -78,6 +80,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketInstance | 
   return {
     id: r.id,
     ticketCode: r.ticket_code,
+    displayCode: r.display_code,
     eventId: r.event_id,
     eventTitle: r.title,
     eventDate: String(r.event_date),
@@ -94,6 +97,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketInstance | 
 export type VerificationTicket = {
   id: number;
   ticketCode: string;
+  displayCode: string | null;
   tier: "normal" | "vip";
   status: TicketStatus;
   checkedInAt: string | null;
@@ -111,7 +115,7 @@ export type VerificationTicket = {
  */
 export async function getTicketForVerification(code: string): Promise<VerificationTicket | null> {
   const rows = await sql`
-    SELECT t.id, t.ticket_code, t.tier, t.status, t.checked_in_at,
+    SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at,
            e.title, e.event_date, e.venue, e.city
     FROM tickets t
     JOIN events e ON e.id = t.event_id
@@ -122,6 +126,7 @@ export async function getTicketForVerification(code: string): Promise<Verificati
   return {
     id: r.id,
     ticketCode: r.ticket_code,
+    displayCode: r.display_code,
     tier: r.tier,
     status: r.status,
     checkedInAt: r.checked_in_at,
