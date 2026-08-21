@@ -3,7 +3,7 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { DISTRICTS } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
-import { getAllEvents, formatShortDate } from "@/lib/db";
+import { getAllEvents, formatShortDate, eventHasEnded } from "@/lib/db";
 import { AddTicketButton } from "@/components/add-ticket-button";
 
 export const revalidate = 0;
@@ -16,11 +16,11 @@ export const metadata: Metadata = {
 export default async function EventosPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
   const active = params.d;
-  // Past events archive themselves automatically — once the date passes
-  // they just stop showing up here. No manual "archived" step needed; see
-  // /admin/eventos-pasados for the full history.
-  const today = new Date().toISOString().slice(0, 10);
-  const events = (await getAllEvents()).filter((e) => e.date >= today);
+  // Past events archive themselves automatically — once they're over
+  // (using the exact end_at time when an admin set one, or the end of the
+  // event's day otherwise) they just stop showing up here. No manual
+  // "archived" step needed; see /admin/eventos-pasados for the full history.
+  const events = (await getAllEvents()).filter((e) => !eventHasEnded(e.date, e.endAt));
   const filtered = active ? events.filter((e) => e.district === active) : events;
 
   return (
