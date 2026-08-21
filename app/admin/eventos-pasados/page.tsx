@@ -1,5 +1,5 @@
 import { MapPin } from "lucide-react";
-import { getAllEvents, formatShortDate } from "@/lib/db";
+import { getAllEvents, formatShortDate, eventHasEnded } from "@/lib/db";
 
 export const revalidate = 0;
 
@@ -12,10 +12,10 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function AdminEventosPasados() {
   const events = await getAllEvents({ includeAll: true });
 
-  // An event archives itself the moment its date passes — no status flag
-  // to flip, nothing to remember to do. This page just reads that back.
-  const today = new Date().toISOString().slice(0, 10);
-  const past = events.filter((e) => e.date < today).sort((a, b) => (a.date < b.date ? 1 : -1));
+  // An event archives itself the moment it's over — using the exact
+  // end_at time when an admin set one, or the end of the event's day
+  // otherwise. No status flag to flip, nothing to remember to do.
+  const past = events.filter((e) => eventHasEnded(e.date, e.endAt)).sort((a, b) => (a.date < b.date ? 1 : -1));
 
   return (
     <div>
