@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
+import { toISODate } from "./db";
 import type { DistrictId } from "./districts";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -46,7 +47,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
     displayCode: r.display_code,
     eventId: r.event_id,
     eventTitle: r.title,
-    eventDate: String(r.event_date),
+    eventDate: toISODate(r.event_date),
     venue: r.venue,
     city: r.city,
     district: r.district as DistrictId,
@@ -91,7 +92,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketDetail | nu
     displayCode: r.display_code,
     eventId: r.event_id,
     eventTitle: r.title,
-    eventDate: String(r.event_date),
+    eventDate: toISODate(r.event_date),
     venue: r.venue,
     city: r.city,
     district: r.district as DistrictId,
@@ -140,7 +141,7 @@ export async function getTicketForVerification(code: string): Promise<Verificati
     status: r.status,
     checkedInAt: r.checked_in_at,
     eventTitle: r.title,
-    eventDate: String(r.event_date),
+    eventDate: toISODate(r.event_date),
     venue: r.venue,
     city: r.city,
   };
