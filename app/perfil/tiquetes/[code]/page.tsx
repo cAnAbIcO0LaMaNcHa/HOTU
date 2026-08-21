@@ -64,14 +64,13 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
   const verifyUrl = `${proto}://${host}/verificar/${ticket.ticketCode}`;
 
   // Light modules stay white on purpose — a QR needs that contrast to
-  // scan reliably no matter what background sits behind it. We don't wrap
-  // it in a big white card though: just a tight white square around the
-  // code itself, sized to the code, so it drops cleanly into a flyer-style
-  // background later without fighting the design.
+  // scan reliably no matter what's behind it. It renders at a fixed pixel
+  // size and then scales via CSS to fill the safe-zone box below, so it
+  // stays crisp at any container width.
   const qrSvg = await QRCode.toString(verifyUrl, {
     type: "svg",
-    margin: 2,
-    width: 200,
+    margin: 1,
+    width: 240,
     color: { dark: "#000000", light: "#ffffff" },
   });
 
@@ -79,7 +78,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
   const isUsed = ticket.status === "checked_in";
 
   return (
-    <section className="mx-auto max-w-lg px-4 py-16 md:py-24">
+    <section className="mx-auto max-w-xl px-4 py-16 md:py-24">
       <Link
         href="/perfil/tiquetes"
         className="inline-flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground hover:text-primary"
@@ -87,42 +86,77 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         <ArrowLeft className="h-3 w-3" /> MIS TIQUETES
       </Link>
 
-      {/* Everything inside this card is the "ticket" — the background,
-          colors and layout here are just a placeholder design. Once you
-          send over a flyer reference we can restyle this freely; the QR
-          and the data underneath it don't need to change. */}
-      <div data-district={ticket.district} className="sheen border-chrome mt-6 overflow-hidden">
-        <div className="flex items-center justify-between p-6 pb-0">
-          <TicketIcon className="h-6 w-6 text-chrome" />
-          <span className="border border-primary px-2 py-1 font-mono text-[9px] tracking-widest text-primary">
-            {ticket.tier === "vip" ? "VIP" : "NORMAL"}
-          </span>
+      {/* THE TICKET CANVAS — fixed 9:16, the same ratio as a phone screen
+          and the standard size promoters already use for flyer art
+          (1080x1920, Instagram Story format). This is the piece meant to
+          connect to the app later: same ratio, same QR safe-zone, so a
+          flyer built for one just works in the other.
+
+          Background: the event's flyer image if it has one, else the
+          current district-themed placeholder. The QR always sits in a
+          fixed white square dead center — that square is solid white no
+          matter what's behind it, so scanning never depends on how busy
+          or dark the flyer art is. */}
+      <div
+        data-district={ticket.district}
+        className={`sheen relative mx-auto mt-6 aspect-[9/16] w-full max-w-[400px] overflow-hidden rounded-lg ${
+          ticket.flyerUrl ? "" : "border-chrome"
+        }`}
+      >
+        {ticket.flyerUrl ? (
+          <>
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url(${ticket.flyerUrl})` }}
+            />
+            <div className="absolute inset-0 bg-black/10" />
+          </>
+        ) : null}
+
+        {/* Top bar: tier + status, readable over any background */}
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-black/45 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <TicketIcon className="h-4 w-4 text-white" />
+            <span className="font-mono text-[9px] tracking-widest text-white/80">HOTU</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {isUsed && (
+              <span className="border border-white/40 px-2 py-1 font-mono text-[8px] tracking-widest text-white/70">
+                USADA
+              </span>
+            )}
+            <span className="border border-primary px-2 py-1 font-mono text-[8px] tracking-widest text-primary">
+              {ticket.tier === "vip" ? "VIP" : "NORMAL"}
+            </span>
+          </div>
         </div>
 
-        <div className="p-6">
-          <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
-            {formatShortDate(ticket.eventDate)}
-          </div>
-          <h1 className="mt-1 text-2xl font-bold leading-tight">
-            <AutoTranslate text={ticket.eventTitle} />
-          </h1>
-          <div className="mt-3 flex flex-col gap-1 font-mono text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-3 w-3 shrink-0" />
-              {new Date(ticket.eventDate).toLocaleDateString("es-CO", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
+        {/* QR safe-zone: fixed % of the canvas, always centered, always
+            solid white. This is the "standard" — every flyer background
+            has to leave this area alone. */}
+        <div className="absolute left-1/2 top-1/2 z-10 flex w-[46%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded bg-white p-[6%] shadow-lg">
+          <div
+            className={`w-full [&_svg]:h-auto [&_svg]:w-full ${isUsed ? "opacity-30 grayscale" : ""}`}
+            dangerouslySetInnerHTML={{ __html: qrSvg }}
+          />
+          <div className="font-mono text-[10px] tracking-[0.15em] text-black">{displayCode}</div>
+        </div>
+
+        {/* Bottom bar: event + attendee info, readable over any background */}
+        <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 bg-black/60 px-4 py-4 backdrop-blur-sm">
+          <div>
+            <div className="font-mono text-[9px] tracking-widest text-white/60">
+              {formatShortDate(ticket.eventDate)}
             </div>
-            <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold leading-tight text-white">
+              <AutoTranslate text={ticket.eventTitle} />
+            </h1>
+            <div className="mt-1 flex items-center gap-1 font-mono text-[9px] tracking-widest text-white/60">
               <MapPin className="h-3 w-3 shrink-0" /> {ticket.venue} · {ticket.city}
             </div>
           </div>
 
-          {/* Attendee info */}
-          <div className="mt-5 flex flex-col gap-1 border-t border-border/60 pt-4 font-mono text-xs text-muted-foreground">
+          <div className="flex flex-col gap-0.5 border-t border-white/20 pt-2 font-mono text-[9px] text-white/70">
             <div className="flex items-center gap-2">
               <User className="h-3 w-3 shrink-0" /> {session.user.name ?? "—"}
             </div>
@@ -135,33 +169,21 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
               <Mail className="h-3 w-3 shrink-0" /> {session.user.email}
             </div>
           </div>
-        </div>
 
-        <div className="flex flex-col items-center gap-3 py-6">
-          <div
-            className={`inline-block bg-white p-3 ${isUsed ? "opacity-30 grayscale" : ""}`}
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
-          />
-          <div className="font-mono text-sm tracking-[0.2em] text-foreground">{displayCode}</div>
-        </div>
-
-        <div className="border-t border-border/60 p-6">
           {isUsed ? (
-            <p className="font-mono text-xs tracking-widest text-muted-foreground">
-              ⬤ ESTA ENTRADA YA FUE USADA
-              {ticket.checkedInAt && (
-                <> — {new Date(ticket.checkedInAt).toLocaleString("es-CO")}</>
-              )}
+            <p className="font-mono text-[9px] tracking-widest text-white/60">
+              ⬤ YA FUE USADA
+              {ticket.checkedInAt && <> — {new Date(ticket.checkedInAt).toLocaleString("es-CO")}</>}
             </p>
           ) : (
-            <p className="flex items-center gap-2 font-mono text-xs tracking-widest text-primary">
-              <ShieldCheck className="h-4 w-4" /> ENTRADA VÁLIDA — MOSTRÁ ESTE QR EN LA PUERTA
+            <p className="flex items-center gap-2 font-mono text-[9px] tracking-widest text-primary">
+              <ShieldCheck className="h-3 w-3" /> ENTRADA VÁLIDA
             </p>
           )}
         </div>
       </div>
 
-      <p className="mt-6 font-mono text-[10px] leading-relaxed text-muted-foreground">
+      <p className="mx-auto mt-6 max-w-[400px] font-mono text-[10px] leading-relaxed text-muted-foreground">
         Esta entrada es personal e intransferible. El código QR es único — una vez escaneado en la
         puerta queda marcado como usado y una captura de pantalla ya no sirve para entrar de nuevo.
       </p>
