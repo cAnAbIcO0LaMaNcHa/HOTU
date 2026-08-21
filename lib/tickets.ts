@@ -57,20 +57,28 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
   }));
 }
 
+export type TicketDetail = TicketInstance & {
+  flyerUrl: string | null;
+};
+
 /**
  * A single ticket by its secret code — but only ever returned to its own
  * owner. Guessing/enumerating another person's code isn't enough to see
  * their ticket; the session's email has to match too (defense in depth on
  * top of the code itself being a high-entropy secret).
+ *
+ * Also brings back the event's flyer_url, if the event has one set — the
+ * detail page uses it as the ticket's background. Falls back to null
+ * until events get an admin field to set it.
  */
-export async function getMyTicketByCode(code: string): Promise<TicketInstance | null> {
+export async function getMyTicketByCode(code: string): Promise<TicketDetail | null> {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) return null;
 
   const rows = await sql`
     SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
-           e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district
+           e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district, e.flyer_url
     FROM tickets t
     JOIN events e ON e.id = t.event_id
     WHERE t.ticket_code = ${code} AND t.user_email = ${email}
@@ -91,6 +99,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketInstance | 
     status: r.status,
     checkedInAt: r.checked_in_at,
     createdAt: r.created_at,
+    flyerUrl: r.flyer_url,
   };
 }
 
