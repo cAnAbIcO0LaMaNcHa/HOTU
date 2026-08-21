@@ -106,7 +106,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         {ticket.flyerUrl ? (
           <>
             <div
-              className="absolute inset-0 bg-cover bg-center"
+              className="absolute inset-0 bg-contain bg-center bg-no-repeat"
               style={{ backgroundImage: `url(${ticket.flyerUrl})` }}
             />
             <div className="absolute inset-0 bg-black/10" />
