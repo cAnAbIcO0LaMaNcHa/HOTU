@@ -59,6 +59,13 @@ export async function GET(request: Request) {
     await sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS flyer_url TEXT`;
     log.push("events.flyer_url column ready");
 
+    // Precise end date+time for an event — when set, this (not just the
+    // event's date) is what decides when it archives itself. Lets a party
+    // that runs past midnight stay visible until it actually ends, instead
+    // of vanishing at 00:00 the next calendar day.
+    await sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS end_at TIMESTAMPTZ`;
+    log.push("events.end_at column ready");
+
     const counts = await sql`SELECT COUNT(*) AS n FROM tickets`;
     return NextResponse.json({ ok: true, log, counts: { tickets: counts[0].n } });
   } catch (err) {
