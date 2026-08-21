@@ -86,33 +86,16 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         <ArrowLeft className="h-3 w-3" /> MIS TIQUETES
       </Link>
 
-      {/* THE TICKET CANVAS — fixed 9:16, the same ratio as a phone screen
-          and the standard size promoters already use for flyer art
-          (1080x1920, Instagram Story format). This is the piece meant to
-          connect to the app later.
-
-          Background: the event's flyer image if it has one, else the
-          current district-themed placeholder. Content sits in a single
-          panel over it: info on the left, the QR pinned to the right in
-          its own solid-black box — that box stays solid no matter what's
-          behind it, so scanning never depends on how busy or dark the
-          flyer art is. */}
+      {/* THE TICKET — three independent stacked blocks, none overlapping
+          another: a status bar, the flyer with nothing over it, and an
+          info bar. Normal document flow, not absolute layers — the flyer
+          gets its own clean space exactly like a real printed ticket. */}
       <div
         data-district={ticket.district}
-        className={`sheen relative mx-auto mt-6 w-full max-w-[400px] overflow-hidden rounded-lg ${
-          ticket.flyerUrl ? "" : "aspect-[9/16] border-chrome"
-        }`}
+        className="sheen mx-auto mt-6 flex w-full max-w-[400px] flex-col overflow-hidden rounded-lg border-chrome"
       >
-        {ticket.flyerUrl ? (
-          // A real <img>, not a background-image — its own natural
-          // dimensions set the box's height at this width, so the flyer
-          // always shows in full at its real proportions. No forced ratio,
-          // no cropping: whatever size the flyer is IS the box.
-          <img src={ticket.flyerUrl} alt="" className="block w-full h-auto" />
-        ) : null}
-
-        {/* Top bar: brand + tier/status, readable over any background */}
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-black/45 px-4 py-3 backdrop-blur-sm">
+        {/* Top bar: brand + tier/status */}
+        <div className="flex items-center justify-between bg-black px-4 py-3">
           <div className="flex items-center gap-2">
             <TicketIcon className="h-4 w-4 text-white" />
             <span className="font-mono text-[9px] tracking-widest text-white/80">HOTU</span>
@@ -129,8 +112,17 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           </div>
         </div>
 
-        {/* Main panel: info on the left, QR pinned right */}
-        <div className="absolute inset-x-0 bottom-0 z-10 flex gap-3 bg-black/70 p-4 backdrop-blur-sm">
+        {/* The flyer — its own independent space. Nothing sits on top of
+            it; a real <img> so its natural dimensions set the height at
+            this width, showing the whole image at its real proportions. */}
+        {ticket.flyerUrl ? (
+          <img src={ticket.flyerUrl} alt="" className="block w-full h-auto" />
+        ) : (
+          <div data-district={ticket.district} className="aspect-[9/16] w-full" />
+        )}
+
+        {/* Bottom bar: event + attendee info + QR, its own independent space */}
+        <div className="flex gap-3 bg-black p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-2 font-mono text-white">
             <div>
               <div className="text-[9px] tracking-widest text-white/60">
