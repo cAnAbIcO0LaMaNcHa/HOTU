@@ -47,7 +47,10 @@ export default async function VerificarPage({ params }: { params: Promise<{ code
       </h1>
 
       <div className="mt-6 w-full border border-border bg-card p-5 text-left">
-        <div className="font-mono text-[10px] tracking-widest text-primary">{ticket.tier === "vip" ? "VIP" : "NORMAL"}</div>
+        <div className="flex items-center justify-between font-mono text-[10px] tracking-widest text-primary">
+          <span>{ticket.tier === "vip" ? "VIP" : "NORMAL"}</span>
+          {ticket.displayCode && <span>{ticket.displayCode}</span>}
+        </div>
         <div className="mt-1 text-xl font-bold">{ticket.eventTitle}</div>
         <div className="mt-3 flex flex-col gap-1 font-mono text-xs text-muted-foreground">
           <div className="flex items-center gap-2"><Calendar className="h-3 w-3" /> {ticket.eventDate}</div>
