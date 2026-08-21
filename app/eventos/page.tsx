@@ -16,7 +16,11 @@ export const metadata: Metadata = {
 export default async function EventosPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
   const active = params.d;
-  const events = await getAllEvents();
+  // Past events archive themselves automatically — once the date passes
+  // they just stop showing up here. No manual "archived" step needed; see
+  // /admin/eventos-pasados for the full history.
+  const today = new Date().toISOString().slice(0, 10);
+  const events = (await getAllEvents()).filter((e) => e.date >= today);
   const filtered = active ? events.filter((e) => e.district === active) : events;
 
   return (
