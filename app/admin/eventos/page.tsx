@@ -10,6 +10,15 @@ const labelCls = "font-mono text-[10px] tracking-widest text-muted-foreground";
 const STATUS = ["published", "draft", "archived"];
 const STATUS_LABEL: Record<string, string> = { published: "PUBLICADO", draft: "BORRADOR", archived: "ARCHIVADO" };
 
+/** Converts a stored ISO timestamp to the "YYYY-MM-DDTHH:mm" shape a
+ * <input type="datetime-local"> needs for its defaultValue. */
+function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function MetaFields({ e }: { e?: { scope: string; countryCode: string; language: string; status: string; featured: boolean } }) {
   return (
     <>
@@ -56,9 +65,17 @@ export default async function AdminEventos() {
         <h2 className="text-xl font-bold">NUEVO EVENTO</h2>
         <form action={createEvent} className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" required className={inputCls} /></label>
+          <label className="block">
+            <span className={labelCls}>FECHA Y HORA DE CIERRE (opcional)</span>
+            <input type="datetime-local" name="endAt" className={inputCls} />
+          </label>
           <label className="block"><span className={labelCls}>CIUDAD</span><input type="text" name="city" required placeholder="BOGOTÁ" className={inputCls} /></label>
           <label className="block"><span className={labelCls}>LUGAR</span><input type="text" name="venue" required placeholder="Bodega 38" className={inputCls} /></label>
           <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
+          <label className="block">
+            <span className={labelCls}>FLYER (imagen)</span>
+            <input type="file" name="flyer" accept="image/*" className={`${inputCls} file:mr-3 file:border-0 file:bg-primary file:px-3 file:py-1 file:font-mono file:text-xs`} />
+          </label>
           <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" required placeholder="HOTU PRIME · NOCHE 01" className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>LINE-UP</span><input type="text" name="lineup" required placeholder="Nina Acid · Subsuelo DJs" className={inputCls} /></label>
           <MetaFields />
@@ -76,16 +93,29 @@ export default async function AdminEventos() {
                   {STATUS_LABEL[e.status] ?? e.status.toUpperCase()}
                 </span>
                 {e.featured && <span className="border border-yellow-400/60 px-2 py-1 font-mono text-[9px] tracking-widest text-yellow-400">DESTACADO</span>}
+                {e.flyerUrl && <span className="border border-border px-2 py-1 font-mono text-[9px] tracking-widest text-muted-foreground">CON FLYER</span>}
                 <span className="border border-border px-2 py-1 font-mono text-[9px] tracking-widest text-muted-foreground">
                   {e.scope === "global" ? "GLOBAL" : e.countryCode} · {e.language.toUpperCase()}
                 </span>
               </div>
+              {e.flyerUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={e.flyerUrl} alt="" className="mb-4 h-40 w-auto rounded border border-border object-cover" />
+              )}
               <form action={updateEvent} className="grid gap-4 sm:grid-cols-2">
                 <input type="hidden" name="id" value={e.id} />
                 <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" defaultValue={e.date} required className={inputCls} /></label>
+                <label className="block">
+                  <span className={labelCls}>FECHA Y HORA DE CIERRE (opcional)</span>
+                  <input type="datetime-local" name="endAt" defaultValue={toDatetimeLocal(e.endAt)} className={inputCls} />
+                </label>
                 <label className="block"><span className={labelCls}>CIUDAD</span><input type="text" name="city" defaultValue={e.city} required className={inputCls} /></label>
                 <label className="block"><span className={labelCls}>LUGAR</span><input type="text" name="venue" defaultValue={e.venue} required className={inputCls} /></label>
                 <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" defaultValue={e.district} required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
+                <label className="block">
+                  <span className={labelCls}>{e.flyerUrl ? "REEMPLAZAR FLYER" : "FLYER (imagen)"}</span>
+                  <input type="file" name="flyer" accept="image/*" className={`${inputCls} file:mr-3 file:border-0 file:bg-primary file:px-3 file:py-1 file:font-mono file:text-xs`} />
+                </label>
                 <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" defaultValue={e.title} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>LINE-UP</span><input type="text" name="lineup" defaultValue={e.lineup} required className={inputCls} /></label>
                 <MetaFields e={e} />
