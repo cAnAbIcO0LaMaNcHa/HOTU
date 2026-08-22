@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Ticket as TicketIcon, MapPin, LogIn, QrCode } from "lucide-react";
 import { auth } from "@/auth";
 import { getMyTicketInstances, type TicketInstance } from "@/lib/tickets";
-import { formatShortDate } from "@/lib/db";
+import { formatShortDate, eventHasEnded } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 
 export const revalidate = 0;
@@ -81,12 +81,12 @@ export default async function TiquetesPage() {
 
   const allTickets = await getMyTicketInstances();
 
-  // Once an event's date passes, its tickets stop being "entradas" and
-  // become "recuerdos" — a keepsake of the party, not something anyone
-  // needs to scan anymore. Split purely by date, nothing to maintain.
-  const today = new Date().toISOString().slice(0, 10);
-  const tickets = allTickets.filter((t) => t.eventDate >= today);
-  const memories = allTickets.filter((t) => t.eventDate < today);
+  // Once an event is over — using the exact end_at time when an admin
+  // set one, or the end of the event's day otherwise — its tickets stop
+  // being "entradas" and become "recuerdos" — a keepsake of the party,
+  // not something anyone needs to scan anymore. Nothing to maintain.
+  const tickets = allTickets.filter((t) => !eventHasEnded(t.eventDate, t.eventEndAt));
+  const memories = allTickets.filter((t) => eventHasEnded(t.eventDate, t.eventEndAt));
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-16 md:py-24">
