@@ -1,5 +1,6 @@
 import { getAllNews } from "@/lib/db";
 import { COUNTRY_CODES } from "@/lib/roles";
+import { DISTRICTS } from "@/lib/districts";
 import { createNews, updateNews, deleteNews } from "@/lib/db-write";
 
 export const revalidate = 0;
@@ -56,6 +57,7 @@ export default async function AdminNoticias() {
         <h2 className="text-xl font-bold">NUEVA NOTICIA</h2>
         <form action={createNews} className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block"><span className={labelCls}>ETIQUETA</span><select name="tag" required className={inputCls}>{TAGS.map((t) => (<option key={t} value={t}>{t}</option>))}</select></label>
+          <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
           <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" required className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" required className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>RESUMEN</span><textarea name="excerpt" required rows={3} className={inputCls} /></label>
@@ -81,6 +83,7 @@ export default async function AdminNoticias() {
               <form action={updateNews} className="grid gap-4 sm:grid-cols-2">
                 <input type="hidden" name="id" value={n.id} />
                 <label className="block"><span className={labelCls}>ETIQUETA</span><select name="tag" defaultValue={n.tag} required className={inputCls}>{TAGS.map((t) => (<option key={t} value={t}>{t}</option>))}</select></label>
+                <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" defaultValue={n.district} required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
                 <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" defaultValue={n.date} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" defaultValue={n.title} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>RESUMEN</span><textarea name="excerpt" defaultValue={n.excerpt} required rows={3} className={inputCls} /></label>
