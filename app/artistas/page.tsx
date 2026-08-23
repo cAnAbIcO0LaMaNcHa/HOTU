@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { DISTRICTS } from "@/lib/districts";
+import { DISTRICTS, type DistrictId } from "@/lib/districts";
 import { ArtistBubble } from "@/components/artist-bubble";
 import { AutoTranslate } from "@/components/auto-translate";
+import { GenreFilterMenu } from "@/components/genre-filter-menu";
 import { getAllArtists } from "@/lib/db";
 
 export const revalidate = 0;
@@ -14,9 +14,12 @@ export const metadata: Metadata = {
 
 export default async function ArtistasPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
-  const active = params.d;
+  const activeList = params.d ? (params.d.split(",") as DistrictId[]) : [];
   const artists = await getAllArtists();
-  const filtered = active ? artists.filter((a) => a.district === active) : artists;
+  const filtered = activeList.length > 0 ? artists.filter((a) => activeList.includes(a.district)) : artists;
+  const counts = Object.fromEntries(
+    DISTRICTS.map((d) => [d.id, artists.filter((a) => a.district === d.id).length])
+  ) as Partial<Record<DistrictId, number>>;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
@@ -24,12 +27,7 @@ export default async function ArtistasPage({ searchParams }: { searchParams: Pro
       <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="ARTISTAS" /></h1>
       <p className="mt-6 max-w-2xl font-mono text-sm text-muted-foreground"><AutoTranslate text="Filtrá por distrito o tocá una burbuja para ver la biografía, sets y tracks de cada artista." /></p>
 
-      <div className="mt-8 flex flex-wrap gap-2">
-        <Link href="/artistas" className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}><AutoTranslate text="TODOS" /></Link>
-        {DISTRICTS.map((d) => (
-          <Link key={d.id} href={`/artistas?d=${d.id}`} data-district={d.id} className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{d.title} · <AutoTranslate text={d.genre} /></Link>
-        ))}
-      </div>
+      <GenreFilterMenu counts={counts} total={artists.length} />
 
       <div className="mt-14 flex flex-wrap justify-center gap-12 sm:justify-start">
         {filtered.map((a) => (<ArtistBubble key={a.slug} artist={a} size="lg" />))}
