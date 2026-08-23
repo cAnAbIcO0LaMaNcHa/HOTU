@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { DISTRICTS } from "@/lib/districts";
+import { DISTRICTS, type DistrictId } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
+import { GenreFilterMenu } from "@/components/genre-filter-menu";
 import { getAllTracks, formatShortDate } from "@/lib/db";
 
 export const revalidate = 0;
@@ -14,21 +15,19 @@ export const metadata: Metadata = {
 
 export default async function DiscografiaPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
-  const active = params.d;
+  const activeList = params.d ? (params.d.split(",") as DistrictId[]) : [];
   const allTracks = await getAllTracks();
-  const tracks = active ? allTracks.filter((t) => t.district === active) : allTracks;
+  const tracks = activeList.length > 0 ? allTracks.filter((t) => activeList.includes(t.district)) : allTracks;
+  const counts = Object.fromEntries(
+    DISTRICTS.map((d) => [d.id, allTracks.filter((t) => t.district === d.id).length])
+  ) as Partial<Record<DistrictId, number>>;
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">▶ <AutoTranslate text="RELEASES" /></span>
       <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="DISCOGRAFÍA" /></h1>
 
-      <div className="mt-8 flex flex-wrap gap-2">
-        <Link href="/discografia" className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}><AutoTranslate text="TODOS" /></Link>
-        {DISTRICTS.map((d) => (
-          <Link key={d.id} href={`/discografia?d=${d.id}`} data-district={d.id} className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{d.title} · <AutoTranslate text={d.genre} /></Link>
-        ))}
-      </div>
+      <GenreFilterMenu counts={counts} total={allTracks.length} />
 
       <div className="mt-10 divide-y divide-border border-y border-border">
         {tracks.map((t, i) => (
