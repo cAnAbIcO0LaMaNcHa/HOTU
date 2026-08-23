@@ -5,7 +5,7 @@ import type { EventItem } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { AddTicketButton } from "@/components/add-ticket-button";
 import { TICKET_PRICES } from "@/lib/commerce-types";
-import { formatShortDate } from "@/lib/db";
+import { formatShortDate } from "@/lib/date-utils";
 import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
 
 const formatCOP = (n: number) =>
