@@ -85,30 +85,13 @@ export type ReadOptions = {
   includeAll?: boolean;
 };
 
-/** Postgres DATE columns come back as Date objects; normalise to YYYY-MM-DD. */
-export function toISODate(value: unknown): string {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
-}
-
-/** Format a date as DD.MM.YY for the compact event/news labels. */
-export function formatShortDate(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y.slice(2)}`;
-}
-
-/**
- * Whether an event is over, for archiving purposes. If it has an explicit
- * end_at timestamp, that decides it exactly (handles parties that run past
- * midnight). Otherwise it falls back to the end of the event's calendar
- * day — the old behaviour, kept for events nobody has set a close time on.
- */
-export function eventHasEnded(dateIso: string, endAt: string | null): boolean {
-  const now = new Date();
-  if (endAt) return now >= new Date(endAt);
-  const endOfDay = new Date(`${dateIso}T23:59:59`);
-  return now > endOfDay;
-}
+// Pure date helpers live in ./date-utils, which has zero dependency on
+// this file's `neon()` connection — re-exported here so existing server
+// code can keep importing them from "@/lib/db" unchanged, while client
+// components import straight from "@/lib/date-utils" to avoid pulling
+// the database client (and DATABASE_URL) into the browser bundle.
+export { toISODate, formatShortDate, eventHasEnded } from "./date-utils";
+import { toISODate } from "./date-utils";
 
 function mapMeta(r: Record<string, unknown>): ContentMeta {
   return {
