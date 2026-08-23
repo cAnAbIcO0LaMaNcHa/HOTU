@@ -57,6 +57,7 @@ export type Collective = ContentMeta & {
   sector: string;
   bio: string;
   artistSlugs: string[];
+  district: DistrictId;
 };
 
 export type EventItem = ContentMeta & {
@@ -77,6 +78,7 @@ export type NewsItem = ContentMeta & {
   date: string;
   title: string;
   excerpt: string;
+  district: DistrictId;
 };
 
 /** Options accepted by every list-read function below. */
@@ -187,6 +189,7 @@ export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collect
     sector: r.sector,
     bio: r.bio,
     artistSlugs: (r.artist_slugs ?? []) as string[],
+    district: r.district as DistrictId,
   }));
 }
 
@@ -229,5 +232,6 @@ export async function getAllNews(opts: ReadOptions = {}): Promise<NewsItem[]> {
     date: toISODate(r.news_date),
     title: r.title,
     excerpt: r.excerpt,
+    district: r.district as DistrictId,
   }));
 }
