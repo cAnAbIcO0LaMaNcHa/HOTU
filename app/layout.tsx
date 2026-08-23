@@ -6,6 +6,8 @@ import { LanguageProvider } from "@/lib/i18n";
 import { AuthSessionProvider } from "@/components/session-provider";
 import { CartProvider } from "@/components/cart-context";
 import { CartDrawer } from "@/components/cart-drawer";
+import { DistrictFilterProvider } from "@/components/district-filter-context";
+import { GlobalDistrictBar } from "@/components/global-district-bar";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hotu.com.co"), // TODO: cambiar por tu dominio real
@@ -63,10 +65,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthSessionProvider>
           <LanguageProvider>
             <CartProvider>
-              <SiteHeader />
-              {children}
-              <SiteFooter />
-              <CartDrawer />
+              <DistrictFilterProvider>
+                <SiteHeader />
+                {/* One global filter, always visible, same control on every
+                    page — replaces the old per-page district chip rows. */}
+                <GlobalDistrictBar />
+                {children}
+                <SiteFooter />
+                <CartDrawer />
+              </DistrictFilterProvider>
             </CartProvider>
           </LanguageProvider>
         </AuthSessionProvider>
