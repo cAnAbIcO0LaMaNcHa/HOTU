@@ -121,8 +121,8 @@ export async function createNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
   await sql`
-    INSERT INTO news (tag, news_date, title, excerpt, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO news (tag, news_date, title, excerpt, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${String(formData.get("district"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
   `;
   refreshAll();
 }
@@ -136,6 +136,7 @@ export async function updateNews(formData: FormData): Promise<void> {
       news_date = ${String(formData.get("date"))},
       title = ${String(formData.get("title"))},
       excerpt = ${String(formData.get("excerpt"))},
+      district = ${String(formData.get("district"))},
       scope = ${m.scope},
       country_code = ${m.countryCode},
       language = ${m.language},
@@ -150,5 +151,53 @@ export async function updateNews(formData: FormData): Promise<void> {
 export async function deleteNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   await sql`DELETE FROM news WHERE id = ${Number(formData.get("id"))}`;
+  refreshAll();
+}
+
+/** Comma-separated slugs like "nina-acid, subsuelo-x" -> ["nina-acid", "subsuelo-x"]. */
+function readArtistSlugs(formData: FormData): string[] {
+  return String(formData.get("artistSlugs") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export async function createCollective(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  const m = readMeta(formData);
+  const artistSlugs = readArtistSlugs(formData);
+  await sql`
+    INSERT INTO collectives (slug, name, type, sector, bio, artist_slugs, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("slug"))}, ${String(formData.get("name"))}, ${String(formData.get("type"))}, ${String(formData.get("sector"))}, ${String(formData.get("bio"))}, ${JSON.stringify(artistSlugs)}, ${String(formData.get("district"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+  `;
+  refreshAll();
+}
+
+export async function updateCollective(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  const m = readMeta(formData);
+  const artistSlugs = readArtistSlugs(formData);
+  await sql`
+    UPDATE collectives SET
+      name = ${String(formData.get("name"))},
+      type = ${String(formData.get("type"))},
+      sector = ${String(formData.get("sector"))},
+      bio = ${String(formData.get("bio"))},
+      artist_slugs = ${JSON.stringify(artistSlugs)},
+      district = ${String(formData.get("district"))},
+      scope = ${m.scope},
+      country_code = ${m.countryCode},
+      language = ${m.language},
+      status = ${m.status},
+      featured = ${m.featured},
+      priority_at = ${m.priorityAt}
+    WHERE slug = ${String(formData.get("originalSlug"))}
+  `;
+  refreshAll();
+}
+
+export async function deleteCollective(formData: FormData): Promise<void> {
+  if (!(await requireAdmin())) return;
+  await sql`DELETE FROM collectives WHERE slug = ${String(formData.get("slug"))}`;
   refreshAll();
 }
