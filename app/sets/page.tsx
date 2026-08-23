@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { DISTRICTS } from "@/lib/districts";
+import { DISTRICTS, type DistrictId } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
+import { GenreFilterMenu } from "@/components/genre-filter-menu";
 import { getAllSets } from "@/lib/db";
 
 export const revalidate = 0;
@@ -14,21 +15,19 @@ export const metadata: Metadata = {
 
 export default async function SetsPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
-  const active = params.d;
+  const activeList = params.d ? (params.d.split(",") as DistrictId[]) : [];
   const allSets = await getAllSets();
-  const sets = active ? allSets.filter((s) => s.district === active) : allSets;
+  const sets = activeList.length > 0 ? allSets.filter((s) => activeList.includes(s.district)) : allSets;
+  const counts = Object.fromEntries(
+    DISTRICTS.map((d) => [d.id, allSets.filter((s) => s.district === d.id).length])
+  ) as Partial<Record<DistrictId, number>>;
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
       <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">▶ <AutoTranslate text="SONIDO EN ROTACIÓN" /></span>
       <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="SETS" /></h1>
 
-      <div className="mt-8 flex flex-wrap gap-2">
-        <Link href="/sets" className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${!active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}><AutoTranslate text="TODOS" /></Link>
-        {DISTRICTS.map((d) => (
-          <Link key={d.id} href={`/sets?d=${d.id}`} data-district={d.id} className={`border px-3 py-2 font-mono text-[10px] tracking-widest ${active === d.id ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>{d.title} · <AutoTranslate text={d.genre} /></Link>
-        ))}
-      </div>
+      <GenreFilterMenu counts={counts} total={allSets.length} />
 
       <div className="mt-10 grid gap-4 md:grid-cols-2">
         {sets.map((s) => (
