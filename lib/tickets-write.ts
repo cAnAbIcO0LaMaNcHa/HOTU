@@ -70,10 +70,17 @@ export async function markOrderPaid(formData: FormData): Promise<void> {
     let seq = Number(eventCount[0].n);
     const prefix = eventPrefix(item.event_id);
 
+    // Every ticket's display code carries its event's district number
+    // (e.g. "07" for Hard Tech) right up front, so the genre is visible
+    // just by reading the code — no lookup needed at the door or on the
+    // ticket wall.
+    const [eventRow] = await sql`SELECT district FROM events WHERE id = ${item.event_id}`;
+    const districtNum = eventRow?.district ? String(eventRow.district).replace(/^D/, "") : "00";
+
     for (let i = 0; i < toCreate; i++) {
       seq += 1;
       const code = generateTicketCode();
-      const displayCode = `HOTU-${prefix}${String(seq).padStart(4, "0")}`;
+      const displayCode = `HOTU-${districtNum}-${prefix}${String(seq).padStart(4, "0")}`;
       await sql`
         INSERT INTO tickets (ticket_code, display_code, order_id, order_item_id, user_email, event_id, tier)
         VALUES (${code}, ${displayCode}, ${orderId}, ${item.id}, ${order.user_email}, ${item.event_id}, ${item.ticket_tier})
