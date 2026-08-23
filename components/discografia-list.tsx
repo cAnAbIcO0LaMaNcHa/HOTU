@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Play } from "lucide-react";
 import type { Track } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
-import { formatShortDate } from "@/lib/db";
+import { formatShortDate } from "@/lib/date-utils";
 import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
 
 export function DiscografiaList({ tracks: allTracks }: { tracks: Track[] }) {
