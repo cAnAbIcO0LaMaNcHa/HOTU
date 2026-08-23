@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { MapPin } from "lucide-react";
-import { DISTRICTS } from "@/lib/districts";
+import { DISTRICTS, type DistrictId } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
+import { GenreFilterMenu } from "@/components/genre-filter-menu";
 import { getAllEvents, formatShortDate, eventHasEnded } from "@/lib/db";
 import { AddTicketButton } from "@/components/add-ticket-button";
 import { TICKET_PRICES } from "@/lib/commerce-types";
@@ -19,13 +19,18 @@ const formatCOP = (n: number) =>
 
 export default async function EventosPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const params = await searchParams;
-  const active = params.d;
+  // "d" is a comma-separated list now — the dropdown lets more than one
+  // genre be checked at once (e.g. "D01,D03" = House + Tech House).
+  const activeList = params.d ? (params.d.split(",") as DistrictId[]) : [];
   // Past events archive themselves automatically — once they're over
   // (using the exact end_at time when an admin set one, or the end of the
   // event's day otherwise) they just stop showing up here. No manual
   // "archived" step needed; see /admin/eventos-pasados for the full history.
   const events = (await getAllEvents()).filter((e) => !eventHasEnded(e.date, e.endAt));
-  const filtered = active ? events.filter((e) => e.district === active) : events;
+  const filtered = activeList.length > 0 ? events.filter((e) => activeList.includes(e.district)) : events;
+  const counts = Object.fromEntries(
+    DISTRICTS.map((d) => [d.id, events.filter((e) => e.district === d.id).length])
+  ) as Partial<Record<DistrictId, number>>;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
@@ -39,39 +44,7 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
         <AutoTranslate text="Fiestas de música electrónica en Bogotá y la sabana. Pagás con QR y el ticket te llega al instante." />
       </p>
 
-      {/* Genre filter — a horizontally-scrolling chip bar. Filled = active,
-          outlined = everything else, with a live count so nobody has to
-          click into an empty genre to find out it's empty. Still purely
-          genre-based on purpose: sorting by date/price isn't the job here. */}
-      <div className="-mx-4 mt-8 overflow-x-auto px-4">
-        <div className="flex w-max gap-2 pb-2">
-          <Link
-            href="/eventos"
-            className={`whitespace-nowrap px-4 py-2 font-mono text-[10px] tracking-widest transition-colors ${
-              !active ? "bg-primary text-background" : "border border-border text-muted-foreground hover:border-primary hover:text-primary"
-            }`}
-          >
-            <AutoTranslate text="TODOS" /> <span className="opacity-70">({events.length})</span>
-          </Link>
-          {DISTRICTS.map((d) => {
-            const count = events.filter((e) => e.district === d.id).length;
-            return (
-              <Link
-                key={d.id}
-                href={`/eventos?d=${d.id}`}
-                data-district={d.id}
-                className={`whitespace-nowrap px-4 py-2 font-mono text-[10px] tracking-widest transition-colors ${
-                  active === d.id
-                    ? "bg-primary text-background"
-                    : "border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                }`}
-              >
-                <AutoTranslate text={d.genre} /> <span className="opacity-70">({count})</span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      <GenreFilterMenu counts={counts} total={events.length} />
 
       <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {filtered.map((e) => (
