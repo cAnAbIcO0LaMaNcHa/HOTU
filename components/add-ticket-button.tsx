@@ -25,7 +25,7 @@ export function AddTicketButton({ eventId, eventTitle }: { eventId: number; even
       </div>
       <button
         onClick={() => addTicket({ eventId, eventTitle, tier, unitPriceCop: TICKET_PRICES[tier] })}
-        className="surface-chrome sheen mt-2 w-full py-2.5 font-mono text-[11px] tracking-widest"
+        className="mt-2 w-full bg-primary py-2.5 font-mono text-[11px] tracking-widest text-background transition-opacity hover:opacity-90"
       >
         AGREGAR ENTRADA · {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(TICKET_PRICES[tier])}
       </button>
