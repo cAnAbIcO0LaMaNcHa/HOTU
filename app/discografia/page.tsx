@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Play } from "lucide-react";
-import { DISTRICTS, type DistrictId } from "@/lib/districts";
 import { AutoTranslate } from "@/components/auto-translate";
-import { GenreFilterMenu } from "@/components/genre-filter-menu";
-import { getAllTracks, formatShortDate } from "@/lib/db";
+import { DiscografiaList } from "@/components/discografia-list";
+import { getAllTracks } from "@/lib/db";
 
 export const revalidate = 0;
 
@@ -13,38 +10,19 @@ export const metadata: Metadata = {
   description: "Catálogo completo de lanzamientos de la escena electrónica bogotana.",
 };
 
-export default async function DiscografiaPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
-  const params = await searchParams;
-  const activeList = params.d ? (params.d.split(",") as DistrictId[]) : [];
-  const allTracks = await getAllTracks();
-  const tracks = activeList.length > 0 ? allTracks.filter((t) => activeList.includes(t.district)) : allTracks;
-  const counts = Object.fromEntries(
-    DISTRICTS.map((d) => [d.id, allTracks.filter((t) => t.district === d.id).length])
-  ) as Partial<Record<DistrictId, number>>;
+export default async function DiscografiaPage() {
+  const tracks = await getAllTracks();
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
-      <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">▶ <AutoTranslate text="RELEASES" /></span>
-      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl"><AutoTranslate text="DISCOGRAFÍA" /></h1>
+      <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">
+        ▶ <AutoTranslate text="RELEASES" />
+      </span>
+      <h1 className="mt-6 text-5xl font-bold leading-[0.9] md:text-7xl">
+        <AutoTranslate text="DISCOGRAFÍA" />
+      </h1>
 
-      <GenreFilterMenu counts={counts} total={allTracks.length} />
-
-      <div className="mt-10 divide-y divide-border border-y border-border">
-        {tracks.map((t, i) => (
-          <div key={t.slug} className="flex items-center gap-4 py-5">
-            <span className="w-8 shrink-0 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-            <a href={t.url} aria-label={`Reproducir ${t.title}`} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105"><Play className="h-4 w-4 translate-x-0.5" /></a>
-            <div className="min-w-0 flex-1">
-              <a href={t.url} className="block truncate font-bold hover:text-primary"><AutoTranslate text={t.title} /></a>
-              <div className="truncate font-mono text-[10px] tracking-widest text-muted-foreground">
-                {t.artistSlug ? (<Link href={`/artistas/${t.artistSlug}`} className="hover:text-primary"><AutoTranslate text={t.artistName} /></Link>) : (<AutoTranslate text={t.artistName} />)}
-              </div>
-            </div>
-            <span className="hidden shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground sm:block">{formatShortDate(t.releasedAt)}</span>
-          </div>
-        ))}
-        {tracks.length === 0 && (<p className="py-8 font-mono text-sm text-muted-foreground"><AutoTranslate text="No hay tracks en este distrito todavía." /></p>)}
-      </div>
+      <DiscografiaList tracks={tracks} />
     </section>
   );
 }
