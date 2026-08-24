@@ -14,6 +14,7 @@ export async function getMerchCatalog(): Promise<MerchItem[]> {
     category: r.category,
     priceCop: r.price_cop,
     image: r.image ?? undefined,
+    collectiveSlug: r.collective_slug ?? undefined,
   }));
 }
 
