@@ -16,11 +16,11 @@ export default async function ColectivosPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl">COLECTIVOS</h1>
+      <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl">COLECTIVOS</h1>
+      <div className="mt-6">
         <DistrictFilterButton />
       </div>
-      <p className="mt-6 max-w-2xl font-mono text-sm text-muted-foreground">
+      <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
         <AutoTranslate text="Organizados por sector. BY HOTU son colectivos propios de la marca — LOCAL son crews independientes." />
       </p>
 
