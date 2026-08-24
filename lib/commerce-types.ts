@@ -8,6 +8,9 @@ export type MerchItem = {
   category: MerchCategory;
   priceCop: number;
   image?: string;
+  /** Slug of the collective that made this product, if any — powers the
+   * "filter by collective" dropdown in /tienda. */
+  collectiveSlug?: string;
 };
 
 export const TICKET_PRICES = { normal: 30000, vip: 50000 } as const;
