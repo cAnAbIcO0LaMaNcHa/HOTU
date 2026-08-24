@@ -16,12 +16,15 @@ export default async function NoticiasPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl">
-          <AutoTranslate text="NOTICIAS" />
-        </h1>
+      <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl">
+        <AutoTranslate text="NOTICIAS" />
+      </h1>
+      <div className="mt-6">
         <DistrictFilterButton />
       </div>
+      <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
+        <AutoTranslate text="Lo último de la escena: releases, gear, clubes y movimientos en Bogotá." />
+      </p>
 
       <NoticiasList news={news} />
     </section>
