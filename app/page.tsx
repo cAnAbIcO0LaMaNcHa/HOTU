@@ -5,13 +5,19 @@ import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
-import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate } from "@/lib/db";
+import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate, eventHasEnded } from "@/lib/db";
 
 export const revalidate = 0;
 
 export default async function Home() {
   const [artists, tracks, allEvents, allNews] = await Promise.all([getAllArtists(), getAllTracks(), getAllEvents(), getAllNews()]);
-  const events = allEvents.slice(0, 3);
+  // Live-synced with the events table: past events (checked the same way
+  // /eventos does) drop out automatically, and since getAllEvents already
+  // orders by date ascending, the first 3 remaining are always the
+  // soonest-upcoming ones — this is the whole "push" mechanic. No manual
+  // curation needed; as one event passes, the next one in line just
+  // rotates into view on its own.
+  const events = allEvents.filter((e) => !eventHasEnded(e.date, e.endAt)).slice(0, 3);
   const news = allNews.slice(0, 3);
 
   return (
@@ -37,12 +43,24 @@ export default async function Home() {
             <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
             <div className="mt-10 grid gap-6 md:grid-cols-3">
               {events.map((e) => (
-                <article key={e.id} className="border border-border bg-card p-5 transition-colors hover:border-primary">
-                  <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
-                  <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
-                  <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
-                  <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
-                  <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" /></Link>
+                <article key={e.id} className="group flex flex-col overflow-hidden border border-border bg-card transition-colors hover:border-primary">
+                  {e.flyerUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={e.flyerUrl}
+                      alt=""
+                      className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div data-district={e.district} className="sheen border-chrome aspect-[3/4] w-full" />
+                  )}
+                  <div className="flex flex-1 flex-col p-5">
+                    <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
+                    <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
+                    <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
+                    <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" /></Link>
+                  </div>
                 </article>
               ))}
             </div>
@@ -51,8 +69,8 @@ export default async function Home() {
           <section className="py-16">
             <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
             <div className="mt-10 grid gap-8 md:grid-cols-3">
-              {news.map((n) => (
-                <article key={n.id}>
+             {news.map((n) => (
+                 <article key={n.id}>
                   <span className="inline-block bg-primary px-2 py-1 font-mono text-[10px] tracking-widest text-primary-foreground">{n.tag}</span>
                   <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{formatShortDate(n.date)}</div>
                   <h3 className="mt-2 text-xl font-bold leading-tight"><AutoTranslate text={n.title} /></h3>
