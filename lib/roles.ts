@@ -1,8 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
-import { isAdminEmail } from "./admin";
+import { isSuperAdmin } from "./roles-check";
 
 const sql = neon(process.env.DATABASE_URL!);
+
+/**
+ * isSuperAdmin moved to lib/roles-check.ts, which has no @/auth import so
+ * the Edge middleware can call it. Re-exported here so /admin's layout and
+ * everything else keep importing it from the same place — and, more to the
+ * point, so the middleware and the layout keep running the same function.
+ */
+export { isSuperAdmin } from "./roles-check";
 
 export type Role = "SUPER_ADMIN" | "GLOBAL_EDITOR" | "COUNTRY_EDITOR";
 
@@ -35,18 +43,6 @@ export async function getMyRoleAssignments(): Promise<RoleAssignment[]> {
 export async function getAllRoleAssignments(): Promise<RoleAssignment[]> {
   const rows = await sql`SELECT email, role, country_code FROM user_roles ORDER BY email, role`;
   return rows.map((r) => ({ email: r.email, role: r.role as Role, countryCode: r.country_code }));
-}
-
-/**
- * A SUPER_ADMIN is anyone in the legacy ADMIN_EMAILS whitelist (kept for
- * backwards compatibility — nothing that already worked stops working) OR
- * anyone with an explicit SUPER_ADMIN row in user_roles.
- */
-export async function isSuperAdmin(email?: string | null): Promise<boolean> {
-  if (!email) return false;
-  if (isAdminEmail(email)) return true;
-  const rows = await sql`SELECT 1 FROM user_roles WHERE email = ${email} AND role = 'SUPER_ADMIN'`;
-  return rows.length > 0;
 }
 
 /** Returns the session only if the signed-in user is a SUPER_ADMIN. */
