@@ -1,5 +1,7 @@
 HOTU — Contexto del proyecto
 
+AGENTS.md y CLAUDE.md son COPIAS IDÉNTICAS a propósito. Distintas herramientas autocargan uno u otro (Claude Code lee CLAUDE.md), y quedarse sin contexto es peor que duplicar. Toda edición va a los dos: editá AGENTS.md y después copialo encima de CLAUDE.md. Si alguna vez no coinciden, AGENTS.md manda.
+
 HOTU (Houses of the Underground): plataforma de eventos de música electrónica en Bogotá. Venta de boletas + perfiles de artistas y colectivos.
 
 Stack
