@@ -10,7 +10,8 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { SOCIAL_PLATFORMS, type ArtistSocials, type SocialPlatform } from "./db";
+import { SOCIAL_PLATFORMS, type ArtistSocials, type SocialPlatform } from "./socials";
+import { deleteOwnBlob } from "./blob";
 import { isSuperAdmin } from "./roles-check";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -121,8 +122,12 @@ export async function updateArtistProfile(
   patch: ArtistProfilePatch,
   actorEmail?: string | null
 ): Promise<WriteResult> {
-  const rows = await sql`SELECT slug FROM artists WHERE slug = ${slug}`;
+  const rows = await sql`SELECT slug, photo, cover_url FROM artists WHERE slug = ${slug}`;
   if (rows.length === 0) return { ok: false, status: 404, error: "Artist not found" };
+  const previous = {
+    photo: (rows[0].photo as string | null) ?? null,
+    coverUrl: (rows[0].cover_url as string | null) ?? null,
+  };
 
   if (!(await canEditArtist(slug, actorEmail))) {
     return { ok: false, status: 403, error: "Not allowed to edit this profile" };
@@ -203,6 +208,22 @@ export async function updateArtistProfile(
       socials       = CASE WHEN ${socials !== undefined} THEN ${JSON.stringify(socials ?? {})}::jsonb ELSE socials END
     WHERE slug = ${slug}
   `;
+
+  // Clean up whatever the save replaced. Without this every photo change
+  // leaves the old file behind forever, and the 1GB free tier is not big
+  // enough to absorb that.
+  //
+  // Only OUR blobs are deleted, and only when the value actually changed —
+  // deleteOwnBlob checks the host against the store in the token, so a URL
+  // the DJ pasted from somewhere else is left alone. It also never throws:
+  // the row is already written, and failing the request over a leftover
+  // file would be the worse outcome.
+  if ("photo" in values && values.photo !== previous.photo) {
+    await deleteOwnBlob(previous.photo);
+  }
+  if ("coverUrl" in values && values.coverUrl !== previous.coverUrl) {
+    await deleteOwnBlob(previous.coverUrl);
+  }
 
   return { ok: true };
 }

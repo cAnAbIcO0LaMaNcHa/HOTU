@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MapPin, Mail, Phone, Globe } from "lucide-react";
 import { EpkEditableSection, Field } from "./epk-editable-section";
+import { EpkImageField } from "./epk-image-field";
 import { SOCIAL_LABELS, SOCIAL_PLATFORMS } from "@/lib/socials";
 import type { Artist } from "@/lib/db";
 
@@ -73,19 +74,24 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
             placeholder="+57 300 000 0000"
             disabled={saving}
           />
-          <Field
-            label="URL DEL AVATAR"
+          <EpkImageField
+            label="AVATAR"
+            slug={artist.slug}
+            kind="avatar"
+            target="avatar"
             value={photo}
             onChange={setPhoto}
-            placeholder="https://..."
             disabled={saving}
           />
-          <Field
-            label="URL DE LA PORTADA"
+          <EpkImageField
+            label="PORTADA"
+            slug={artist.slug}
+            kind="cover"
+            target="cover"
             value={coverUrl}
             onChange={setCoverUrl}
-            placeholder="https://..."
             disabled={saving}
+            previewClassName="h-16 w-28"
           />
           <div className="pt-2">
             <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
