@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Play, MapPin } from "lucide-react";
-import { AutoTranslate } from "@/components/auto-translate";
+import { Play } from "lucide-react";
+import { auth } from "@/auth";
+import { EpkHeader } from "@/components/epk-header";
+import { EpkAbout } from "@/components/epk-about";
+import { canEditArtist } from "@/lib/artists-write";
 import { getArtistBySlug } from "@/lib/db";
 
 export const revalidate = 0;
@@ -13,29 +16,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: `${artist.name} — Bio, sets y tracks`, description: artist.bio };
 }
 
-function initials(name: string) {
-  return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-}
-
 export default async function ArtistPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const artist = await getArtistBySlug(slug);
   if (!artist) notFound();
 
+  // Same check the API route runs before accepting a write. Hiding the edit
+  // controls is presentation; the route is what actually protects the data.
+  const session = await auth();
+  const canEdit = await canEditArtist(slug, session?.user?.email);
+
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
-      <div className="flex flex-col items-center gap-6 text-center md:flex-row md:items-start md:text-left">
-        <div data-district={artist.district} className="sheen border-chrome flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-full">
-          {artist.photo ? (<img src={artist.photo} alt={artist.name} className="h-full w-full object-cover" />) : (<span className="text-4xl font-bold text-chrome">{initials(artist.name)}</span>)}
-        </div>
-        <div>
-          <span className="inline-flex border border-primary px-3 py-1 font-mono text-[10px] tracking-[0.3em] text-primary">{artist.genre}</span>
-          <h1 className="mt-4 text-4xl font-bold leading-[0.95] md:text-6xl">{artist.name}</h1>
-          <div className="mt-3 flex items-center justify-center gap-2 font-mono text-xs tracking-widest text-muted-foreground md:justify-start"><MapPin className="h-3 w-3" /> {artist.city}</div>
-        </div>
-      </div>
+      <EpkHeader artist={artist} canEdit={canEdit} />
 
-      <p className="mt-10 max-w-3xl font-mono text-sm leading-relaxed text-muted-foreground"><AutoTranslate text={artist.bio} /></p>
+      <EpkAbout artist={artist} canEdit={canEdit} />
 
       {artist.sets.length > 0 && (
         <div className="mt-14">

@@ -16,6 +16,23 @@ export type ContentMeta = {
   priorityAt: string | null;
 };
 
+/** The EPK's social row. Every key is optional — the profile grows with
+ *  the artist, and an empty platform is simply not rendered. */
+export const SOCIAL_PLATFORMS = [
+  "spotify",
+  "beatport",
+  "soundcloud",
+  "instagram",
+  "tiktok",
+  "youtube",
+  "shazam",
+  "appleMusic",
+  "web",
+] as const;
+
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+export type ArtistSocials = Partial<Record<SocialPlatform, string>>;
+
 export type Artist = ContentMeta & {
   slug: string;
   name: string;
@@ -27,6 +44,15 @@ export type Artist = ContentMeta & {
   joinedAt: string;
   sets: ArtistSet[];
   topTracks: ArtistTrack[];
+  /** EPK fields added in tanda 1. */
+  coverUrl?: string;
+  /** Public booking address, NOT the address the owner logs in with. */
+  contactEmail?: string;
+  /** Where they are from, as opposed to `city`, where they live now. */
+  origin?: string;
+  bpmMin?: number;
+  bpmMax?: number;
+  socials: ArtistSocials;
 };
 
 export type Track = ContentMeta & {
@@ -106,42 +132,41 @@ function mapMeta(r: Record<string, unknown>): ContentMeta {
   };
 }
 
+/** Single place the artists table is turned into an Artist, so the list
+ *  and the profile can never drift apart on which columns they read. */
+function mapArtist(r: Record<string, unknown>): Artist {
+  return {
+    ...mapMeta(r),
+    slug: r.slug as string,
+    name: r.name as string,
+    genre: r.genre as string,
+    district: r.district as DistrictId,
+    city: r.city as string,
+    photo: (r.photo as string) ?? undefined,
+    bio: r.bio as string,
+    joinedAt: toISODate(r.joined_at as string),
+    sets: (r.sets ?? []) as ArtistSet[],
+    topTracks: (r.top_tracks ?? []) as ArtistTrack[],
+    coverUrl: (r.cover_url as string) ?? undefined,
+    contactEmail: (r.contact_email as string) ?? undefined,
+    origin: (r.origin as string) ?? undefined,
+    bpmMin: r.bpm_min === null || r.bpm_min === undefined ? undefined : Number(r.bpm_min),
+    bpmMax: r.bpm_max === null || r.bpm_max === undefined ? undefined : Number(r.bpm_max),
+    socials: (r.socials ?? {}) as ArtistSocials,
+  };
+}
+
 export async function getAllArtists(opts: ReadOptions = {}): Promise<Artist[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM artists ORDER BY joined_at DESC`
     : await sql`SELECT * FROM artists WHERE status = 'published' ORDER BY joined_at DESC`;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    name: r.name,
-    genre: r.genre,
-    district: r.district as DistrictId,
-    city: r.city,
-    photo: r.photo ?? undefined,
-    bio: r.bio,
-    joinedAt: toISODate(r.joined_at),
-    sets: (r.sets ?? []) as ArtistSet[],
-    topTracks: (r.top_tracks ?? []) as ArtistTrack[],
-  }));
+  return rows.map(mapArtist);
 }
 
 export async function getArtistBySlug(slug: string): Promise<Artist | undefined> {
   const rows = await sql`SELECT * FROM artists WHERE slug = ${slug} AND status = 'published'`;
   if (rows.length === 0) return undefined;
-  const r = rows[0];
-  return {
-    ...mapMeta(r),
-    slug: r.slug,
-    name: r.name,
-    genre: r.genre,
-    district: r.district as DistrictId,
-    city: r.city,
-    photo: r.photo ?? undefined,
-    bio: r.bio,
-    joinedAt: toISODate(r.joined_at),
-    sets: (r.sets ?? []) as ArtistSet[],
-    topTracks: (r.top_tracks ?? []) as ArtistTrack[],
-  };
+  return mapArtist(rows[0]);
 }
 
 export async function getAllTracks(opts: ReadOptions = {}): Promise<Track[]> {

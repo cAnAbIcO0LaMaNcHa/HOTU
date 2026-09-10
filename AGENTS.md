@@ -94,6 +94,9 @@ HECHO (tanda 1) — tickets no tenía FK declaradas a orders/events. Ya están l
 Nota: más abajo, en el perfil de DJ, las secciones DJ SETS y TRACKS mencionaban tablas artist_recordings y artist_tracks. Queda sin efecto: mandan dj_sets y tracks.
 Ojo con user_profiles: ahora que es la tabla de cuentas, el login con Google tiene que hacer upsert de la fila en el primer ingreso. Si no, un usuario de Google se autentica pero revienta contra el FK de artist_likes al dar el primer like.
 Reglas técnicas del repo
+TODA ESCRITURA pasa por una ruta de API (/api/...). Nunca se escribe desde un componente. La app móvil va a usar esta misma base y necesita los mismos endpoints; un Server Action no le sirve, solo lo puede invocar el propio front de Next. Las LECTURAS desde server components están bien y siguen como están.
+La lógica de escritura vive en lib/*-write.ts (ya existe ese patrón: db-write, roles-write, tickets-write) y la ruta de API es la que la expone por HTTP. La ruta hace auth y validación; el lib hace el trabajo. Así el mismo lib sirve al sitio y a la app.
+Los Server Actions que ya existen se pueden dejar andando, pero no se escriben nuevos: lo nuevo va por /api.
 Nunca importar lib/db.ts en client components. Las utilidades puras (fechas, formato) van en lib/date-utils.ts. Ya hubo un bug por esto.
 Correr la migración ANTES de subir código que dependa de ella. El orden completo es: correrla en dev desde localhost, correrla una segunda vez para confirmar idempotencia, después en main, y recién ahí desplegar el código que la usa.
 Todo el contenido es district-aware.
