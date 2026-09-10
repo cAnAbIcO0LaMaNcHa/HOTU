@@ -50,7 +50,11 @@ export default async function SignInPage({
           Inicia sesión para continuar.
         </p>
 
-        {error === "credentials" && (
+        {/* Any error value, not just the one the server action sets. A
+            failed POST straight to /api/auth/callback/credentials comes
+            back as ?error=CredentialsSignin instead, and matching on a
+            single string silently swallowed the message on that path. */}
+        {error && (
           <p
             role="alert"
             className="mt-6 border border-primary/60 px-3 py-2 font-mono text-[11px] tracking-wider text-primary"
