@@ -26,11 +26,13 @@ const sql = neon(process.env.DATABASE_URL!);
  */
 export type ArtistProfilePatch = {
   name?: string;
+  role?: string;
   genre?: string;
   city?: string;
   origin?: string;
   bio?: string;
   contactEmail?: string | null;
+  contactPhone?: string | null;
   photo?: string | null;
   coverUrl?: string | null;
   bpmMin?: number | null;
@@ -61,11 +63,13 @@ export async function canEditArtist(slug: string, email?: string | null): Promis
 
 const MAX_LENGTHS: Record<string, number> = {
   name: 80,
+  role: 60,
   genre: 40,
   city: 80,
   origin: 80,
   bio: 4000,
   contactEmail: 160,
+  contactPhone: 40,
   photo: 2000,
   coverUrl: 2000,
 };
@@ -129,7 +133,7 @@ export async function updateArtistProfile(
   const required: Array<keyof ArtistProfilePatch> = ["name", "genre", "city", "bio"];
   const values: Record<string, string | number | null> = {};
 
-  for (const key of ["name", "genre", "city", "origin", "bio", "contactEmail"] as const) {
+  for (const key of ["name", "role", "genre", "city", "origin", "bio", "contactEmail", "contactPhone"] as const) {
     const cleaned = cleanText(patch[key]);
     if (cleaned === undefined) continue;
     if (cleaned === null && required.includes(key)) {
@@ -189,7 +193,9 @@ export async function updateArtistProfile(
       city          = COALESCE(${values.city ?? null}, city),
       bio           = COALESCE(${values.bio ?? null}, bio),
       origin        = CASE WHEN ${"origin" in values} THEN ${values.origin ?? null}::text ELSE origin END,
+      role          = CASE WHEN ${"role" in values} THEN ${values.role ?? null}::text ELSE role END,
       contact_email = CASE WHEN ${"contactEmail" in values} THEN ${values.contactEmail ?? null}::text ELSE contact_email END,
+      contact_phone = CASE WHEN ${"contactPhone" in values} THEN ${values.contactPhone ?? null}::text ELSE contact_phone END,
       photo         = CASE WHEN ${"photo" in values} THEN ${values.photo ?? null}::text ELSE photo END,
       cover_url     = CASE WHEN ${"coverUrl" in values} THEN ${values.coverUrl ?? null}::text ELSE cover_url END,
       bpm_min       = CASE WHEN ${"bpmMin" in values} THEN ${values.bpmMin ?? null}::smallint ELSE bpm_min END,

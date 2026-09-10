@@ -177,6 +177,72 @@ export async function GET(request: Request) {
     `;
     log.push("collective otu ready");
 
+    // --- EPK content for test-camila ------------------------------
+    // Only Camila gets sets, tracks and gigs. Pedro and Luna are left
+    // deliberately bare so the "empty section" behaviour has something to
+    // be tested against: a visitor should see no heading at all on their
+    // profiles, and their owner should see the prompt instead.
+    for (const s of [
+      { slug: "test-set-01", title: "OTU Warehouse · Closing Set", duration: "1H 45M", date: "2026-08-26" },
+      { slug: "test-set-02", title: "Sabana Sunrise", duration: "2H 10M", date: "2026-06-22" },
+    ]) {
+      await sql`
+        INSERT INTO dj_sets (slug, title, artist_name, artist_slug, district, duration, recorded_at, url, status)
+        VALUES (${s.slug}, ${s.title}, 'Camila Test', 'test-camila', 'D07',
+                ${s.duration}, ${s.date}::date, '#', 'published')
+        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, artist_slug = EXCLUDED.artist_slug
+      `;
+    }
+
+    for (const t of [
+      { slug: "test-track-01", title: "Frecuencia Cero", date: "2026-07-14" },
+      { slug: "test-track-02", title: "Ruido Blanco", date: "2026-04-02" },
+      { slug: "test-track-03", title: "Señal Perdida", date: "2026-01-20" },
+    ]) {
+      await sql`
+        INSERT INTO tracks (slug, title, artist_name, artist_slug, district, released_at, url, status)
+        VALUES (${t.slug}, ${t.title}, 'Camila Test', 'test-camila', 'D07',
+                ${t.date}::date, '#', 'published')
+        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, artist_slug = EXCLUDED.artist_slug
+      `;
+    }
+    log.push("dj_sets + tracks ready for test-camila");
+
+    // One gig off a HOTU lineup and one declared elsewhere, so the carousel
+    // shows both shapes and the CHECK on artist_gigs is exercised.
+    const gigs = [
+      {
+        eventId: EVENT_ID,
+        externalName: null,
+        venue: null,
+        city: null,
+        date: "2026-08-26",
+        source: "hotu" as const,
+      },
+      {
+        eventId: null,
+        externalName: "Bodega Norte · Aniversario",
+        venue: "Bodega Norte",
+        city: "Chía",
+        date: "2026-05-10",
+        source: "declarado" as const,
+      },
+    ];
+    for (const g of gigs) {
+      const existing = g.eventId
+        ? await sql`SELECT 1 FROM artist_gigs WHERE artist_slug = 'test-camila' AND event_id = ${g.eventId}`
+        : await sql`SELECT 1 FROM artist_gigs WHERE artist_slug = 'test-camila' AND external_name = ${g.externalName}`;
+      if (existing.length > 0) continue;
+      await sql`
+        INSERT INTO artist_gigs
+          (artist_slug, event_id, external_name, venue, city, gig_date, district, role, duration_minutes, source)
+        VALUES
+          ('test-camila', ${g.eventId}, ${g.externalName}, ${g.venue}, ${g.city},
+           ${g.date}::date, 'D07', 'Solo', 90, ${g.source})
+      `;
+    }
+    log.push("artist_gigs ready (1 hotu + 1 declarado)");
+
     // --- memberships ----------------------------------------------
     // The partial unique indexes make this naturally idempotent, but the
     // explicit guard keeps the re-run from raising instead of no-op'ing.

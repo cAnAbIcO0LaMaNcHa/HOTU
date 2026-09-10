@@ -88,6 +88,14 @@ export async function GET(request: Request) {
     await sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS owner_email TEXT`;
     await sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS contact_email TEXT`;
 
+    // The other two halves of the EPK header, added after the first pass:
+    // the line under the name ("DJ & Productor") and the public booking
+    // phone. contact_phone is NOT user_profiles.phone — that one is the
+    // account holder's private number, the same distinction owner_email and
+    // contact_email already make.
+    await sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS role TEXT`;
+    await sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS contact_phone TEXT`;
+
     // The code a buyer types at checkout to attribute the sale.
     await sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS dj_code TEXT`;
 

@@ -1,22 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Mail, Globe } from "lucide-react";
+import { MapPin, Mail, Phone, Globe } from "lucide-react";
 import { EpkEditableSection, Field } from "./epk-editable-section";
-import { SOCIAL_PLATFORMS, type Artist, type SocialPlatform } from "@/lib/db";
-
-/** Display names for the social row. Keys match lib/db's SOCIAL_PLATFORMS. */
-const SOCIAL_LABELS: Record<SocialPlatform, string> = {
-  spotify: "Spotify",
-  beatport: "Beatport",
-  soundcloud: "SoundCloud",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  shazam: "Shazam",
-  appleMusic: "Apple Music",
-  web: "Web",
-};
+import { SOCIAL_LABELS, SOCIAL_PLATFORMS } from "@/lib/socials";
+import type { Artist } from "@/lib/db";
 
 function initials(name: string) {
   return name
@@ -29,9 +17,11 @@ function initials(name: string) {
 
 export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolean }) {
   const [name, setName] = useState(artist.name);
+  const [role, setRole] = useState(artist.role ?? "");
   const [genre, setGenre] = useState(artist.genre);
   const [city, setCity] = useState(artist.city);
   const [contactEmail, setContactEmail] = useState(artist.contactEmail ?? "");
+  const [contactPhone, setContactPhone] = useState(artist.contactPhone ?? "");
   const [photo, setPhoto] = useState(artist.photo ?? "");
   const [coverUrl, setCoverUrl] = useState(artist.coverUrl ?? "");
   const [socials, setSocials] = useState<Record<string, string>>(() =>
@@ -47,9 +37,11 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
       title="la cabecera"
       buildPatch={() => ({
         name,
+        role: role.trim() === "" ? null : role,
         genre,
         city,
         contactEmail: contactEmail.trim() === "" ? null : contactEmail,
+        contactPhone: contactPhone.trim() === "" ? null : contactPhone,
         photo: photo.trim() === "" ? null : photo,
         coverUrl: coverUrl.trim() === "" ? null : coverUrl,
         socials,
@@ -57,6 +49,13 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
       form={(saving) => (
         <>
           <Field label="NOMBRE" value={name} onChange={setName} disabled={saving} />
+          <Field
+            label="ROL"
+            value={role}
+            onChange={setRole}
+            placeholder="DJ & Productor"
+            disabled={saving}
+          />
           <Field label="GÉNERO" value={genre} onChange={setGenre} disabled={saving} />
           <Field label="CIUDAD (DÓNDE VIVÍS)" value={city} onChange={setCity} disabled={saving} />
           <Field
@@ -65,6 +64,13 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
             value={contactEmail}
             onChange={setContactEmail}
             placeholder="booking@ejemplo.com"
+            disabled={saving}
+          />
+          <Field
+            label="TELÉFONO DE CONTACTO (PÚBLICO)"
+            value={contactPhone}
+            onChange={setContactPhone}
+            placeholder="+57 300 000 0000"
             disabled={saving}
           />
           <Field
@@ -130,6 +136,12 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
             </span>
             <h1 className="mt-4 text-4xl font-bold leading-[0.95] md:text-6xl">{artist.name}</h1>
 
+            {artist.role && (
+              <p className="mt-2 font-mono text-xs tracking-[0.2em] text-foreground/70">
+                {artist.role}
+              </p>
+            )}
+
             <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 font-mono text-xs tracking-widest text-muted-foreground md:justify-start">
               <span className="inline-flex items-center gap-2">
                 <MapPin className="h-3 w-3" /> {artist.city}
@@ -140,6 +152,14 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
                   className="inline-flex items-center gap-2 hover:text-primary"
                 >
                   <Mail className="h-3 w-3" /> {artist.contactEmail}
+                </a>
+              )}
+              {artist.contactPhone && (
+                <a
+                  href={`tel:${artist.contactPhone.replace(/[^+\d]/g, "")}`}
+                  className="inline-flex items-center gap-2 hover:text-primary"
+                >
+                  <Phone className="h-3 w-3" /> {artist.contactPhone}
                 </a>
               )}
             </div>

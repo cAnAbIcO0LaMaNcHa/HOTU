@@ -134,6 +134,48 @@ export function EpkEditableSection({
   );
 }
 
+/**
+ * A whole EPK section, applying the profile's growth rule: a section with
+ * nothing in it is not rendered at all for a visitor. The owner sees a
+ * prompt instead, because "there is nothing here yet" is useful to the
+ * person who can fix it and noise to everyone else. A DJ with three gigs
+ * must not be shown eight empty headings.
+ */
+export function EpkSection({
+  title,
+  isEmpty,
+  canEdit,
+  hint,
+  children,
+  action,
+}: {
+  title: string;
+  isEmpty: boolean;
+  canEdit: boolean;
+  /** What the owner is told to do when the section has no content yet. */
+  hint: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  if (isEmpty && !canEdit) return null;
+
+  return (
+    <div className="mt-14">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="text-2xl font-bold">{title}</h2>
+        {action}
+      </div>
+      {isEmpty ? (
+        <p className="mt-4 border border-dashed border-border px-4 py-6 font-mono text-xs leading-relaxed text-muted-foreground">
+          {hint}
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
 /** Labelled text input used by the EPK forms. */
 export function Field({
   label,
