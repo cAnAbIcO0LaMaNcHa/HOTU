@@ -17,26 +17,37 @@ dev — desarrollo. Es la que apunta el DATABASE_URL de .env.local en localhost.
 
 Orden obligatorio de toda migración: primero en dev desde localhost, verificar, y recién después en main. Nunca al revés.
 Toda migración tiene que ser idempotente: se corre dos veces seguidas y la segunda devuelve ok:true igual. Esa es la prueba de que se puede reaplicar en main sin romper nada.
-SCHEMA ACTUAL (18 tablas — post migración /api/setup-profiles, tanda 1)
+SCHEMA ACTUAL (18 tablas — post tanda 2, corrida en dev y en main)
+
+Migraciones aplicadas, en orden: /api/setup-profiles (tanda 1), /api/setup-epk-content (tanda 2 parte A), /api/setup-collective-memberships (tanda 2 parte B). Las tres son idempotentes y están corridas dos veces en las dos branches.
 
 Importante: las PKs NO son todas integer.
 
 Contenido editorial
 
-artists — PK es slug TEXT, no id. Campos: name, genre, district, city, photo, bio, joined_at, sets jsonb, top_tracks jsonb.
+artists — PK es slug TEXT, no id. Campos: name, genre, district, city, photo, bio, joined_at.
+  sets jsonb y top_tracks jsonb siguen existiendo pero están DEPRECADOS: nadie los lee ni los escribe, y no están en el tipo Artist. Eran placeholders del prototipo (las 28 entradas tenían url "#", sin fecha, sin distrito, sin slug). NO se migraron a dj_sets/tracks a propósito: copiarlos con fechas inventadas habría metido basura en las tablas buenas. Los DJs reales cargan lo suyo.
   Tanda 1 agregó: owner_email → user_profiles(email), contact_email, dj_code, bpm_min, bpm_max, origin, cover_url, socials jsonb, rider jsonb, show_sales_to_organizers.
   city = dónde vive. origin = de dónde es. Son distintos, no unificar.
   owner_email = la cuenta que puede editar el perfil. contact_email = el mail público del EPK. Tampoco son lo mismo.
   dj_code tiene índice único sobre upper(dj_code) — artists_dj_code_upper_idx. Se teclea a mano en el checkout, así que camila y CAMILA son el mismo código.
-collectives — PK es slug TEXT. Campos: name, type, sector, bio, artist_slugs jsonb, district.
+collectives — PK es slug TEXT. Campos: name, type, sector, bio, district.
   Tanda 1 agregó: owner_email → user_profiles(email), status_membership ('activo' | 'incompleto').
-  status_membership NO es status. status = visibilidad editorial (draft/published/archived). status_membership = si cumple el mínimo de 3 DJs con 2+ residentes y por lo tanto puede crear eventos.
+  status_membership NO es status. status = visibilidad editorial (draft/published/archived). status_membership = si cumple el mínimo de 3 DJs con 2+ residentes y por lo tanto puede crear eventos. Lo calcula recalcMembership() en lib/collectives-write.ts, que es el único lugar donde vive la regla.
+  artist_slugs jsonb sigue existiendo pero está DEPRECADO: no se lee ni se escribe, y no está en el tipo Collective. La fuente de verdad de las membresías es artist_collectives (ver abajo).
 events — PK id SERIAL. event_date, city, venue, title, lineup, district, flyer_url, end_at.
 dj_sets — PK slug TEXT. title, artist_name, artist_slug, district, duration, recorded_at, url.
+  Tanda 2 agregó: cover_url, sort_order, y el FK artist_slug → artists(slug) ON UPDATE CASCADE ON DELETE SET NULL. Más el índice dj_sets_artist_slug_idx.
 tracks — PK slug TEXT. title, artist_name, artist_slug, district, released_at, url.
+  Tanda 2 agregó: cover_url, label (sello), sort_order, y el mismo FK que dj_sets. Más tracks_artist_slug_idx.
+
 news — PK id SERIAL. tag, news_date, title, excerpt, district.
 
 Las 6 tablas editoriales (artists, collectives, events, dj_sets, tracks, news) comparten: scope, country_code, language, status, featured, priority_at.
+
+Sobre el FK de dj_sets/tracks: ON DELETE es SET NULL, no CASCADE. artist_slug es nullable y artist_name no, así que la fila sobrevive perdiendo el vínculo y sigue saliendo en /sets y /discografia bajo el nombre del artista. Borrar un artista no le borra la discografía al sitio: desvincular se revierte, borrar no.
+
+Sobre sort_order: NULL = sin posición manual. Los lectores ordenan por sort_order ASC NULLS LAST y después por fecha DESC, así el que nunca reordena nada sigue viendo lo más nuevo primero.
 
 Cuentas y perfiles
 
@@ -55,12 +66,17 @@ tickets — PK id SERIAL. ticket_code UNIQUE, order_id, order_item_id, user_emai
   Tanda 1 declaró los FK que faltaban: order_id→orders, order_item_id→order_items, event_id→events, los tres ON DELETE RESTRICT. Una boleta es prueba de un pago, nada de lo que depende se borra por debajo.
 merch_items — PK id SERIAL. slug UNIQUE, name, category, price_cop, image, active, collective_slug.
 
-Tablas nuevas de la tanda 1 — las cuatro arrancan en 0 filas
+Tablas creadas en la tanda 1
+
+(artist_collectives ya tiene datos desde la migración de tanda 2. Las otras tres siguen en 0 filas en producción hasta que arranque tanda 3.)
 
 artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('residente' | 'toca_con'), from_date, to_date, accepted_at, created_at.
+  ES LA FUENTE DE VERDAD DE LAS MEMBRESÍAS desde tanda 2. Nadie lee collectives.artist_slugs.
   to_date IS NULL = vínculo activo. El histórico es inmutable: se cierra con to_date, no se borra.
   Índice único parcial: un solo 'residente' activo por artista.
   Índice único parcial: no se puede repetir el mismo vínculo activo (artist_slug, collective_slug, kind).
+  Se lee con getCollectiveMembers() en lib/db.ts, que devuelve los vínculos activos agrupados por colectivo y con el nombre del artista ya resuelto. Se escribe SOLO por /api/collectives/[slug]/members (POST agrega, DELETE cierra), con la lógica en lib/collectives-write.ts.
+  Agregar a alguien como 'residente' verifica primero que no tenga residencia activa en otro lado y responde 409 nombrando el colectivo. El índice único lo rechazaría igual, pero una violación de constraint no es una respuesta.
 ticket_attributions — id SERIAL. ticket_id→tickets UNIQUE, seller_artist_slug→artists (NULL = venta de HOTU), seller_collective_slug→collectives, event_id→events, amount_cop, created_at.
   event_id y amount_cop están duplicados de tickets/order_items A PROPÓSITO: la fila es un snapshot congelado al momento de la venta.
   seller_collective_slug NUNCA se recalcula al consultar. Si un DJ cambia de colectivo, sus ventas viejas siguen contando para el colectivo viejo.
@@ -87,11 +103,22 @@ ON UPDATE CASCADE es obligatorio contra slug: son PKs de texto, y renombrar un s
 Postgres no tiene ADD CONSTRAINT IF NOT EXISTS. Los FK y CHECK que van por ALTER TABLE se envuelven en DO $$ ... EXCEPTION WHEN duplicate_object $$, si no la segunda corrida falla. Los que van inline dentro de CREATE TABLE IF NOT EXISTS ya son idempotentes solos.
 Decisiones que se derivan del schema real
 
-PENDIENTE (tanda 2) — NO crear artist_recordings ni artist_tracks. Ya existen dj_sets y tracks con artist_slug. Reusar esas. Lo que falta: FK real a artists(slug) y campos de orden manual, sello y portada.
-PENDIENTE (tanda 2) — Los jsonb artists.sets, artists.top_tracks y collectives.artist_slugs duplican datos que ya viven en tablas propias. Migrar a relaciones y dejar de escribir en los jsonb. artist_collectives ya reemplaza a collectives.artist_slugs; falta el corte de escritura.
+HECHO (tanda 2) — NO crear artist_recordings ni artist_tracks. Se reusaron dj_sets y tracks, con FK real a artists(slug) y los campos de orden manual, sello y portada.
+HECHO (tanda 2) — Los tres jsonb quedaron deprecados. collectives.artist_slugs se migró a artist_collectives; artists.sets y top_tracks NO se migraron (eran placeholders) y solo se dejó de escribirlos. Ninguna columna se borró: son la red por si hubiera que reintentar.
+PENDIENTE — Borrar las tres columnas jsonb. Es otra migración, en otro momento, después de que esto lleve un tiempo andando sin sorpresas. Hasta entonces se quedan congeladas con lo que tenían.
 EN CURSO (tanda 1) — user_profiles.cedula se deprecia. birth_date DATE ya existe. No borrar la columna de una: primero dejar de escribirla, después limpiarla.
 EN CURSO (tanda 1) — Ya hay next-auth con Google. Para las cuentas de prueba sin Google, agregar un Credentials provider (email + contraseña), no reemplazar el existente. Los dos conviven; user_profiles.auth_provider marca el origen de cada cuenta.
 HECHO (tanda 1) — tickets no tenía FK declaradas a orders/events. Ya están las tres.
+
+ESTADO DE PRODUCCIÓN AL CERRAR TANDA 2 — LEER ANTES DE TOCAR COLECTIVOS
+
+Los 6 colectivos de main quedaron en status_membership = 'incompleto', y eso es correcto, no un bug.
+
+La migración pasó las 11 membresías del jsonb como 'toca_con', porque el array plano de slugs nunca dijo quién era residente. "Residente de" es el vínculo que cuenta plata, así que inventar uno habría contaminado la atribución de ventas; un aliado que en realidad era residente es solo un ascenso pendiente.
+
+Consecuencia concreta: ningún colectivo de producción llega al mínimo de 3 DJs con 2+ residentes, o sea que NINGUNO PUEDE CREAR EVENTOS hasta que alguien marque residentes a mano desde /admin/colectivos, que ya tiene el editor de miembros.
+
+Eso es trabajo manual pendiente y es prerrequisito de tanda 3: la atribución de ventas congela el colectivo de residencia del vendedor en el momento de la venta, y si no hay residencias no hay sobre qué apoyarse.
 
 Nota: más abajo, en el perfil de DJ, las secciones DJ SETS y TRACKS mencionaban tablas artist_recordings y artist_tracks. Queda sin efecto: mandan dj_sets y tracks.
 Ojo con user_profiles: ahora que es la tabla de cuentas, el login con Google tiene que hacer upsert de la fila en el primer ingreso. Si no, un usuario de Google se autentica pero revienta contra el FK de artist_likes al dar el primer like.
@@ -146,7 +173,7 @@ Orden de secciones:
 Cabecera — foto de portada, avatar, nombre, rol ("DJ & Productor"), contacto (mail, teléfono), fila de links sociales con ícono por plataforma (Spotify, Beatport, SoundCloud, Instagram, TikTok, YouTube, Shazam, Apple Music, web).
 Sobre mí — origen, rango de BPM, géneros/distritos, biografía.
 DJ SETS — grabaciones de sets. Barras horizontales con play + forma de onda. "MORE..." abajo a la izquierda. Tabla dj_sets.
-TRACKS — producciones propias. Cuadrados en fila con portada, sello y fecha. "MORE →" al final de la fila. Tabla tracks. DJ SETS y TRACKS van SEPARADOS, no en tabs.
+TRACKS — producciones propias. Cuadrados en fila con portada, sello y fecha. "MORE →" al final de la fila. Tabla tracks. DJ SETS y TRACKS van SEPARADOS, no en tabs. Portada y sello ya existen desde tanda 2 (cover_url, label); sin portada cae a un placeholder con el tinte del distrito.
 EVENTS — carrusel horizontal de flyers, cada uno linkea al evento. Resumen debajo: "20 EVENTOS, 10 EN 2026".
 STATS — público. Promedio de asistentes, tabla de asistentes por fiesta, horas tocadas.
 Galería — fotos en alta para que el organizador arme flyers.
@@ -226,7 +253,13 @@ NUEVA ticket_attributions: ticket_id, seller_artist_slug (nullable = HOTU), sell
 NUEVA artist_gigs: artist_slug, event_id (nullable), external_name, flyer_url, venue, city, gig_date, district, role, b2b_with, duration_minutes, source ('hotu' | 'declarado')
 NUEVA artist_likes: artist_slug, user_email, created_at
 
-Después: Credentials provider en next-auth, perfiles editables, y seed de prueba (artista, colectivo OTU, usuario) con datos ficticios seguros. 2. EPK — recordings, tracks, eventos con flyer, resumen anual. 3. Atribución — códigos, link pre-llenado, campo manual, residencia congelada. 4. Stats y panel de colectivo — asistentes por fiesta, promedio, horas. 5. Wraps — DJ, colectivo, usuario.
+TANDA 1 — CERRADA. Migración, Credentials provider conviviendo con Google, upsert de user_profiles en el primer login, perfiles editables en sitio (cabecera y "Sobre mí"), subida de imágenes a Vercel Blob con redimensionado en el navegador, y seed de prueba.
+
+TANDA 2 — CERRADA. Parte A: cover_url, label y sort_order en tracks/dj_sets, los FK a artists(slug), las secciones DJ SETS / TRACKS / EVENTS del EPK, y POST/PATCH/DELETE por fila. Parte B: membresías migradas a artist_collectives, jsonb deprecados, editor de miembros en el admin.
+
+TANDA 3 — SIGUIENTE. Atribución: códigos de DJ, link pre-llenado por WhatsApp, campo manual en el checkout, y el colectivo de residencia congelado en el momento de la venta. Requisito previo: marcar residentes a mano en producción (ver ESTADO DE PRODUCCIÓN más arriba).
+
+Después: 4. Stats y panel de colectivo — asistentes por fiesta, promedio, horas. 5. Wraps — DJ, colectivo, usuario.
 
 Al terminar cada tanda, avisar qué sigue y esperar confirmación.
 
