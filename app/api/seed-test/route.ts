@@ -34,6 +34,14 @@ const EVENT_ID = 4;
 /** Simple on purpose — these are throwaway local accounts. */
 const TEST_PASSWORD = "test1234";
 
+/**
+ * Artwork for the fixture's cover columns. A real object in the project's
+ * public blob store, uploaded through /api/upload, so the seed does not
+ * depend on any third-party host staying up.
+ */
+const FIXTURE_COVER_URL =
+  "https://v8xxoqrs7taeo7mv.public.blob.vercel-storage.com/artists/test-camila/track-cover-61Q2qvTj9UUgM9ZNXJle69uAdLpwRP";
+
 const ACCOUNTS = [
   { email: "artista@test.hotu.local", name: "Camila Test", phone: "+57 300 000 0001" },
   { email: "colectivo@test.hotu.local", name: "OTU Test", phone: "+57 300 000 0002" },
@@ -182,31 +190,91 @@ export async function GET(request: Request) {
     // deliberately bare so the "empty section" behaviour has something to
     // be tested against: a visitor should see no heading at all on their
     // profiles, and their owner should see the prompt instead.
+    // Covers, label and manual order are part of the fixture rather than
+    // values typed in by hand, so tanda 2's columns survive a re-run and
+    // anyone picking the project up sees them populated.
+    //
+    // The cover is a real file already in the blob store, uploaded through
+    // /api/upload. If it is ever deleted from the store the seed will
+    // still write the URL and the square will render empty — the column is
+    // exercised either way, and pointing at an external host would put a
+    // fixture at the mercy of somebody else's uptime.
     for (const s of [
-      { slug: "test-set-01", title: "OTU Warehouse · Closing Set", duration: "1H 45M", date: "2026-08-26" },
-      { slug: "test-set-02", title: "Sabana Sunrise", duration: "2H 10M", date: "2026-06-22" },
+      {
+        slug: "test-set-01",
+        title: "OTU Warehouse · Closing Set",
+        duration: "1H 45M",
+        date: "2026-08-26",
+        cover: FIXTURE_COVER_URL,
+        sortOrder: null,
+      },
+      {
+        slug: "test-set-02",
+        title: "Sabana Sunrise",
+        duration: "2H 10M",
+        date: "2026-06-22",
+        cover: null,
+        sortOrder: null,
+      },
     ]) {
       await sql`
-        INSERT INTO dj_sets (slug, title, artist_name, artist_slug, district, duration, recorded_at, url, status)
+        INSERT INTO dj_sets
+          (slug, title, artist_name, artist_slug, district, duration, recorded_at, url, status, cover_url, sort_order)
         VALUES (${s.slug}, ${s.title}, 'Camila Test', 'test-camila', 'D07',
-                ${s.duration}, ${s.date}::date, '#', 'published')
-        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, artist_slug = EXCLUDED.artist_slug
+                ${s.duration}, ${s.date}::date, '#', 'published', ${s.cover}, ${s.sortOrder})
+        ON CONFLICT (slug) DO UPDATE SET
+          title       = EXCLUDED.title,
+          artist_slug = EXCLUDED.artist_slug,
+          duration    = EXCLUDED.duration,
+          cover_url   = EXCLUDED.cover_url,
+          sort_order  = EXCLUDED.sort_order
       `;
     }
 
+    // test-track-03 carries sort_order 0 on purpose: it is the OLDEST of
+    // the three, so if manual ordering works it appears first, and if it
+    // silently stops working it drops to last. A middle position would
+    // hide the regression.
     for (const t of [
-      { slug: "test-track-01", title: "Frecuencia Cero", date: "2026-07-14" },
-      { slug: "test-track-02", title: "Ruido Blanco", date: "2026-04-02" },
-      { slug: "test-track-03", title: "Señal Perdida", date: "2026-01-20" },
+      {
+        slug: "test-track-01",
+        title: "Frecuencia Cero",
+        date: "2026-07-14",
+        cover: FIXTURE_COVER_URL,
+        label: "Sello Prueba",
+        sortOrder: null,
+      },
+      {
+        slug: "test-track-02",
+        title: "Ruido Blanco",
+        date: "2026-04-02",
+        cover: null,
+        label: null,
+        sortOrder: null,
+      },
+      {
+        slug: "test-track-03",
+        title: "Señal Perdida",
+        date: "2026-01-20",
+        cover: null,
+        label: null,
+        sortOrder: 0,
+      },
     ]) {
       await sql`
-        INSERT INTO tracks (slug, title, artist_name, artist_slug, district, released_at, url, status)
+        INSERT INTO tracks
+          (slug, title, artist_name, artist_slug, district, released_at, url, status, cover_url, label, sort_order)
         VALUES (${t.slug}, ${t.title}, 'Camila Test', 'test-camila', 'D07',
-                ${t.date}::date, '#', 'published')
-        ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, artist_slug = EXCLUDED.artist_slug
+                ${t.date}::date, '#', 'published', ${t.cover}, ${t.label}, ${t.sortOrder})
+        ON CONFLICT (slug) DO UPDATE SET
+          title       = EXCLUDED.title,
+          artist_slug = EXCLUDED.artist_slug,
+          cover_url   = EXCLUDED.cover_url,
+          label       = EXCLUDED.label,
+          sort_order  = EXCLUDED.sort_order
       `;
     }
-    log.push("dj_sets + tracks ready for test-camila");
+    log.push("dj_sets + tracks ready for test-camila (con portada, sello y orden)");
 
     // One gig off a HOTU lineup and one declared elsewhere, so the carousel
     // shows both shapes and the CHECK on artist_gigs is exercised.
