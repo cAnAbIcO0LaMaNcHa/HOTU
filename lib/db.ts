@@ -3,8 +3,14 @@ import type { DistrictId } from "./districts";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-export type ArtistSet = { title: string; url: string; duration?: string };
-export type ArtistTrack = { title: string; url: string };
+/**
+ * artists.sets, artists.top_tracks and collectives.artist_slugs are NOT
+ * mapped here any more. They were prototype placeholders (every url was
+ * "#") that duplicated data now living in dj_sets, tracks and
+ * artist_collectives, and nothing renders them. The columns still exist as
+ * a fallback, but keeping them on the types would invite somebody to start
+ * reading them again by accident.
+ */
 
 /** Shared editorial fields every content entity now carries. */
 export type ContentMeta = {
@@ -43,8 +49,6 @@ export type Artist = ContentMeta & {
   photo?: string;
   bio: string;
   joinedAt: string;
-  sets: ArtistSet[];
-  topTracks: ArtistTrack[];
   /** EPK fields added in tanda 1. */
   coverUrl?: string;
   /** The line under the name in the header, e.g. "DJ & Productor". */
@@ -94,8 +98,14 @@ export type Collective = ContentMeta & {
   type: "HOTU" | "LOCAL";
   sector: string;
   bio: string;
-  artistSlugs: string[];
   district: DistrictId;
+  /**
+   * Whether the collective still meets the 3-DJs/2-residents minimum and
+   * may therefore publish events. NOT the same axis as `status`, which is
+   * editorial visibility. Derived from artist_collectives and kept in sync
+   * by recalcMembership in lib/collectives-write.ts.
+   */
+  statusMembership: "activo" | "incompleto";
 };
 
 export type EventItem = ContentMeta & {
@@ -157,8 +167,6 @@ function mapArtist(r: Record<string, unknown>): Artist {
     photo: (r.photo as string) ?? undefined,
     bio: r.bio as string,
     joinedAt: toISODate(r.joined_at as string),
-    sets: (r.sets ?? []) as ArtistSet[],
-    topTracks: (r.top_tracks ?? []) as ArtistTrack[],
     coverUrl: (r.cover_url as string) ?? undefined,
     role: (r.role as string) ?? undefined,
     contactEmail: (r.contact_email as string) ?? undefined,
@@ -331,9 +339,53 @@ export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collect
     type: r.type as "HOTU" | "LOCAL",
     sector: r.sector,
     bio: r.bio,
-    artistSlugs: (r.artist_slugs ?? []) as string[],
     district: r.district as DistrictId,
+    statusMembership: (r.status_membership as "activo" | "incompleto") ?? "incompleto",
   }));
+}
+
+/** One active membership, with the artist's display name resolved. */
+export type CollectiveMember = {
+  collectiveSlug: string;
+  artistSlug: string;
+  artistName: string;
+  kind: "residente" | "toca_con";
+  fromDate: string;
+};
+
+/**
+ * Active memberships for every collective, grouped by collective slug.
+ *
+ * This replaces reading collectives.artist_slugs. One query for the whole
+ * page rather than one per collective, and it joins artists so the caller
+ * does not have to hold a second lookup table just to print names.
+ *
+ * Residents first, then allies, each alphabetically — a stable order that
+ * does not shuffle as rows are added.
+ */
+export async function getCollectiveMembers(): Promise<Map<string, CollectiveMember[]>> {
+  const rows = await sql`
+    SELECT ac.collective_slug, ac.artist_slug, ac.kind, ac.from_date, a.name AS artist_name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    WHERE ac.to_date IS NULL
+    ORDER BY ac.collective_slug,
+             CASE ac.kind WHEN 'residente' THEN 0 ELSE 1 END,
+             a.name
+  `;
+  const byCollective = new Map<string, CollectiveMember[]>();
+  for (const r of rows) {
+    const slug = r.collective_slug as string;
+    if (!byCollective.has(slug)) byCollective.set(slug, []);
+    byCollective.get(slug)!.push({
+      collectiveSlug: slug,
+      artistSlug: r.artist_slug as string,
+      artistName: r.artist_name as string,
+      kind: r.kind as "residente" | "toca_con",
+      fromDate: toISODate(r.from_date as string),
+    });
+  }
+  return byCollective;
 }
 
 export async function getCollectivesBySector(): Promise<Map<string, Collective[]>> {

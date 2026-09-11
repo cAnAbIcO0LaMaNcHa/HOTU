@@ -42,11 +42,16 @@ export async function GET(request: Request) {
   const log: string[] = [];
 
   try {
+    // sets and top_tracks are no longer written. They were prototype
+    // placeholders — every url was "#" — duplicating what dj_sets and
+    // tracks hold properly, with a date, a district and a slug. The
+    // legacy arrays still carry them; this route just stops copying them
+    // in. The columns stay in the table, frozen.
     for (const a of ARTISTS) {
       await sql`
-        INSERT INTO artists (slug, name, genre, district, city, photo, bio, joined_at, sets, top_tracks)
+        INSERT INTO artists (slug, name, genre, district, city, photo, bio, joined_at)
         VALUES (${a.slug}, ${a.name}, ${a.genre}, ${a.district}, ${a.city}, ${a.photo ?? null},
-                ${a.bio}, ${a.joinedAt}, ${JSON.stringify(a.sets ?? [])}, ${JSON.stringify(a.topTracks ?? [])})
+                ${a.bio}, ${a.joinedAt})
         ON CONFLICT (slug) DO NOTHING
       `;
     }
@@ -72,10 +77,12 @@ export async function GET(request: Request) {
     }
     log.push(`dj_sets: ${SETS.length} processed`);
 
+    // artist_slugs likewise: membership is rows in artist_collectives now,
+    // carrying a kind and a date range that a flat slug array cannot.
     for (const c of COLLECTIVES) {
       await sql`
-        INSERT INTO collectives (slug, name, type, sector, bio, artist_slugs)
-        VALUES (${c.slug}, ${c.name}, ${c.type}, ${c.sector}, ${c.bio}, ${JSON.stringify(c.artistSlugs ?? [])})
+        INSERT INTO collectives (slug, name, type, sector, bio)
+        VALUES (${c.slug}, ${c.name}, ${c.type}, ${c.sector}, ${c.bio})
         ON CONFLICT (slug) DO NOTHING
       `;
     }

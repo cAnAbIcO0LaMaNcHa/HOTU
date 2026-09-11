@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import crypto from "node:crypto";
 import { hashPassword } from "@/lib/accounts";
+import { recalcMembership } from "@/lib/collectives-write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -330,24 +331,11 @@ export async function GET(request: Request) {
     log.push("artist_collectives ready (2 residentes + 1 aliado)");
 
     // --- recalculate status_membership ----------------------------
-    // The rule, applied rather than assumed: 3+ DJs of whom 2+ are
-    // residents. Counted DISTINCT because one artist could hold both an
-    // active 'residente' and an active 'toca_con' row and must not count
-    // twice toward the minimum.
-    const [counts] = await sql`
-      SELECT
-        COUNT(DISTINCT artist_slug)::int AS djs,
-        COUNT(DISTINCT artist_slug) FILTER (WHERE kind = 'residente')::int AS residentes
-      FROM artist_collectives
-      WHERE collective_slug = 'otu' AND to_date IS NULL
-    `;
-    const membership = counts.djs >= 3 && counts.residentes >= 2 ? "activo" : "incompleto";
-    await sql`
-      UPDATE collectives SET status_membership = ${membership} WHERE slug = 'otu'
-    `;
-    log.push(
-      `otu recalculated: ${counts.djs} DJs / ${counts.residentes} residentes -> ${membership}`
-    );
+    // The rule lives in lib/collectives-write.ts now. It used to be copied
+    // out here, and the moment the membership endpoint and the jsonb
+    // migration needed it too, three copies would have drifted apart.
+    const membership = await recalcMembership("otu");
+    log.push(`otu recalculated -> ${membership}`);
 
     // --- sales ----------------------------------------------------
     // payment_ref is the idempotency key: a seeded order is created once

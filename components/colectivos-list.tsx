@@ -1,14 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import type { Collective, Artist } from "@/lib/db";
+import type { Collective, CollectiveMember } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
 
-export function ColectivosList({ collectives: all, artists }: { collectives: Collective[]; artists: Artist[] }) {
+/**
+ * Members now come from artist_collectives rather than the artist_slugs
+ * jsonb, passed in already grouped and name-resolved so this component
+ * does not need the whole artist catalogue just to print a few names.
+ *
+ * The residente/toca_con distinction is deliberately NOT shown yet. The
+ * migration landed every pre-existing link as 'toca_con' because the jsonb
+ * never recorded residency, so surfacing it today would tell every visitor
+ * that no collective has a single resident. It goes in once residencies
+ * are actually set.
+ */
+export function ColectivosList({
+  collectives: all,
+  members,
+}: {
+  collectives: Collective[];
+  members: Record<string, CollectiveMember[]>;
+}) {
   const { selected } = useDistrictFilter();
   const sorted = sortByDistrict(all, selected);
-  const artistBySlug = new Map(artists.map((a) => [a.slug, a]));
 
   // Group by sector, keeping the district-sorted order within each group.
   const bySector = new Map<string, Collective[]>();
@@ -26,9 +42,7 @@ export function ColectivosList({ collectives: all, artists }: { collectives: Col
           </h2>
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             {group.map((c) => {
-              const members = c.artistSlugs
-                .map((s) => artistBySlug.get(s))
-                .filter((a): a is Artist => Boolean(a));
+              const roster = members[c.slug] ?? [];
               const badge = c.type === "HOTU" ? "border-primary text-primary" : "border-muted-foreground text-muted-foreground";
               return (
                 <article key={c.slug} className="border border-border bg-card p-6">
@@ -41,19 +55,19 @@ export function ColectivosList({ collectives: all, artists }: { collectives: Col
                   <p className="mt-3 font-mono text-xs leading-relaxed text-muted-foreground">
                     <AutoTranslate text={c.bio} />
                   </p>
-                  {members.length > 0 && (
+                  {roster.length > 0 && (
                     <div className="mt-4">
                       <div className="font-mono text-[9px] tracking-widest text-primary">
                         <AutoTranslate text="ARTISTAS DE LA MARCA" />
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {members.map((a) => (
+                        {roster.map((m) => (
                           <Link
-                            key={a.slug}
-                            href={`/artistas/${a.slug}`}
+                            key={m.artistSlug}
+                            href={`/artistas/${m.artistSlug}`}
                             className="border border-border px-2 py-1 font-mono text-[10px] tracking-widest hover:border-primary hover:text-primary"
                           >
-                            <AutoTranslate text={a.name} />
+                            <AutoTranslate text={m.artistName} />
                           </Link>
                         ))}
                       </div>

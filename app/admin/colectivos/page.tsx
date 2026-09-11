@@ -1,7 +1,8 @@
-import { getAllCollectives } from "@/lib/db";
+import { getAllArtists, getAllCollectives, getCollectiveMembers } from "@/lib/db";
 import { COUNTRY_CODES } from "@/lib/roles";
 import { DISTRICTS } from "@/lib/districts";
 import { createCollective, updateCollective, deleteCollective } from "@/lib/db-write";
+import { CollectiveMembersEditor } from "@/components/collective-members-editor";
 
 export const revalidate = 0;
 
@@ -49,7 +50,12 @@ function MetaFields({ c }: { c?: { scope: string; countryCode: string; language:
 }
 
 export default async function AdminColectivos() {
-  const collectives = await getAllCollectives({ includeAll: true });
+  const [collectives, members, artists] = await Promise.all([
+    getAllCollectives({ includeAll: true }),
+    getCollectiveMembers(),
+    getAllArtists({ includeAll: true }),
+  ]);
+  const artistOptions = artists.map((a) => ({ slug: a.slug, name: a.name }));
 
   return (
     <div className="space-y-12">
@@ -62,7 +68,9 @@ export default async function AdminColectivos() {
           <label className="block"><span className={labelCls}>SECTOR</span><input type="text" name="sector" required placeholder="Producción, promotoras, etc." className={inputCls} /></label>
           <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
           <label className="block sm:col-span-2"><span className={labelCls}>BIO</span><textarea name="bio" required rows={3} className={inputCls} /></label>
-          <label className="block sm:col-span-2"><span className={labelCls}>ARTISTAS (slugs separados por coma)</span><input type="text" name="artistSlugs" placeholder="nina-acid, subsuelo-x" className={inputCls} /></label>
+          {/* Members are not set at creation any more: a membership is a
+              row with a kind, and the collective has to exist before it can
+              own one. They are added below, on the collective's own card. */}
           <MetaFields />
           <button type="submit" className="sm:col-span-2 px-6 py-3 font-mono text-xs tracking-widest surface-chrome">CREAR COLECTIVO</button>
         </form>
@@ -87,10 +95,21 @@ export default async function AdminColectivos() {
                 <label className="block"><span className={labelCls}>SECTOR</span><input type="text" name="sector" defaultValue={c.sector} required className={inputCls} /></label>
                 <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" defaultValue={c.district} required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>BIO</span><textarea name="bio" defaultValue={c.bio} required rows={3} className={inputCls} /></label>
-                <label className="block sm:col-span-2"><span className={labelCls}>ARTISTAS (slugs separados por coma)</span><input type="text" name="artistSlugs" defaultValue={c.artistSlugs.join(", ")} className={inputCls} /></label>
                 <MetaFields c={c} />
                 <button type="submit" className="border border-primary px-4 py-2 font-mono text-xs tracking-widest text-primary sm:col-span-2">GUARDAR CAMBIOS</button>
               </form>
+
+              {/* Outside the form on purpose: membership writes go straight
+                  to /api/collectives/[slug]/members and must not be swept
+                  up by the collective's own submit. */}
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <CollectiveMembersEditor
+                  collectiveSlug={c.slug}
+                  members={members.get(c.slug) ?? []}
+                  artists={artistOptions}
+                  statusMembership={c.statusMembership}
+                />
+              </div>
               <form action={deleteCollective} className="mt-3">
                 <input type="hidden" name="slug" value={c.slug} />
                 <button type="submit" className="border border-red-400/50 px-4 py-2 font-mono text-xs tracking-widest text-red-400 hover:border-red-400">BORRAR</button>

@@ -154,21 +154,24 @@ export async function deleteNews(formData: FormData): Promise<void> {
   refreshAll();
 }
 
-/** Comma-separated slugs like "nina-acid, subsuelo-x" -> ["nina-acid", "subsuelo-x"]. */
-function readArtistSlugs(formData: FormData): string[] {
-  return String(formData.get("artistSlugs") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
+/**
+ * collectives.artist_slugs is NO LONGER WRITTEN here.
+ *
+ * Membership lives in artist_collectives, where a link carries a kind
+ * (residente / toca_con) and a date range — neither of which a
+ * comma-separated list of slugs can express, and the kind is what sales
+ * attribution rests on. Members are managed through
+ * /api/collectives/[slug]/members.
+ *
+ * The column itself is left in place as a fallback until the migration has
+ * been running for a while; it is simply frozen at whatever it last held.
+ */
 export async function createCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
-  const artistSlugs = readArtistSlugs(formData);
   await sql`
-    INSERT INTO collectives (slug, name, type, sector, bio, artist_slugs, district, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("slug"))}, ${String(formData.get("name"))}, ${String(formData.get("type"))}, ${String(formData.get("sector"))}, ${String(formData.get("bio"))}, ${JSON.stringify(artistSlugs)}, ${String(formData.get("district"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO collectives (slug, name, type, sector, bio, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("slug"))}, ${String(formData.get("name"))}, ${String(formData.get("type"))}, ${String(formData.get("sector"))}, ${String(formData.get("bio"))}, ${String(formData.get("district"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
   `;
   refreshAll();
 }
@@ -176,14 +179,12 @@ export async function createCollective(formData: FormData): Promise<void> {
 export async function updateCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
-  const artistSlugs = readArtistSlugs(formData);
   await sql`
     UPDATE collectives SET
       name = ${String(formData.get("name"))},
       type = ${String(formData.get("type"))},
       sector = ${String(formData.get("sector"))},
       bio = ${String(formData.get("bio"))},
-      artist_slugs = ${JSON.stringify(artistSlugs)},
       district = ${String(formData.get("district"))},
       scope = ${m.scope},
       country_code = ${m.countryCode},

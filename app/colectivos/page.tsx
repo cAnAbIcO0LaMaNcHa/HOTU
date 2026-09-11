@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ColectivosList } from "@/components/colectivos-list";
 import { DistrictFilterButton } from "@/components/district-filter-button";
-import { getAllCollectives, getAllArtists } from "@/lib/db";
+import { getAllCollectives, getCollectiveMembers } from "@/lib/db";
 
 export const revalidate = 0;
 
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ColectivosPage() {
-  const [collectives, artists] = await Promise.all([getAllCollectives(), getAllArtists()]);
+  const [collectives, members] = await Promise.all([getAllCollectives(), getCollectiveMembers()]);
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
@@ -24,7 +24,9 @@ export default async function ColectivosPage() {
         <AutoTranslate text="Organizados por sector. BY HOTU son colectivos propios de la marca — LOCAL son crews independientes." />
       </p>
 
-      <ColectivosList collectives={collectives} artists={artists} />
+      {/* A Map cannot cross the server/client boundary, so it is handed
+          over as a plain object. */}
+      <ColectivosList collectives={collectives} members={Object.fromEntries(members)} />
     </section>
   );
 }
