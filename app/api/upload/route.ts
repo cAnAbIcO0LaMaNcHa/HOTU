@@ -26,7 +26,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS = ["avatar", "cover"] as const;
+/**
+ * "track-cover" covers artwork for both TRACKS and DJ SETS rows — one
+ * budget, one folder, since both render at the same square size.
+ */
+const KINDS = ["avatar", "cover", "track-cover"] as const;
 type Kind = (typeof KINDS)[number];
 
 export async function POST(request: Request) {

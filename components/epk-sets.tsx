@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Play } from "lucide-react";
-import { EpkSection } from "./epk-editable-section";
+import { EpkSection, Field } from "./epk-editable-section";
+import { EpkRowEditor } from "./epk-row-editor";
 import type { DjSet } from "@/lib/db";
 
 const VISIBLE = 4;
@@ -33,9 +34,11 @@ function waveform(seed: string, bars = 40): number[] {
 export function EpkSets({
   sets,
   canEdit,
+  artistSlug,
 }: {
   sets: DjSet[];
   canEdit: boolean;
+  artistSlug: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? sets : sets.slice(0, VISIBLE);
@@ -49,36 +52,74 @@ export function EpkSets({
     >
       <div className="mt-6 space-y-3">
         {shown.map((s) => (
-          <a
-            key={s.slug}
-            href={s.url}
-            className="sheen border-chrome flex items-center gap-4 p-4 transition-colors hover:border-primary"
-          >
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Play className="h-4 w-4 translate-x-0.5" />
-            </span>
-
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-bold">{s.title}</span>
-              <span className="mt-1 block font-mono text-[10px] tracking-widest text-muted-foreground">
-                {s.duration}
-                {s.recordedAt ? ` · ${s.recordedAt.slice(0, 10)}` : ""}
-              </span>
-            </span>
-
-            <span
-              aria-hidden
-              className="hidden h-10 shrink-0 items-end gap-[2px] md:flex"
+          <div key={s.slug}>
+            <a
+              href={s.url}
+              className="sheen border-chrome flex items-center gap-4 p-4 transition-colors hover:border-primary"
             >
-              {waveform(s.slug).map((height, i) => (
-                <span
-                  key={i}
-                  style={{ height: `${height}%` }}
-                  className="w-[3px] bg-foreground/25"
-                />
-              ))}
-            </span>
-          </a>
+              {/* The cover replaces the play circle when there is one — a
+                  set with artwork should show it, and one without still
+                  needs an obvious play affordance. */}
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground">
+                {s.coverUrl ? (
+                  <img
+                    src={s.coverUrl}
+                    alt={`Portada de ${s.title}`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Play className="h-4 w-4 translate-x-0.5" />
+                )}
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-bold">{s.title}</span>
+                <span className="mt-1 block font-mono text-[10px] tracking-widest text-muted-foreground">
+                  {s.duration}
+                  {s.recordedAt ? ` · ${s.recordedAt.slice(0, 10)}` : ""}
+                </span>
+              </span>
+
+              <span
+                aria-hidden
+                className="hidden h-10 shrink-0 items-end gap-[2px] md:flex"
+              >
+                {waveform(s.slug).map((height, i) => (
+                  <span
+                    key={i}
+                    style={{ height: `${height}%` }}
+                    className="w-[3px] bg-foreground/25"
+                  />
+                ))}
+              </span>
+            </a>
+
+            {canEdit && (
+              <EpkRowEditor
+                artistSlug={artistSlug}
+                collection="sets"
+                rowSlug={s.slug}
+                title={s.title}
+                initial={{
+                  title: s.title,
+                  date: s.recordedAt.slice(0, 10),
+                  url: s.url === "#" ? "" : s.url,
+                  coverUrl: s.coverUrl ?? "",
+                  duration: s.duration ?? "",
+                  sortOrder: s.sortOrder?.toString() ?? "",
+                }}
+                extra={(disabled, values, set) => (
+                  <Field
+                    label="DURACIÓN"
+                    value={values.duration ?? ""}
+                    onChange={(v) => set("duration", v)}
+                    placeholder="1H 45M"
+                    disabled={disabled}
+                  />
+                )}
+              />
+            )}
+          </div>
         ))}
       </div>
 

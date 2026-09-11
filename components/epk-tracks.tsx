@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Disc3 } from "lucide-react";
-import { EpkSection } from "./epk-editable-section";
+import { EpkSection, Field } from "./epk-editable-section";
+import { EpkRowEditor } from "./epk-row-editor";
 import { formatShortDate } from "@/lib/date-utils";
 import type { Track } from "@/lib/db";
 
@@ -11,17 +12,21 @@ const VISIBLE = 5;
 /**
  * TRACKS — the artist's own productions, as squares in a row.
  *
- * The spec also asks for a cover image and a label per track. Neither
- * column exists on `tracks` yet (AGENTS.md lists them as pending for tanda
- * 2, along with the manual ordering field), so each square falls back to a
- * district-tinted placeholder and shows only the release date for now.
+ * Cover art, label and release date, which is what the sketch asked for
+ * and the schema could not carry until tanda 2 added the columns. A track
+ * with no cover falls back to a district-tinted placeholder rather than a
+ * broken image, because the profile grows with the artist.
+ *
+ * Separate from DJ SETS on purpose: two sections, never tabs.
  */
 export function EpkTracks({
   tracks,
   canEdit,
+  artistSlug,
 }: {
   tracks: Track[];
   canEdit: boolean;
+  artistSlug: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? tracks : tracks.slice(0, VISIBLE);
@@ -35,22 +40,59 @@ export function EpkTracks({
     >
       <div className="mt-6 flex gap-4 overflow-x-auto pb-2">
         {shown.map((t) => (
-          <a
-            key={t.slug}
-            href={t.url}
-            className="group w-40 shrink-0"
-          >
-            <span
-              data-district={t.district}
-              className="sheen border-chrome flex aspect-square w-full items-center justify-center overflow-hidden transition-colors group-hover:border-primary"
-            >
-              <Disc3 className="h-10 w-10 text-chrome" />
-            </span>
-            <span className="mt-2 block truncate text-sm font-bold">{t.title}</span>
-            <span className="block font-mono text-[10px] tracking-widest text-muted-foreground">
-              {formatShortDate(t.releasedAt)}
-            </span>
-          </a>
+          <div key={t.slug} className="w-44 shrink-0">
+            <a href={t.url} className="group block">
+              <span
+                data-district={t.district}
+                className="sheen border-chrome flex aspect-square w-full items-center justify-center overflow-hidden transition-colors group-hover:border-primary"
+              >
+                {t.coverUrl ? (
+                  <img
+                    src={t.coverUrl}
+                    alt={`Portada de ${t.title}`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Disc3 className="h-10 w-10 text-chrome" />
+                )}
+              </span>
+              <span className="mt-2 block truncate text-sm font-bold">{t.title}</span>
+              {t.label && (
+                <span className="block truncate font-mono text-[10px] tracking-widest text-primary">
+                  {t.label}
+                </span>
+              )}
+              <span className="block font-mono text-[10px] tracking-widest text-muted-foreground">
+                {formatShortDate(t.releasedAt)}
+              </span>
+            </a>
+
+            {canEdit && (
+              <EpkRowEditor
+                artistSlug={artistSlug}
+                collection="tracks"
+                rowSlug={t.slug}
+                title={t.title}
+                initial={{
+                  title: t.title,
+                  date: t.releasedAt.slice(0, 10),
+                  url: t.url === "#" ? "" : t.url,
+                  coverUrl: t.coverUrl ?? "",
+                  label: t.label ?? "",
+                  sortOrder: t.sortOrder?.toString() ?? "",
+                }}
+                extra={(disabled, values, set) => (
+                  <Field
+                    label="SELLO"
+                    value={values.label ?? ""}
+                    onChange={(v) => set("label", v)}
+                    placeholder="Nombre del sello"
+                    disabled={disabled}
+                  />
+                )}
+              />
+            )}
+          </div>
         ))}
 
         {tracks.length > VISIBLE && (

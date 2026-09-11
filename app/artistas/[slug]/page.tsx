@@ -44,8 +44,8 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
       <EpkAbout artist={artist} canEdit={canEdit} />
 
       {/* DJ SETS and TRACKS are two separate sections, never tabs. */}
-      <EpkSets sets={sets} canEdit={canEdit} />
-      <EpkTracks tracks={tracks} canEdit={canEdit} />
+      <EpkSets sets={sets} canEdit={canEdit} artistSlug={slug} />
+      <EpkTracks tracks={tracks} canEdit={canEdit} artistSlug={slug} />
       <EpkEvents gigs={gigs} canEdit={canEdit} currentYear={new Date().getFullYear()} />
     </section>
   );

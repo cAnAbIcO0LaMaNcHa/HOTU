@@ -31,8 +31,8 @@ export function EpkImageField({
 }: {
   label: string;
   slug: string;
-  /** Where the upload route files it. */
-  kind: "avatar" | "cover";
+  /** Where the upload route files it. Must match the route's KINDS. */
+  kind: "avatar" | "cover" | "track-cover";
   /** Which longest-edge budget to resize to. */
   target: ImageTarget;
   value: string;

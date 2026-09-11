@@ -68,6 +68,11 @@ export type Track = ContentMeta & {
   district: DistrictId;
   releasedAt: string;
   url: string;
+  /** Tanda 2: cover art, imprint, and a manual position. */
+  coverUrl?: string;
+  label?: string;
+  /** NULL means "no manual position" — readers fall back to the date. */
+  sortOrder?: number;
 };
 
 export type DjSet = ContentMeta & {
@@ -79,6 +84,8 @@ export type DjSet = ContentMeta & {
   duration: string;
   recordedAt: string;
   url: string;
+  coverUrl?: string;
+  sortOrder?: number;
 };
 
 export type Collective = ContentMeta & {
@@ -176,37 +183,58 @@ export async function getArtistBySlug(slug: string): Promise<Artist | undefined>
   return mapArtist(rows[0]);
 }
 
+/** Nullable integer column to an optional number, without turning 0 into
+ *  undefined — sort_order 0 is a legitimate first position. */
+function optionalInt(value: unknown): number | undefined {
+  return value === null || value === undefined ? undefined : Number(value);
+}
+
+/** One place each table becomes its type, so the catalogue listings and the
+ *  EPK sections can never drift on which columns they read. */
+function mapTrack(r: Record<string, unknown>): Track {
+  return {
+    ...mapMeta(r),
+    slug: r.slug as string,
+    title: r.title as string,
+    artistName: r.artist_name as string,
+    artistSlug: (r.artist_slug as string) ?? undefined,
+    district: r.district as DistrictId,
+    releasedAt: toISODate(r.released_at as string),
+    url: r.url as string,
+    coverUrl: (r.cover_url as string) ?? undefined,
+    label: (r.label as string) ?? undefined,
+    sortOrder: optionalInt(r.sort_order),
+  };
+}
+
+function mapDjSet(r: Record<string, unknown>): DjSet {
+  return {
+    ...mapMeta(r),
+    slug: r.slug as string,
+    title: r.title as string,
+    artistName: r.artist_name as string,
+    artistSlug: (r.artist_slug as string) ?? undefined,
+    district: r.district as DistrictId,
+    duration: r.duration as string,
+    recordedAt: toISODate(r.recorded_at as string),
+    url: r.url as string,
+    coverUrl: (r.cover_url as string) ?? undefined,
+    sortOrder: optionalInt(r.sort_order),
+  };
+}
+
 export async function getAllTracks(opts: ReadOptions = {}): Promise<Track[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM tracks ORDER BY released_at DESC`
     : await sql`SELECT * FROM tracks WHERE status = 'published' ORDER BY released_at DESC`;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    title: r.title,
-    artistName: r.artist_name,
-    artistSlug: r.artist_slug ?? undefined,
-    district: r.district as DistrictId,
-    releasedAt: toISODate(r.released_at),
-    url: r.url,
-  }));
+  return rows.map(mapTrack);
 }
 
 export async function getAllSets(opts: ReadOptions = {}): Promise<DjSet[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM dj_sets ORDER BY recorded_at DESC`
     : await sql`SELECT * FROM dj_sets WHERE status = 'published' ORDER BY recorded_at DESC`;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    title: r.title,
-    artistName: r.artist_name,
-    artistSlug: r.artist_slug ?? undefined,
-    district: r.district as DistrictId,
-    duration: r.duration,
-    recordedAt: toISODate(r.recorded_at),
-    url: r.url,
-  }));
+  return rows.map(mapDjSet);
 }
 
 /**
@@ -231,24 +259,20 @@ export type ArtistGig = {
   source: "hotu" | "declarado";
 };
 
-/** The EPK's DJ SETS section — the real dj_sets rows, not artists.sets. */
+/**
+ * The EPK's DJ SETS section — the real dj_sets rows, not artists.sets.
+ *
+ * sort_order first, NULLS LAST, then the date. An artist who never
+ * reorders anything still gets newest-first; one who drags a favourite to
+ * the top gets exactly that, without having to position everything else.
+ */
 export async function getSetsByArtist(slug: string): Promise<DjSet[]> {
   const rows = await sql`
     SELECT * FROM dj_sets
     WHERE artist_slug = ${slug} AND status = 'published'
-    ORDER BY recorded_at DESC
+    ORDER BY sort_order ASC NULLS LAST, recorded_at DESC
   `;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    title: r.title,
-    artistName: r.artist_name,
-    artistSlug: r.artist_slug ?? undefined,
-    district: r.district as DistrictId,
-    duration: r.duration,
-    recordedAt: toISODate(r.recorded_at),
-    url: r.url,
-  }));
+  return rows.map(mapDjSet);
 }
 
 /** The EPK's TRACKS section — the real tracks rows, not artists.top_tracks. */
@@ -256,18 +280,9 @@ export async function getTracksByArtist(slug: string): Promise<Track[]> {
   const rows = await sql`
     SELECT * FROM tracks
     WHERE artist_slug = ${slug} AND status = 'published'
-    ORDER BY released_at DESC
+    ORDER BY sort_order ASC NULLS LAST, released_at DESC
   `;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    title: r.title,
-    artistName: r.artist_name,
-    artistSlug: r.artist_slug ?? undefined,
-    district: r.district as DistrictId,
-    releasedAt: toISODate(r.released_at),
-    url: r.url,
-  }));
+  return rows.map(mapTrack);
 }
 
 /**

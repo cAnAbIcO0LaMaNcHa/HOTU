@@ -165,6 +165,152 @@ export async function createSet(
   return { ok: true, value: { slug } };
 }
 
+/** Every field of an existing set the owner may change. */
+export type SetPatch = {
+  title?: unknown;
+  duration?: unknown;
+  recordedAt?: unknown;
+  url?: unknown;
+  coverUrl?: unknown;
+  sortOrder?: unknown;
+};
+
+/**
+ * Shared by both PATCHes: turns a loosely-typed patch into column values,
+ * or returns the first validation failure.
+ *
+ * An absent key means "leave alone" and an explicit null means "clear", so
+ * a form that only edits the cover cannot blank the title it never sent.
+ */
+function buildRowPatch(
+  patch: Record<string, unknown>,
+  dateKey: "recordedAt" | "releasedAt"
+): { values: Record<string, string | number | null> } | { error: string } {
+  const values: Record<string, string | number | null> = {};
+
+  if (patch.title !== undefined) {
+    const title = cleanText(patch.title, MAX_TITLE);
+    if (!title) return { error: "title cannot be empty" };
+    values.title = title;
+  }
+
+  if (patch[dateKey] !== undefined) {
+    const date = cleanDate(patch[dateKey]);
+    if (!date) return { error: `${dateKey} must be a real YYYY-MM-DD date` };
+    values.date = date;
+  }
+
+  if (patch.url !== undefined) {
+    const url = cleanUrl(patch.url);
+    if (url === undefined) return { error: "url must be an http(s) URL" };
+    // url is NOT NULL in both tables; clearing it falls back to the
+    // placeholder the rest of the app already treats as "no link".
+    values.url = url ?? "#";
+  }
+
+  if (patch.coverUrl !== undefined) {
+    const cover = cleanUrl(patch.coverUrl);
+    if (cover === undefined) return { error: "coverUrl must be an http(s) URL" };
+    values.coverUrl = cover;
+  }
+
+  if (patch.duration !== undefined) {
+    values.duration = optionalText(patch.duration, 20) ?? "";
+  }
+
+  if (patch.label !== undefined) {
+    values.label = optionalText(patch.label, MAX_SHORT);
+  }
+
+  if (patch.sortOrder !== undefined) {
+    if (patch.sortOrder === null || patch.sortOrder === "") {
+      values.sortOrder = null;
+    } else {
+      const n = Number(patch.sortOrder);
+      if (!Number.isInteger(n) || n < 0 || n > 9999) {
+        return { error: "sortOrder must be a whole number between 0 and 9999" };
+      }
+      values.sortOrder = n;
+    }
+  }
+
+  return { values };
+}
+
+export async function updateSet(
+  artistSlug: string,
+  setSlug: string,
+  patch: SetPatch,
+  actorEmail?: string | null
+): Promise<WriteResult> {
+  const auth = await authorize(artistSlug, actorEmail);
+  if (!auth.ok) return auth;
+
+  const built = buildRowPatch(patch as Record<string, unknown>, "recordedAt");
+  if ("error" in built) return { ok: false, status: 400, error: built.error };
+  const { values } = built;
+  if (Object.keys(values).length === 0) {
+    return { ok: false, status: 400, error: "Nothing to update" };
+  }
+
+  // Scoped by artist_slug for the same reason the deletes are: the
+  // ownership check says which profile you may edit, and this says the row
+  // actually belongs to it.
+  const rows = await sql`
+    UPDATE dj_sets SET
+      title       = COALESCE(${values.title ?? null}, title),
+      recorded_at = COALESCE(${values.date ?? null}::date, recorded_at),
+      url         = COALESCE(${values.url ?? null}, url),
+      duration    = COALESCE(${values.duration ?? null}, duration),
+      cover_url   = CASE WHEN ${"coverUrl" in values} THEN ${values.coverUrl ?? null}::text ELSE cover_url END,
+      sort_order  = CASE WHEN ${"sortOrder" in values} THEN ${values.sortOrder ?? null}::integer ELSE sort_order END
+    WHERE slug = ${setSlug} AND artist_slug = ${artistSlug}
+    RETURNING slug
+  `;
+  if (rows.length === 0) return { ok: false, status: 404, error: "Set not found on this profile" };
+  return { ok: true, value: undefined };
+}
+
+export type TrackPatch = {
+  title?: unknown;
+  releasedAt?: unknown;
+  url?: unknown;
+  coverUrl?: unknown;
+  label?: unknown;
+  sortOrder?: unknown;
+};
+
+export async function updateTrack(
+  artistSlug: string,
+  trackSlug: string,
+  patch: TrackPatch,
+  actorEmail?: string | null
+): Promise<WriteResult> {
+  const auth = await authorize(artistSlug, actorEmail);
+  if (!auth.ok) return auth;
+
+  const built = buildRowPatch(patch as Record<string, unknown>, "releasedAt");
+  if ("error" in built) return { ok: false, status: 400, error: built.error };
+  const { values } = built;
+  if (Object.keys(values).length === 0) {
+    return { ok: false, status: 400, error: "Nothing to update" };
+  }
+
+  const rows = await sql`
+    UPDATE tracks SET
+      title       = COALESCE(${values.title ?? null}, title),
+      released_at = COALESCE(${values.date ?? null}::date, released_at),
+      url         = COALESCE(${values.url ?? null}, url),
+      cover_url   = CASE WHEN ${"coverUrl" in values} THEN ${values.coverUrl ?? null}::text ELSE cover_url END,
+      label       = CASE WHEN ${"label" in values} THEN ${values.label ?? null}::text ELSE label END,
+      sort_order  = CASE WHEN ${"sortOrder" in values} THEN ${values.sortOrder ?? null}::integer ELSE sort_order END
+    WHERE slug = ${trackSlug} AND artist_slug = ${artistSlug}
+    RETURNING slug
+  `;
+  if (rows.length === 0) return { ok: false, status: 404, error: "Track not found on this profile" };
+  return { ok: true, value: undefined };
+}
+
 export async function deleteSet(
   artistSlug: string,
   setSlug: string,
