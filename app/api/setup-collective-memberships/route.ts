@@ -3,7 +3,14 @@
  * rows in artist_collectives.
  *
  * Protected by MIGRATE_SECRET. Call it as:
- *   /api/setup-collective-memberships?secret=YOUR_SECRET
+ *   /api/setup-collective-memberships?secret=YOUR_SECRET&dryRun=1   (report only)
+ *   /api/setup-collective-memberships?secret=YOUR_SECRET            (apply)
+ *
+ * dryRun reads and reports without writing a single row, so the expected
+ * counts can be checked against the real production data BEFORE anything
+ * changes — the same code path that would do the work, not a separate
+ * approximation of it.
+ *
  * Safe to re-run: a link that already exists is skipped, not duplicated.
  *
  * Its own route rather than part of setup-epk-content. That one is
@@ -40,6 +47,8 @@ export async function GET(request: Request) {
   if (!process.env.MIGRATE_SECRET || secret !== process.env.MIGRATE_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const dryRun = searchParams.get("dryRun") === "1";
 
   const sql = neon(process.env.DATABASE_URL!);
   const log: string[] = [];
@@ -79,54 +88,91 @@ export async function GET(request: Request) {
         continue;
       }
 
-      await sql`
-        INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, accepted_at)
-        VALUES (${artistSlug}, ${collectiveSlug}, 'toca_con', CURRENT_DATE, now())
-      `;
+      if (!dryRun) {
+        await sql`
+          INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, accepted_at)
+          VALUES (${artistSlug}, ${collectiveSlug}, 'toca_con', CURRENT_DATE, now())
+        `;
+      }
       inserted++;
     }
 
-    log.push(`insertadas ${inserted}, ya existían ${already}, salteadas ${skipped.length}`);
+    log.push(
+      dryRun
+        ? `SIMULACIÓN: se insertarían ${inserted}, ya existen ${already}, se saltearían ${skipped.length}`
+        : `insertadas ${inserted}, ya existían ${already}, salteadas ${skipped.length}`
+    );
 
-    // Membership changed, so the publishable flag has to be recomputed.
-    // With every migrated link landing as 'toca_con' this leaves the real
-    // collectives at 'incompleto', which is the honest answer until
-    // somebody marks residencies.
-    const collectives = await sql`SELECT slug FROM collectives ORDER BY slug`;
-    const statuses: Record<string, string> = {};
-    for (const c of collectives) {
-      statuses[c.slug as string] = await recalcMembership(c.slug as string);
-    }
-    log.push("status_membership recalculado en todos los colectivos");
-
-    // Conservation check, computed here rather than trusted: every slug in
-    // the jsonb must have an active row, for every collective.
-    const check = await sql`
+    /**
+     * status_membership, current and projected.
+     *
+     * The projection counts what the memberships WOULD be: the artists
+     * already linked, plus the jsonb slugs that resolve to a real artist.
+     * It matters because recalc runs over every collective, so a
+     * collective currently marked 'activo' by hand would be recomputed —
+     * and with every migrated link landing as 'toca_con', nothing reaches
+     * the 2-resident minimum on the strength of this migration alone.
+     */
+    const projection = await sql`
       SELECT c.slug,
+             c.status_membership AS actual,
+             (SELECT COUNT(DISTINCT ac.artist_slug)::int FROM artist_collectives ac
+               WHERE ac.collective_slug = c.slug AND ac.to_date IS NULL) AS djs_ahora,
+             (SELECT COUNT(DISTINCT ac.artist_slug)::int FROM artist_collectives ac
+               WHERE ac.collective_slug = c.slug AND ac.to_date IS NULL AND ac.kind = 'residente') AS residentes,
              jsonb_array_length(c.artist_slugs)::int AS en_jsonb,
-             (SELECT COUNT(*)::int FROM artist_collectives ac
-               WHERE ac.collective_slug = c.slug AND ac.to_date IS NULL) AS vinculos_activos,
-             (SELECT COUNT(*)::int FROM jsonb_array_elements(c.artist_slugs) y
-               WHERE NOT EXISTS (
-                 SELECT 1 FROM artist_collectives ac
-                 WHERE ac.collective_slug = c.slug AND ac.artist_slug = y #>> '{}' AND ac.to_date IS NULL
-               )) AS sin_migrar
+             (SELECT COUNT(DISTINCT y #>> '{}')::int FROM jsonb_array_elements(c.artist_slugs) y
+               WHERE EXISTS (SELECT 1 FROM artists a WHERE a.slug = y #>> '{}')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM artist_collectives ac
+                   WHERE ac.collective_slug = c.slug AND ac.artist_slug = y #>> '{}' AND ac.to_date IS NULL
+                 )) AS se_agregarian
       FROM collectives c ORDER BY c.slug
     `;
 
-    const missing = check.reduce((n, r) => n + Number(r.sin_migrar), 0);
+    const porColectivo = projection.map((r) => {
+      const djsDespues = Number(r.djs_ahora) + Number(r.se_agregarian);
+      const proyectado =
+        djsDespues >= 3 && Number(r.residentes) >= 2 ? "activo" : "incompleto";
+      return {
+        slug: r.slug,
+        en_jsonb: Number(r.en_jsonb),
+        djs_ahora: Number(r.djs_ahora),
+        se_agregarian: Number(r.se_agregarian),
+        djs_despues: djsDespues,
+        residentes: Number(r.residentes),
+        status_actual: r.actual,
+        status_proyectado: proyectado,
+        cambia: r.actual !== proyectado,
+      };
+    });
+
+    if (!dryRun) {
+      // Membership changed, so the publishable flag has to be recomputed.
+      for (const c of porColectivo) {
+        await recalcMembership(c.slug as string);
+      }
+      log.push("status_membership recalculado en todos los colectivos");
+    }
+
+    // Conservation check, computed here rather than trusted: every slug in
+    // the jsonb must end up with an active row, for every collective.
+    const sinMigrar = porColectivo.reduce((n, r) => n + r.se_agregarian, 0);
 
     return NextResponse.json({
       ok: true,
+      dryRun,
       log,
       skipped,
-      sinMigrar: missing,
-      statusMembership: statuses,
-      porColectivo: check,
+      // After a real run this must be 0. In a dry run it is what WOULD be
+      // inserted, so it should equal the "se insertarían" count above.
+      sinMigrar,
+      cambiosDeStatus: porColectivo.filter((r) => r.cambia).map((r) => r.slug),
+      porColectivo,
     });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err), log, skipped },
+      { ok: false, dryRun, error: err instanceof Error ? err.message : String(err), log, skipped },
       { status: 500 }
     );
   }
