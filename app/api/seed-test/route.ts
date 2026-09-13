@@ -54,21 +54,21 @@ const ARTISTS = [
     name: "Camila Test",
     djCode: "CAMILA",
     ownerEmail: "artista@test.hotu.local",
-    kind: "residente" as const,
+    kind: "casa" as const,
   },
   {
     slug: "test-pedro",
     name: "Pedro Test",
     djCode: "PEDRO",
     ownerEmail: null,
-    kind: "residente" as const,
+    kind: "casa" as const,
   },
   {
     slug: "test-luna",
     name: "Luna Test",
     djCode: "LUNA",
     ownerEmail: null,
-    kind: "toca_con" as const,
+    kind: "residente" as const,
   },
 ];
 

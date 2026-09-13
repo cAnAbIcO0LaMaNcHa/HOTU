@@ -24,7 +24,15 @@ import { isSuperAdmin } from "./roles-check";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-export type MembershipKind = "residente" | "toca_con";
+/**
+ * casa      — the DJ's main collective. ONE only, and only ever a
+ *             collective: a venue is somewhere you are resident, not home.
+ * residente — the general link. Several at a time, collectives or venues.
+ *
+ * Careful reading anything written before tanda 3: "residente" used to be
+ * the exclusive one. The word kept its spelling and swapped its meaning.
+ */
+export type MembershipKind = "casa" | "residente";
 
 export type WriteResult<T = undefined> =
   | { ok: true; value: T }
@@ -48,10 +56,15 @@ export async function canEditCollective(slug: string, email?: string | null): Pr
 /**
  * Adds an artist to a collective.
  *
- * "Residente de" is exclusive — it is the link that counts money, so an
- * artist can only hold one at a time. The partial unique index would
- * reject a second one anyway, but a caller deserves to be told WHICH
- * collective they are already resident of, not a raw constraint violation.
+ * 'casa' is the exclusive one: a DJ has exactly one home. The partial
+ * unique index would reject a second one anyway, but a caller deserves to
+ * be told WHICH collective is already their home, not a raw constraint
+ * violation.
+ *
+ * The index cannot express the other half of the rule — that a casa is
+ * only ever a collective, never a venue — because it cannot see
+ * entity_kind. Once venues share this table (pieza 5) that check belongs
+ * here, in the write path.
  */
 export async function addMember(
   collectiveSlug: string,
@@ -59,8 +72,8 @@ export async function addMember(
   kind: MembershipKind,
   actorEmail?: string | null
 ): Promise<WriteResult> {
-  if (kind !== "residente" && kind !== "toca_con") {
-    return { ok: false, status: 400, error: "kind must be 'residente' or 'toca_con'" };
+  if (kind !== "casa" && kind !== "residente") {
+    return { ok: false, status: 400, error: "kind must be 'casa' or 'residente'" };
   }
 
   const collective = await sql`SELECT slug FROM collectives WHERE slug = ${collectiveSlug}`;
@@ -85,18 +98,18 @@ export async function addMember(
     return { ok: false, status: 409, error: `${artist[0].name} ya está en el colectivo como ${kind}` };
   }
 
-  if (kind === "residente") {
+  if (kind === "casa") {
     const elsewhere = await sql`
       SELECT ac.collective_slug, c.name
       FROM artist_collectives ac
       JOIN collectives c ON c.slug = ac.collective_slug
-      WHERE ac.artist_slug = ${artistSlug} AND ac.kind = 'residente' AND ac.to_date IS NULL
+      WHERE ac.artist_slug = ${artistSlug} AND ac.kind = 'casa' AND ac.to_date IS NULL
     `;
     if (elsewhere.length > 0) {
       return {
         ok: false,
         status: 409,
-        error: `${artist[0].name} ya es residente de ${elsewhere[0].name}. Un DJ solo puede ser residente de un colectivo: cerrá esa residencia primero.`,
+        error: `${artist[0].name} ya tiene su casa en ${elsewhere[0].name}. Un DJ tiene una sola casa: cerrá esa primero, o sumalo acá como residente.`,
       };
     }
   }

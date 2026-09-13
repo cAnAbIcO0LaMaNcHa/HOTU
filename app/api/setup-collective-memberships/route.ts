@@ -54,6 +54,35 @@ export async function GET(request: Request) {
   const skipped: string[] = [];
 
   try {
+    /**
+     * HISTORICAL ROUTE — refuses to run after the tanda 3 kind rename.
+     *
+     * It inserts the link as 'toca_con', a value the new CHECK forbids, and
+     * its "already migrated?" probe also looks for 'toca_con' — which after
+     * the rename matches nothing, so it would decide every entry is missing
+     * and then fail on the first INSERT.
+     *
+     * Rewriting it to speak the new vocabulary would be worse: on a fresh
+     * branch it would run BEFORE the rename and write the wrong meaning.
+     * This route belongs to the world before the rename; once
+     * setup-membership-kinds has run, its job is done.
+     */
+    const renamed = await sql`
+      SELECT 1 FROM pg_constraint
+      WHERE conrelid = 'artist_collectives'::regclass
+        AND conname = 'artist_collectives_kind_casa_check'
+    `;
+    if (renamed.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        dryRun,
+        yaNoAplica: true,
+        log: [
+          "El renombre de kinds (tanda 3) ya corrió en esta base. Esta migración pertenece al vocabulario viejo y no tiene nada que hacer.",
+        ],
+      });
+    }
+
     const entries = await sql`
       SELECT c.slug AS collective_slug, x #>> '{}' AS artist_slug
       FROM collectives c, jsonb_array_elements(c.artist_slugs) x

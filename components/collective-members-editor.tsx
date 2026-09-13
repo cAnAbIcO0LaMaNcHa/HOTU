@@ -11,8 +11,8 @@ import type { CollectiveMember } from "@/lib/db";
  * This replaces the old "slugs separados por coma" text field, which wrote
  * the collectives.artist_slugs jsonb. That column is no longer written;
  * memberships are rows in artist_collectives, and rows need a kind — the
- * residente/toca_con distinction is what sales attribution rests on, and a
- * comma-separated list cannot express it.
+ * casa/residente distinction matters and a comma-separated list cannot
+ * express it.
  *
  * Everything goes through /api/collectives/[slug]/members, per the repo
  * rule that no component writes directly.
@@ -29,7 +29,7 @@ export function CollectiveMembersEditor({
 }) {
   const router = useRouter();
   const [artistSlug, setArtistSlug] = useState("");
-  const [kind, setKind] = useState<"residente" | "toca_con">("toca_con");
+  const [kind, setKind] = useState<"casa" | "residente">("residente");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,12 +96,12 @@ export function CollectiveMembersEditor({
                 {m.artistName}
                 <span
                   className={`ml-2 border px-1.5 py-0.5 text-[9px] tracking-widest ${
-                    m.kind === "residente"
+                    m.kind === "casa"
                       ? "border-primary text-primary"
                       : "border-border text-muted-foreground"
                   }`}
                 >
-                  {m.kind === "residente" ? "RESIDENTE" : "TOCA CON"}
+                  {m.kind === "casa" ? "CASA" : "RESIDENTE"}
                 </span>
                 <span className="ml-2 text-[10px] text-muted-foreground">desde {m.fromDate.slice(0, 10)}</span>
               </span>
@@ -143,11 +143,11 @@ export function CollectiveMembersEditor({
           <select
             value={kind}
             disabled={busy}
-            onChange={(e) => setKind(e.target.value as "residente" | "toca_con")}
+            onChange={(e) => setKind(e.target.value as "casa" | "residente")}
             className="mt-1 border border-border bg-transparent px-2 py-2 text-xs outline-none focus:border-primary disabled:opacity-50"
           >
-            <option value="toca_con">Toca con</option>
             <option value="residente">Residente</option>
+            <option value="casa">Casa</option>
           </select>
         </label>
         <button
@@ -167,7 +167,7 @@ export function CollectiveMembersEditor({
       )}
 
       <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
-        Residente es uno solo por DJ. Quitar a alguien cierra el vínculo con fecha, no borra
+        La casa es una sola por DJ. Quitar a alguien cierra el vínculo con fecha, no borra
         el histórico.
       </p>
     </div>

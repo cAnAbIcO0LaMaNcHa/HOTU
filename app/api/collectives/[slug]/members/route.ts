@@ -1,7 +1,7 @@
 /**
  * POST /api/collectives/[slug]/members — add an artist to a collective.
  *
- * Body: { artistSlug, kind: "residente" | "toca_con" }
+ * Body: { artistSlug, kind: "casa" | "residente" }
  *
  * Work lives in lib/collectives-write.ts; this does auth and shape only.
  * Adding a resident is refused with a 409 that names the collective the

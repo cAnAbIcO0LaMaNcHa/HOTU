@@ -158,7 +158,7 @@ export async function deleteNews(formData: FormData): Promise<void> {
  * collectives.artist_slugs is NO LONGER WRITTEN here.
  *
  * Membership lives in artist_collectives, where a link carries a kind
- * (residente / toca_con) and a date range — neither of which a
+ * (casa / residente) and a date range — neither of which a
  * comma-separated list of slugs can express, and the kind is what sales
  * attribution rests on. Members are managed through
  * /api/collectives/[slug]/members.

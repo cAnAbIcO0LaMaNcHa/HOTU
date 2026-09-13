@@ -11,11 +11,11 @@ import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-
  * jsonb, passed in already grouped and name-resolved so this component
  * does not need the whole artist catalogue just to print a few names.
  *
- * The residente/toca_con distinction is deliberately NOT shown yet. The
- * migration landed every pre-existing link as 'toca_con' because the jsonb
- * never recorded residency, so surfacing it today would tell every visitor
- * that no collective has a single resident. It goes in once residencies
- * are actually set.
+ * The casa/residente distinction is deliberately NOT shown yet. Every
+ * pre-existing link came out of the jsonb, which never recorded which
+ * collective was anyone's home, so surfacing it today would tell every
+ * visitor that no collective has a single casa. It goes in once the
+ * casas are actually assigned.
  */
 export function ColectivosList({
   collectives: all,

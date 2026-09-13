@@ -352,7 +352,7 @@ export type CollectiveMember = {
   collectiveSlug: string;
   artistSlug: string;
   artistName: string;
-  kind: "residente" | "toca_con";
+  kind: "casa" | "residente";
   fromDate: string;
 };
 
@@ -373,7 +373,7 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
     JOIN artists a ON a.slug = ac.artist_slug
     WHERE ac.to_date IS NULL
     ORDER BY ac.collective_slug,
-             CASE ac.kind WHEN 'residente' THEN 0 ELSE 1 END,
+             CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END,
              a.name
   `;
   const byCollective = new Map<string, CollectiveMember[]>();
@@ -384,7 +384,7 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
       collectiveSlug: slug,
       artistSlug: r.artist_slug as string,
       artistName: r.artist_name as string,
-      kind: r.kind as "residente" | "toca_con",
+      kind: r.kind as "casa" | "residente",
       fromDate: toISODate(r.from_date as string),
     });
   }

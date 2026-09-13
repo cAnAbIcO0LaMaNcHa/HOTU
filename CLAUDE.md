@@ -32,8 +32,9 @@ artists — PK es slug TEXT, no id. Campos: name, genre, district, city, photo, 
   owner_email = la cuenta que puede editar el perfil. contact_email = el mail público del EPK. Tampoco son lo mismo.
   dj_code tiene índice único sobre upper(dj_code) — artists_dj_code_upper_idx. Se teclea a mano en el checkout, así que camila y CAMILA son el mismo código.
 collectives — PK es slug TEXT. Campos: name, type, sector, bio, district.
-  Tanda 1 agregó: owner_email → user_profiles(email), status_membership ('activo' | 'incompleto').
-  status_membership NO es status. status = visibilidad editorial (draft/published/archived). status_membership = si cumple el mínimo de 3 DJs con 2+ residentes y por lo tanto puede crear eventos. Lo calcula recalcMembership() en lib/collectives-write.ts, que es el único lugar donde vive la regla.
+  Tanda 1 agregó: owner_email → user_profiles(email).
+  status_membership está DEPRECADA desde tanda 3: el mínimo de 3 DJs con 2+ residentes se eliminó, no hay estado activo/incompleto y nadie lo recalcula. La columna sigue en la tabla, congelada, pero no se lee ni se escribe y no está en el tipo Collective. recalcMembership() fue BORRADA, no dejada sin uso: una regla que sigue en el código es una regla que alguien vuelve a llamar.
+  sector ya NO agrupa nada (tanda 3). Es una etiqueta de origen dentro de la tarjeta. La ciudad de verdad llega con la pieza 4.
   artist_slugs jsonb sigue existiendo pero está DEPRECADO: no se lee ni se escribe, y no está en el tipo Collective. La fuente de verdad de las membresías es artist_collectives (ver abajo).
 events — PK id SERIAL. event_date, city, venue, title, lineup, district, flyer_url, end_at.
 dj_sets — PK slug TEXT. title, artist_name, artist_slug, district, duration, recorded_at, url.
@@ -70,13 +71,18 @@ Tablas creadas en la tanda 1
 
 (artist_collectives ya tiene datos desde la migración de tanda 2. Las otras tres siguen en 0 filas en producción hasta que arranque tanda 3.)
 
-artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('residente' | 'toca_con'), from_date, to_date, accepted_at, created_at.
+artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('casa' | 'residente'), from_date, to_date, accepted_at, created_at.
   ES LA FUENTE DE VERDAD DE LAS MEMBRESÍAS desde tanda 2. Nadie lee collectives.artist_slugs.
+  VOCABULARIO NUEVO desde tanda 3, pieza 2. Los valores viejos ya no existen:
+    casa      — el colectivo principal del DJ, "mi casa". UNO SOLO.
+    residente — el vínculo general. Varios a la vez.
+  El renombre fue 'residente'→'casa' y 'toca_con'→'residente'. Ojo al leer código o docs viejos: la palabra "residente" cambió de significado, pasó de ser la exclusiva a ser la múltiple.
   to_date IS NULL = vínculo activo. El histórico es inmutable: se cierra con to_date, no se borra.
-  Índice único parcial: un solo 'residente' activo por artista.
-  Índice único parcial: no se puede repetir el mismo vínculo activo (artist_slug, collective_slug, kind).
+  CHECK artist_collectives_kind_casa_check: kind IN ('casa','residente').
+  Índice único parcial artist_collectives_one_active_casa_idx: una sola 'casa' activa por artista.
+  Índice único parcial artist_collectives_active_link_idx: no se repite el mismo vínculo activo (artist_slug, collective_slug, kind).
   Se lee con getCollectiveMembers() en lib/db.ts, que devuelve los vínculos activos agrupados por colectivo y con el nombre del artista ya resuelto. Se escribe SOLO por /api/collectives/[slug]/members (POST agrega, DELETE cierra), con la lógica en lib/collectives-write.ts.
-  Agregar a alguien como 'residente' verifica primero que no tenga residencia activa en otro lado y responde 409 nombrando el colectivo. El índice único lo rechazaría igual, pero una violación de constraint no es una respuesta.
+  La 'casa' se valida en el write path, no solo con el índice: el índice no ve entity_kind, así que no puede saber que una casa solo vale en un colectivo y no en un venue.
 ticket_attributions — id SERIAL. ticket_id→tickets UNIQUE, seller_artist_slug→artists (NULL = venta de HOTU), seller_collective_slug→collectives, event_id→events, amount_cop, created_at.
   event_id y amount_cop están duplicados de tickets/order_items A PROPÓSITO: la fila es un snapshot congelado al momento de la venta.
   seller_collective_slug NUNCA se recalcula al consultar. Si un DJ cambia de colectivo, sus ventas viejas siguen contando para el colectivo viejo.
@@ -110,15 +116,13 @@ EN CURSO (tanda 1) — user_profiles.cedula se deprecia. birth_date DATE ya exis
 EN CURSO (tanda 1) — Ya hay next-auth con Google. Para las cuentas de prueba sin Google, agregar un Credentials provider (email + contraseña), no reemplazar el existente. Los dos conviven; user_profiles.auth_provider marca el origen de cada cuenta.
 HECHO (tanda 1) — tickets no tenía FK declaradas a orders/events. Ya están las tres.
 
-ESTADO DE PRODUCCIÓN AL CERRAR TANDA 2 — LEER ANTES DE TOCAR COLECTIVOS
+ESTADO DE PRODUCCIÓN — LEER ANTES DE TOCAR COLECTIVOS
 
-Los 6 colectivos de main quedaron en status_membership = 'incompleto', y eso es correcto, no un bug.
+Las membresías de main entraron desde el jsonb como el vínculo múltiple, que tras el renombre de tanda 3 se llama 'residente'. NINGÚN colectivo de producción tiene una 'casa' asignada: el array plano de slugs nunca dijo quién era el principal, e inventarlo habría sido afirmar algo que el dato no decía.
 
-La migración pasó las 11 membresías del jsonb como 'toca_con', porque el array plano de slugs nunca dijo quién era residente. "Residente de" es el vínculo que cuenta plata, así que inventar uno habría contaminado la atribución de ventas; un aliado que en realidad era residente es solo un ascenso pendiente.
+Ya NO hay consecuencia de bloqueo: el mínimo de 3 DJs con 2+ residentes se eliminó en tanda 3, así que cualquier colectivo puede publicar eventos aunque no tenga casa ni miembros.
 
-Consecuencia concreta: ningún colectivo de producción llega al mínimo de 3 DJs con 2+ residentes, o sea que NINGUNO PUEDE CREAR EVENTOS hasta que alguien marque residentes a mano desde /admin/colectivos, que ya tiene el editor de miembros.
-
-Eso es trabajo manual pendiente y es prerrequisito de tanda 3: la atribución de ventas congela el colectivo de residencia del vendedor en el momento de la venta, y si no hay residencias no hay sobre qué apoyarse.
+Lo que sí queda pendiente: asignar las 'casa' a mano donde corresponda. No frena nada, pero el press kit del colectivo muestra dos carruseles separados (ARTISTAS DE LA CASA y ARTISTAS RESIDENTES), y hasta que haya casas el primero va a estar vacío.
 
 Nota: más abajo, en el perfil de DJ, las secciones DJ SETS y TRACKS mencionaban tablas artist_recordings y artist_tracks. Queda sin efecto: mandan dj_sets y tracks.
 Ojo con user_profiles: ahora que es la tabla de cuentas, el login con Google tiene que hacer upsert de la fila en el primer ingreso. Si no, un usuario de Google se autentica pero revienta contra el FK de artist_likes al dar el primer like.
@@ -210,25 +214,17 @@ El comprador nunca ve el colectivo del vendedor. La boleta muestra solo la fiest
 
 Colectivos
 
-Dos tipos de vínculo:
+Dos tipos de vínculo (vocabulario de tanda 3):
 
-Residente de — UNO SOLO. Es el que cuenta plata.
-Toca con — varios. Solo trayectoria en el EPK, sin atribución monetaria.
+casa — el colectivo principal del DJ. UNO SOLO. Solo puede ser un colectivo, nunca un venue.
+residente — el vínculo general. Varios a la vez, y vale tanto en colectivos como en venues.
 
-Mínimo para publicarse: 3 DJs, de los cuales 2+ residentes.
-
-Estados:
-
-Activo — cumple el mínimo. Puede crear eventos.
-Incompleto — bajó del mínimo. El perfil sigue público y los eventos ya publicados corren hasta que pasen, pero NO puede crear eventos nuevos. Notificación al dueño y a los residentes.
-
-Sin bloqueo ni cuenta regresiva. La única sanción es no poder publicar.
+NO hay mínimo para publicarse, ni estados activo/incompleto, ni bloqueo. Un colectivo con un solo miembro puede crear eventos. Eso se eliminó en tanda 3.
 
 Otras reglas:
 
-Al invitar, si el DJ acepta como residente hay que verificar que no tenga residencia activa en otro lado.
-Un aliado puede ascender a residente si está libre.
-Membresías con desde / hasta. El histórico es inmutable.
+Al aceptar una 'casa' teniendo otra, el sistema ofrece mantener la actual y entrar acá como residente, o mover la casa. Nunca hay un estado intermedio con dos casas.
+Membresías con desde / hasta. El histórico es inmutable: se cierra con to_date, no se borra.
 Likes
 
 El usuario da like a un DJ. NO cambia ranking ni exposición. Sirve para dos cosas: notificarle al usuario cuando ese DJ toca, y que el DJ vea cuánta gente sigue su contenido.
@@ -247,8 +243,8 @@ Migración /api/setup-profiles:
 
 user_profiles: agregar birth_date DATE, display_name, avatar_url
 artists: agregar email, password_hash, owner_email, dj_code UNIQUE, bpm_min, bpm_max, origin, cover_url, socials jsonb, rider jsonb, show_sales_to_organizers BOOLEAN DEFAULT TRUE
-collectives: agregar owner_email, status_membership ('activo' | 'incompleto')
-NUEVA artist_collectives: artist_slug, collective_slug, kind ('residente' | 'toca_con'), from_date, to_date, accepted_at
+collectives: agregar owner_email, status_membership (DEPRECADA en tanda 3)
+NUEVA artist_collectives: artist_slug, collective_slug, kind (renombrado a 'casa' | 'residente' en tanda 3), from_date, to_date, accepted_at
 NUEVA ticket_attributions: ticket_id, seller_artist_slug (nullable = HOTU), seller_collective_slug (CONGELADO al momento de la venta), event_id, amount_cop, created_at
 NUEVA artist_gigs: artist_slug, event_id (nullable), external_name, flyer_url, venue, city, gig_date, district, role, b2b_with, duration_minutes, source ('hotu' | 'declarado')
 NUEVA artist_likes: artist_slug, user_email, created_at
