@@ -99,14 +99,16 @@ export type Collective = ContentMeta & {
   sector: string;
   bio: string;
   district: DistrictId;
-  /**
-   * Whether the collective still meets the 3-DJs/2-residents minimum and
-   * may therefore publish events. NOT the same axis as `status`, which is
-   * editorial visibility. Derived from artist_collectives and kept in sync
-   * by recalcMembership in lib/collectives-write.ts.
-   */
-  statusMembership: "activo" | "incompleto";
 };
+
+/*
+ * status_membership is no longer mapped. The 3-DJs/2-residents minimum was
+ * removed in tanda 3 (§1.1): there is no publishable/incomplete state, and
+ * a collective with one member can publish. The column still exists in the
+ * table, frozen — a column is never dropped in the same migration that
+ * stops using it — but it is not read, not written, and not on the type,
+ * so nothing can start depending on it again by accident.
+ */
 
 export type EventItem = ContentMeta & {
   id: number;
@@ -329,9 +331,11 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
 }
 
 export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collective[]> {
+  // Ordered by name alone. Sector stopped being the grouping axis in tanda
+  // 3 (§1.4) — it is a plain city label now, not a heading to sort under.
   const rows = opts.includeAll
-    ? await sql`SELECT * FROM collectives ORDER BY sector, name`
-    : await sql`SELECT * FROM collectives WHERE status = 'published' ORDER BY sector, name`;
+    ? await sql`SELECT * FROM collectives ORDER BY name`
+    : await sql`SELECT * FROM collectives WHERE status = 'published' ORDER BY name`;
   return rows.map((r) => ({
     ...mapMeta(r),
     slug: r.slug,
@@ -340,7 +344,6 @@ export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collect
     sector: r.sector,
     bio: r.bio,
     district: r.district as DistrictId,
-    statusMembership: (r.status_membership as "activo" | "incompleto") ?? "incompleto",
   }));
 }
 
@@ -388,15 +391,11 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
   return byCollective;
 }
 
-export async function getCollectivesBySector(): Promise<Map<string, Collective[]>> {
-  const all = await getAllCollectives();
-  const sectors = new Map<string, Collective[]>();
-  for (const c of all) {
-    if (!sectors.has(c.sector)) sectors.set(c.sector, []);
-    sectors.get(c.sector)!.push(c);
-  }
-  return sectors;
-}
+/*
+ * getCollectivesBySector was removed in tanda 3 (§1.4). It had no callers
+ * left once /colectivos stopped grouping by sector, and a dead grouping
+ * helper is an invitation to group by it again.
+ */
 
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll

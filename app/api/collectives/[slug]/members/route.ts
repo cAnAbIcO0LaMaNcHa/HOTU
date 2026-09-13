@@ -44,5 +44,5 @@ export async function POST(
   const result = await addMember(slug, artistSlug, body.kind as MembershipKind, email);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  return NextResponse.json({ ok: true, statusMembership: result.value.status }, { status: 201 });
+  return NextResponse.json({ ok: true }, { status: 201 });
 }

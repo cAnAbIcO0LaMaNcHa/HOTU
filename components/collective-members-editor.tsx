@@ -21,20 +21,17 @@ export function CollectiveMembersEditor({
   collectiveSlug,
   members,
   artists,
-  statusMembership,
 }: {
   collectiveSlug: string;
   members: CollectiveMember[];
   /** The catalogue to pick from: slug + name. */
   artists: { slug: string; name: string }[];
-  statusMembership: string;
 }) {
   const router = useRouter();
   const [artistSlug, setArtistSlug] = useState("");
   const [kind, setKind] = useState<"residente" | "toca_con">("toca_con");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState(statusMembership);
 
   const base = `/api/collectives/${encodeURIComponent(collectiveSlug)}/members`;
   const alreadyIn = new Set(members.map((m) => m.artistSlug));
@@ -54,7 +51,6 @@ export function CollectiveMembersEditor({
         setError(data.error ?? `No se pudo agregar (HTTP ${res.status})`);
         return;
       }
-      setStatus(data.statusMembership ?? status);
       setArtistSlug("");
       router.refresh();
     } catch {
@@ -74,7 +70,6 @@ export function CollectiveMembersEditor({
         setError(data.error ?? `No se pudo quitar (HTTP ${res.status})`);
         return;
       }
-      setStatus(data.statusMembership ?? status);
       router.refresh();
     } catch {
       setError("No se pudo quitar. Revisá la conexión.");
@@ -85,24 +80,13 @@ export function CollectiveMembersEditor({
 
   return (
     <div className="sm:col-span-2 border border-border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-          MIEMBROS ({members.length})
-        </span>
-        <span
-          className={`border px-2 py-1 font-mono text-[9px] tracking-widest ${
-            status === "activo"
-              ? "border-primary text-primary"
-              : "border-muted-foreground text-muted-foreground"
-          }`}
-        >
-          {status === "activo" ? "PUEDE CREAR EVENTOS" : "INCOMPLETO"}
-        </span>
-      </div>
+      <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+        MIEMBROS ({members.length})
+      </span>
 
       {members.length === 0 ? (
         <p className="mt-3 font-mono text-[11px] text-muted-foreground">
-          Sin miembros. Se necesitan 3 DJs, 2 de ellos residentes, para poder publicar eventos.
+          Sin miembros todavía.
         </p>
       ) : (
         <ul className="mt-3 space-y-2">
@@ -183,8 +167,8 @@ export function CollectiveMembersEditor({
       )}
 
       <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
-        Residente es uno solo por DJ y es el vínculo que cuenta plata. Quitar a alguien cierra
-        el vínculo con fecha, no borra el histórico.
+        Residente es uno solo por DJ. Quitar a alguien cierra el vínculo con fecha, no borra
+        el histórico.
       </p>
     </div>
   );

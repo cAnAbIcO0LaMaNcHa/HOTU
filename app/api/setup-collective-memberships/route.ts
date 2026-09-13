@@ -35,7 +35,6 @@
 
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { recalcMembership } from "@/lib/collectives-write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,22 +103,19 @@ export async function GET(request: Request) {
     );
 
     /**
-     * status_membership, current and projected.
+     * Per-collective conservation check, computed here rather than trusted.
      *
-     * The projection counts what the memberships WOULD be: the artists
-     * already linked, plus the jsonb slugs that resolve to a real artist.
-     * It matters because recalc runs over every collective, so a
-     * collective currently marked 'activo' by hand would be recomputed —
-     * and with every migrated link landing as 'toca_con', nothing reaches
-     * the 2-resident minimum on the strength of this migration alone.
+     * This used to also project status_membership and warn about
+     * collectives whose flag would flip. That is gone: tanda 3 (§1.1)
+     * removed the publishable/incomplete state entirely, so there is no
+     * flag left to recompute or to warn about. What remains is the part
+     * that actually mattered — whether every slug in the jsonb ends up
+     * with an active row.
      */
     const projection = await sql`
       SELECT c.slug,
-             c.status_membership AS actual,
              (SELECT COUNT(DISTINCT ac.artist_slug)::int FROM artist_collectives ac
                WHERE ac.collective_slug = c.slug AND ac.to_date IS NULL) AS djs_ahora,
-             (SELECT COUNT(DISTINCT ac.artist_slug)::int FROM artist_collectives ac
-               WHERE ac.collective_slug = c.slug AND ac.to_date IS NULL AND ac.kind = 'residente') AS residentes,
              jsonb_array_length(c.artist_slugs)::int AS en_jsonb,
              (SELECT COUNT(DISTINCT y #>> '{}')::int FROM jsonb_array_elements(c.artist_slugs) y
                WHERE EXISTS (SELECT 1 FROM artists a WHERE a.slug = y #>> '{}')
@@ -130,33 +126,14 @@ export async function GET(request: Request) {
       FROM collectives c ORDER BY c.slug
     `;
 
-    const porColectivo = projection.map((r) => {
-      const djsDespues = Number(r.djs_ahora) + Number(r.se_agregarian);
-      const proyectado =
-        djsDespues >= 3 && Number(r.residentes) >= 2 ? "activo" : "incompleto";
-      return {
-        slug: r.slug,
-        en_jsonb: Number(r.en_jsonb),
-        djs_ahora: Number(r.djs_ahora),
-        se_agregarian: Number(r.se_agregarian),
-        djs_despues: djsDespues,
-        residentes: Number(r.residentes),
-        status_actual: r.actual,
-        status_proyectado: proyectado,
-        cambia: r.actual !== proyectado,
-      };
-    });
+    const porColectivo = projection.map((r) => ({
+      slug: r.slug,
+      en_jsonb: Number(r.en_jsonb),
+      djs_ahora: Number(r.djs_ahora),
+      se_agregarian: Number(r.se_agregarian),
+      djs_despues: Number(r.djs_ahora) + Number(r.se_agregarian),
+    }));
 
-    if (!dryRun) {
-      // Membership changed, so the publishable flag has to be recomputed.
-      for (const c of porColectivo) {
-        await recalcMembership(c.slug as string);
-      }
-      log.push("status_membership recalculado en todos los colectivos");
-    }
-
-    // Conservation check, computed here rather than trusted: every slug in
-    // the jsonb must end up with an active row, for every collective.
     const sinMigrar = porColectivo.reduce((n, r) => n + r.se_agregarian, 0);
 
     return NextResponse.json({
@@ -167,7 +144,6 @@ export async function GET(request: Request) {
       // After a real run this must be 0. In a dry run it is what WOULD be
       // inserted, so it should equal the "se insertarían" count above.
       sinMigrar,
-      cambiosDeStatus: porColectivo.filter((r) => r.cambia).map((r) => r.slug),
       porColectivo,
     });
   } catch (err) {

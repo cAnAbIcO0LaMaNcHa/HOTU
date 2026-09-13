@@ -24,7 +24,6 @@ import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import crypto from "node:crypto";
 import { hashPassword } from "@/lib/accounts";
-import { recalcMembership } from "@/lib/collectives-write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -174,11 +173,11 @@ export async function GET(request: Request) {
     // --- OTU ------------------------------------------------------
     await sql`
       INSERT INTO collectives
-        (slug, name, type, sector, bio, district, owner_email, status, status_membership)
+        (slug, name, type, sector, bio, district, owner_email, status)
       VALUES
         ('otu', 'OTU', 'LOCAL', 'Bogotá',
          'Colectivo de prueba para desarrollo. No es un colectivo real.',
-         'D07', 'colectivo@test.hotu.local', 'published', 'incompleto')
+         'D07', 'colectivo@test.hotu.local', 'published')
       ON CONFLICT (slug) DO UPDATE SET
         name        = EXCLUDED.name,
         owner_email = EXCLUDED.owner_email,
@@ -330,12 +329,9 @@ export async function GET(request: Request) {
     }
     log.push("artist_collectives ready (2 residentes + 1 aliado)");
 
-    // --- recalculate status_membership ----------------------------
-    // The rule lives in lib/collectives-write.ts now. It used to be copied
-    // out here, and the moment the membership endpoint and the jsonb
-    // migration needed it too, three copies would have drifted apart.
-    const membership = await recalcMembership("otu");
-    log.push(`otu recalculated -> ${membership}`);
+    // No status_membership recalculation any more: tanda 3 (§1.1) removed
+    // the 3-DJs/2-residents minimum, so there is no publishable flag left
+    // to keep in sync.
 
     // --- sales ----------------------------------------------------
     // payment_ref is the idempotency key: a seeded order is created once
@@ -422,8 +418,6 @@ export async function GET(request: Request) {
         (SELECT COUNT(*)::int FROM user_profiles WHERE password_hash IS NOT NULL) AS accounts_with_password,
         (SELECT COUNT(*)::int FROM artists WHERE slug LIKE 'test-%') AS test_artists,
         (SELECT COUNT(*)::int FROM artist_collectives WHERE collective_slug = 'otu' AND to_date IS NULL) AS otu_members,
-        (SELECT status_membership FROM collectives WHERE slug = 'otu') AS otu_status,
-        (SELECT COUNT(*)::int FROM collectives WHERE status_membership = 'incompleto') AS collectives_incompleto,
         (SELECT COUNT(*)::int FROM tickets WHERE event_id = ${EVENT_ID}) AS tickets_event,
         (SELECT COUNT(*)::int FROM ticket_attributions) AS attributions,
         (SELECT COALESCE(SUM(amount_cop), 0)::int FROM ticket_attributions WHERE seller_collective_slug = 'otu') AS otu_cop,

@@ -107,7 +107,6 @@ export default async function AdminColectivos() {
                   collectiveSlug={c.slug}
                   members={members.get(c.slug) ?? []}
                   artists={artistOptions}
-                  statusMembership={c.statusMembership}
                 />
               </div>
               <form action={deleteCollective} className="mt-3">

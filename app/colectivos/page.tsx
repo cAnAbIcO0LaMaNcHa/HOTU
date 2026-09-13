@@ -21,7 +21,7 @@ export default async function ColectivosPage() {
         <DistrictFilterButton />
       </div>
       <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
-        <AutoTranslate text="Organizados por sector. BY HOTU son colectivos propios de la marca — LOCAL son crews independientes." />
+        <AutoTranslate text="BY HOTU son colectivos propios de la marca — LOCAL son crews independientes." />
       </p>
 
       {/* A Map cannot cross the server/client boundary, so it is handed

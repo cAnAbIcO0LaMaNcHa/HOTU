@@ -28,9 +28,5 @@ export async function DELETE(
   const result = await removeMember(slug, artistSlug, email);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  return NextResponse.json({
-    ok: true,
-    statusMembership: result.value.status,
-    closed: result.value.closed,
-  });
+  return NextResponse.json({ ok: true, closed: result.value.closed });
 }

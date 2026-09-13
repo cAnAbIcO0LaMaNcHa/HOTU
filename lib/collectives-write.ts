@@ -1,11 +1,20 @@
 /**
- * Write logic for collectives: membership, and the status_membership rule
- * that depends on it.
+ * Write logic for collective membership.
  *
  * Per the repo rule the work lives here and app/api/collectives/[slug]/*
  * exposes it over HTTP. Nothing here touches a Next request context — the
  * caller passes the acting email in, so the mobile app can use the same
  * functions through the same endpoints.
+ *
+ * The 3-DJs/2-residents minimum is GONE (tanda 3, §1.1). There is no
+ * publishable/incomplete state and nothing recomputes one: a collective
+ * with a single member can publish. recalcMembership() and its constants
+ * were removed from here rather than left unused, because a rule that
+ * still exists in the code is a rule somebody will call again.
+ *
+ * collectives.status_membership is NOT dropped — a column never goes in
+ * the same migration that stops using it — it is simply frozen at whatever
+ * it last held and no longer read or written.
  *
  * Node-only. Never import from a client component.
  */
@@ -20,36 +29,6 @@ export type MembershipKind = "residente" | "toca_con";
 export type WriteResult<T = undefined> =
   | { ok: true; value: T }
   | { ok: false; status: 400 | 403 | 404 | 409; error: string };
-
-/** A collective is publishable with 3+ DJs of whom 2+ are residents. */
-const MIN_DJS = 3;
-const MIN_RESIDENTES = 2;
-
-/**
- * Recomputes and stores status_membership from the active memberships.
- *
- * The rule applied rather than assumed, in one place: this used to live
- * inside the seed route, and the moment a second caller needed it the
- * duplication was going to drift. Every path that changes a membership
- * calls this afterwards.
- *
- * Counted DISTINCT because one artist can hold an active 'residente' and
- * an active 'toca_con' row for the same collective, and must not count
- * twice toward the minimum.
- */
-export async function recalcMembership(collectiveSlug: string): Promise<"activo" | "incompleto"> {
-  const [counts] = await sql`
-    SELECT
-      COUNT(DISTINCT artist_slug)::int AS djs,
-      COUNT(DISTINCT artist_slug) FILTER (WHERE kind = 'residente')::int AS residentes
-    FROM artist_collectives
-    WHERE collective_slug = ${collectiveSlug} AND to_date IS NULL
-  `;
-  const status =
-    counts.djs >= MIN_DJS && counts.residentes >= MIN_RESIDENTES ? "activo" : "incompleto";
-  await sql`UPDATE collectives SET status_membership = ${status} WHERE slug = ${collectiveSlug}`;
-  return status;
-}
 
 /**
  * Who may change a collective's membership: its owner, or a SUPER_ADMIN.
@@ -79,7 +58,7 @@ export async function addMember(
   artistSlug: string,
   kind: MembershipKind,
   actorEmail?: string | null
-): Promise<WriteResult<{ status: "activo" | "incompleto" }>> {
+): Promise<WriteResult> {
   if (kind !== "residente" && kind !== "toca_con") {
     return { ok: false, status: 400, error: "kind must be 'residente' or 'toca_con'" };
   }
@@ -127,7 +106,7 @@ export async function addMember(
     VALUES (${artistSlug}, ${collectiveSlug}, ${kind}, CURRENT_DATE, now())
   `;
 
-  return { ok: true, value: { status: await recalcMembership(collectiveSlug) } };
+  return { ok: true, value: undefined };
 }
 
 /**
@@ -143,7 +122,7 @@ export async function removeMember(
   collectiveSlug: string,
   artistSlug: string,
   actorEmail?: string | null
-): Promise<WriteResult<{ status: "activo" | "incompleto"; closed: number }>> {
+): Promise<WriteResult<{ closed: number }>> {
   const collective = await sql`SELECT slug FROM collectives WHERE slug = ${collectiveSlug}`;
   if (collective.length === 0) {
     return { ok: false, status: 404, error: "Collective not found" };
@@ -162,8 +141,5 @@ export async function removeMember(
     return { ok: false, status: 404, error: "Ese artista no tiene un vínculo activo con el colectivo" };
   }
 
-  return {
-    ok: true,
-    value: { status: await recalcMembership(collectiveSlug), closed: closed.length },
-  };
+  return { ok: true, value: { closed: closed.length } };
 }
