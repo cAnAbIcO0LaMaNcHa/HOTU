@@ -12,8 +12,11 @@ import { Pencil, X } from "lucide-react";
  * they read. When `canEdit` is false the component renders the children and
  * nothing else, so a visitor sees a plain profile with no dead controls.
  *
- * Client component on purpose, but it only ever talks to /api/artists/[slug]
- * — it never imports lib/db.ts or any write module.
+ * Client component on purpose, but it only ever talks to an API route —
+ * it never imports lib/db.ts or any write module.
+ *
+ * The endpoint is a prop because collectives edit the same way artists do.
+ * It defaults to the artist route, so every existing caller is unchanged.
  */
 export function EpkEditableSection({
   slug,
@@ -22,6 +25,7 @@ export function EpkEditableSection({
   children,
   form,
   buildPatch,
+  endpoint,
   className = "",
 }: {
   slug: string;
@@ -33,6 +37,8 @@ export function EpkEditableSection({
   form: (saving: boolean) => ReactNode;
   /** Reads the current form values into the JSON body for the PATCH. */
   buildPatch: () => Record<string, unknown>;
+  /** Where the PATCH goes. Defaults to the artist route. */
+  endpoint?: (slug: string) => string;
   className?: string;
 }) {
   const router = useRouter();
@@ -44,7 +50,10 @@ export function EpkEditableSection({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/artists/${encodeURIComponent(slug)}`, {
+      const url = endpoint
+        ? endpoint(slug)
+        : `/api/artists/${encodeURIComponent(slug)}`;
+      const res = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPatch()),

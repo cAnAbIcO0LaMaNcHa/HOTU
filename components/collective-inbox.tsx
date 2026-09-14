@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Inbox, UserMinus } from "lucide-react";
 import type { CollectiveMember, PendingMembership } from "@/lib/db";
+import { CollectiveInfoEditor } from "./collective-info-editor";
 
 /**
  * The collective's side, on its OWNER'S profile.
@@ -20,12 +21,16 @@ import type { CollectiveMember, PendingMembership } from "@/lib/db";
 export function CollectiveInbox({
   collectiveSlug,
   collectiveName,
+  collectiveBio,
+  collectiveSector,
   pending,
   members,
   departures,
 }: {
   collectiveSlug: string;
   collectiveName: string;
+  collectiveBio: string;
+  collectiveSector: string | null;
   pending: PendingMembership[];
   members: CollectiveMember[];
   departures: { artistSlug: string; artistName: string; kind: string; toDate: string }[];
@@ -70,6 +75,15 @@ export function CollectiveInbox({
       <p className="mt-1 font-mono text-[10px] tracking-widest text-muted-foreground">
         {members.length} {members.length === 1 ? "MIEMBRO" : "MIEMBROS"}
       </p>
+
+      {/* Editar la info del colectivo, en el mismo panel donde se
+          responden las solicitudes (§5.2: el panel del colectivo). */}
+      <CollectiveInfoEditor
+        slug={collectiveSlug}
+        name={collectiveName}
+        bio={collectiveBio}
+        sector={collectiveSector}
+      />
 
       {applications.length > 0 && (
         <div className="mt-5">

@@ -61,6 +61,9 @@ export type Artist = ContentMeta & {
   origin?: string;
   bpmMin?: number;
   bpmMax?: number;
+  /** The code buyers type at checkout so the sale is credited to this DJ.
+   *  Matched case-insensitively: CAMILA and camila are the same code. */
+  djCode?: string;
   socials: ArtistSocials;
 };
 
@@ -176,6 +179,7 @@ function mapArtist(r: Record<string, unknown>): Artist {
     origin: (r.origin as string) ?? undefined,
     bpmMin: r.bpm_min === null || r.bpm_min === undefined ? undefined : Number(r.bpm_min),
     bpmMax: r.bpm_max === null || r.bpm_max === undefined ? undefined : Number(r.bpm_max),
+    djCode: (r.dj_code as string) ?? undefined,
     socials: (r.socials ?? {}) as ArtistSocials,
   };
 }

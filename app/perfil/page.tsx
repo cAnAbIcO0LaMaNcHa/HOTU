@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Package, Ticket as TicketIcon, LogIn, MapPin, ChevronRight } from "lucide-react";
+import { Package, Ticket as TicketIcon, LogIn, MapPin, ChevronRight, Disc3 } from "lucide-react";
 import { auth } from "@/auth";
 import { getMyOrders, getMyProfile } from "@/lib/orders";
 import { getMyTicketInstances } from "@/lib/tickets";
@@ -8,7 +8,7 @@ import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
 import { MembershipInbox } from "@/components/membership-inbox";
-import { getLikedArtists, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { getArtistBySlug, getLikedArtists, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { LikedArtists } from "@/components/liked-artists";
 
@@ -47,21 +47,45 @@ export default async function PerfilPage() {
   }
 
   const email = session.user.email ?? "";
-  const [orders, tickets, profile, pending, currentCasa, memberships, likedArtists] =
-    await Promise.all([
-      getMyOrders(),
-      getMyTicketInstances(),
-      getMyProfile(),
-      getPendingForArtist(email),
-      getMyCurrentCasa(email),
-      getMyMemberships(email),
-      getLikedArtists(email),
-    ]);
 
-  // Collectives this account owns, with everything waiting on each. The
-  // owner administers from here, not from /admin, which only a SUPER_ADMIN
-  // can reach.
-  const owned = await getCollectivesOwnedBy(email);
+  /**
+   * What this account IS decides what this page renders (§5.2).
+   *
+   * The roles are not exclusive and are not a column: an account is a DJ
+   * because it owns an artist, and a collective because it owns a
+   * collective, and plenty of people are both. Reading it off ownership
+   * means there is no flag that can disagree with reality.
+   *
+   * Everything a role does not cover is simply not rendered — not hidden
+   * with CSS, not greyed out. A plain user's page has no press kit link
+   * and no membership inbox because that markup never exists for them.
+   */
+  const [myArtistSlug, owned] = await Promise.all([
+    getMyArtistSlug(email),
+    getCollectivesOwnedBy(email),
+  ]);
+  const isDJ = myArtistSlug !== null;
+
+  // Everybody gets these three: orders, tickets, the artists they follow.
+  const [orders, tickets, profile, likedArtists] = await Promise.all([
+    getMyOrders(),
+    getMyTicketInstances(),
+    getMyProfile(),
+    getLikedArtists(email),
+  ]);
+
+  // DJ-only. A plain user has no memberships to have a conversation about,
+  // so these queries do not even run for them.
+  const [pending, currentCasa, memberships] = isDJ
+    ? await Promise.all([
+        getPendingForArtist(email),
+        getMyCurrentCasa(email),
+        getMyMemberships(email),
+      ])
+    : [[], null, []];
+
+  const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug) : undefined;
+
   const membersByCollective = owned.length > 0 ? await getCollectiveMembers() : new Map();
   const ownedInboxes = await Promise.all(
     owned.map(async (c) => ({
@@ -85,16 +109,52 @@ export default async function PerfilPage() {
         initialHasConsent={profile.hasConsent}
       />
 
-      {/* Conversaciones de membresía: invitaciones para responder y
-          postulaciones esperando. No renderiza nada si no hay ninguna. */}
-      <MembershipInbox pending={pending} memberships={memberships} currentCasa={currentCasa} />
+      {/* DJ: acceso al press kit propio. Una cuenta de usuario normal no
+          tiene press kit, así que este bloque no existe para ella. */}
+      {isDJ && myArtist && (
+        <div className="border-chrome mt-10 p-6">
+          <h2 className="inline-flex items-center gap-2 text-xl font-bold">
+            <Disc3 className="h-4 w-4 text-primary" /> MI PRESS KIT
+          </h2>
+          <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+            Tu perfil público de DJ. Se edita ahí mismo: entrás y cambiás lo que
+            veas, sin formularios aparte.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              href={`/artistas/${myArtist.slug}`}
+              className="surface-chrome sheen inline-flex items-center gap-2 px-4 py-2 font-mono text-[11px] font-bold tracking-[0.2em]"
+            >
+              VER Y EDITAR <ChevronRight className="h-3 w-3" />
+            </Link>
+            <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+              {myArtist.name}
+              {myArtist.djCode ? ` · CÓDIGO ${myArtist.djCode}` : ""}
+            </span>
+          </div>
+        </div>
+      )}
 
-      {/* Un acceso al colectivo desde el perfil del dueño (§4.2). */}
+      {/* DJ: conversaciones de membresía. No renderiza nada si no hay
+          ninguna, y para una cuenta que no es DJ ni siquiera se consulta. */}
+      {isDJ && (
+        <MembershipInbox
+          pending={pending}
+          memberships={memberships}
+          currentCasa={currentCasa}
+        />
+      )}
+
+      {/* Colectivo: el panel del dueño (§4.2, §5.2). Miembros, solicitudes
+          pendientes y edición de la info. Una cuenta que no es dueña de
+          ningún colectivo no renderiza nada de esto. */}
       {ownedInboxes.map((o) => (
         <CollectiveInbox
           key={o.collective.slug}
           collectiveSlug={o.collective.slug}
           collectiveName={o.collective.name}
+          collectiveBio={o.collective.bio}
+          collectiveSector={o.collective.sector ?? null}
           pending={o.pending}
           members={o.members}
           departures={o.departures}

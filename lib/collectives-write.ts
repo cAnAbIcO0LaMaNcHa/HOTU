@@ -97,3 +97,65 @@ export async function removeMember(
 
   return { ok: true, value: { closed: closed.length } };
 }
+
+/**
+ * Edits the collective's own text: name, bio and sector.
+ *
+ * The slug is NOT editable here. It is the primary key and the target of
+ * four foreign keys, and although they all carry ON UPDATE CASCADE, a
+ * changed slug silently breaks every link anybody has ever shared. If a
+ * rename is ever wanted it needs to be its own deliberate operation.
+ *
+ * district is left out on purpose: the district system is on its way out
+ * (HOTFIX punto 1) and adding an editor for a field being removed would
+ * be work done twice.
+ *
+ * Every field is optional — an absent key means "leave it alone", which is
+ * what makes this safe to call from a form that only shows some of them.
+ * An empty string clears the nullable ones; name cannot be blanked,
+ * because a collective with no name is not displayable anywhere.
+ */
+export async function updateCollectiveInfo(
+  slug: string,
+  patch: { name?: unknown; bio?: unknown; sector?: unknown },
+  email?: string | null
+): Promise<WriteResult<{ updated: string[] }>> {
+  if (!(await canEditCollective(slug, email))) {
+    return { ok: false, status: 403, error: "No podés editar este colectivo" };
+  }
+
+  const updated: string[] = [];
+
+  if (patch.name !== undefined) {
+    if (typeof patch.name !== "string" || patch.name.trim() === "") {
+      return { ok: false, status: 400, error: "El nombre no puede quedar vacío" };
+    }
+    const name = patch.name.trim().slice(0, 120);
+    await sql`UPDATE collectives SET name = ${name} WHERE slug = ${slug}`;
+    updated.push("name");
+  }
+
+  if (patch.bio !== undefined) {
+    if (typeof patch.bio !== "string") {
+      return { ok: false, status: 400, error: "La bio tiene que ser texto" };
+    }
+    const bio = patch.bio.trim().slice(0, 4000);
+    await sql`UPDATE collectives SET bio = ${bio} WHERE slug = ${slug}`;
+    updated.push("bio");
+  }
+
+  if (patch.sector !== undefined) {
+    if (typeof patch.sector !== "string") {
+      return { ok: false, status: 400, error: "El sector tiene que ser texto" };
+    }
+    const sector = patch.sector.trim().slice(0, 120);
+    await sql`UPDATE collectives SET sector = ${sector || null} WHERE slug = ${slug}`;
+    updated.push("sector");
+  }
+
+  if (updated.length === 0) {
+    return { ok: false, status: 400, error: "No mandaste ningún campo para cambiar" };
+  }
+
+  return { ok: true, value: { updated } };
+}
