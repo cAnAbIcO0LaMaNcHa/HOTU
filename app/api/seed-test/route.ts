@@ -106,6 +106,21 @@ const MEMBERSHIPS = [
  * ally of OTU, never a resident. "Toca con" carries no money, so her sale
  * is attributed to her and to no collective at all.
  */
+/**
+ * Likes, so "ARTISTAS QUE ME GUSTAN" has something to show.
+ *
+ * The plain user follows three DJs — that is the case the section exists
+ * for. Camila follows one, which proves a DJ's own profile carries the
+ * section too. The applicant follows nobody, so the empty state (the
+ * section is not rendered at all) stays reachable without editing data.
+ */
+const LIKES = [
+  { email: "usuario@test.hotu.local", artist: "test-camila" },
+  { email: "usuario@test.hotu.local", artist: "test-pedro" },
+  { email: "usuario@test.hotu.local", artist: "test-luna" },
+  { email: "artista@test.hotu.local", artist: "test-luna" },
+];
+
 const SALES = [
   { ref: "SEED-A", seller: "test-camila", collective: "otu", tier: "normal", price: 30000, qty: 3 },
   { ref: "SEED-B", seller: "test-pedro", collective: "otu", tier: "vip", price: 50000, qty: 2 },
@@ -405,6 +420,23 @@ export async function GET(request: Request) {
     // No status_membership recalculation any more: tanda 3 (§1.1) removed
     // the 3-DJs/2-residents minimum, so there is no publishable flag left
     // to keep in sync.
+
+    // --- likes ----------------------------------------------------
+    // ON CONFLICT DO NOTHING keeps the original created_at, so re-running
+    // the seed does not reshuffle the order the user sees.
+    let likesCreated = 0;
+    for (const l of LIKES) {
+      const res = await sql`
+        INSERT INTO artist_likes (artist_slug, user_email)
+        VALUES (${l.artist}, ${l.email})
+        ON CONFLICT (artist_slug, user_email) DO NOTHING
+        RETURNING artist_slug
+      `;
+      if (res.length > 0) likesCreated++;
+    }
+    log.push(
+      `artist_likes: ${LIKES.length} del fixture (${likesCreated} nuevos en esta corrida). test-aplicante no sigue a nadie a propósito.`
+    );
 
     // --- sales ----------------------------------------------------
     // payment_ref is the idempotency key: a seeded order is created once

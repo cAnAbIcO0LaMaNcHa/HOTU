@@ -8,8 +8,9 @@ import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
 import { MembershipInbox } from "@/components/membership-inbox";
-import { getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { getLikedArtists, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { LikedArtists } from "@/components/liked-artists";
 
 export const revalidate = 0;
 
@@ -46,14 +47,16 @@ export default async function PerfilPage() {
   }
 
   const email = session.user.email ?? "";
-  const [orders, tickets, profile, pending, currentCasa, memberships] = await Promise.all([
-    getMyOrders(),
-    getMyTicketInstances(),
-    getMyProfile(),
-    getPendingForArtist(email),
-    getMyCurrentCasa(email),
-    getMyMemberships(email),
-  ]);
+  const [orders, tickets, profile, pending, currentCasa, memberships, likedArtists] =
+    await Promise.all([
+      getMyOrders(),
+      getMyTicketInstances(),
+      getMyProfile(),
+      getPendingForArtist(email),
+      getMyCurrentCasa(email),
+      getMyMemberships(email),
+      getLikedArtists(email),
+    ]);
 
   // Collectives this account owns, with everything waiting on each. The
   // owner administers from here, not from /admin, which only a SUPER_ADMIN
@@ -199,6 +202,10 @@ export default async function PerfilPage() {
           </div>
         )}
       </div>
+
+      {/* Artistas que me gustan — debajo de MIS TIQUETES. No se renderiza
+          si la cuenta no sigue a nadie. */}
+      <LikedArtists artists={likedArtists} />
     </section>
   );
 }

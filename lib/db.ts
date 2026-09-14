@@ -592,6 +592,58 @@ export async function getRecentDepartures(
   }));
 }
 
+export type LikedArtist = {
+  slug: string;
+  name: string;
+  photo: string | null;
+  likedAt: string;
+};
+
+/**
+ * The artists this account has liked, newest first.
+ *
+ * Only published artists come back. A like is a private bookmark, but the
+ * card it renders links to a public page, and an archived or draft artist
+ * would hand the user a dead link.
+ *
+ * The like itself is never a ranking signal — it exists so the user can be
+ * told when that DJ plays, and so the DJ can see how many people follow
+ * their work. Nothing here feeds ordering or exposure anywhere else.
+ */
+export async function getLikedArtists(email: string): Promise<LikedArtist[]> {
+  const rows = await sql`
+    SELECT a.slug, a.name, a.photo, al.created_at
+    FROM artist_likes al
+    JOIN artists a ON a.slug = al.artist_slug
+    WHERE al.user_email = ${email}
+      AND a.status = 'published'
+    ORDER BY al.created_at DESC
+  `;
+  return rows.map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    photo: (r.photo as string | null) ?? null,
+    likedAt: String(r.created_at),
+  }));
+}
+
+/** Whether this account has liked this artist — drives the button's state. */
+export async function hasLikedArtist(email: string, artistSlug: string): Promise<boolean> {
+  const rows = await sql`
+    SELECT 1 FROM artist_likes
+    WHERE user_email = ${email} AND artist_slug = ${artistSlug}
+  `;
+  return rows.length > 0;
+}
+
+/** How many people follow this artist. Public: the DJ's own audience count. */
+export async function countArtistLikes(artistSlug: string): Promise<number> {
+  const rows = await sql`
+    SELECT COUNT(*)::int AS n FROM artist_likes WHERE artist_slug = ${artistSlug}
+  `;
+  return (rows[0]?.n as number) ?? 0;
+}
+
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM events ORDER BY event_date ASC`
