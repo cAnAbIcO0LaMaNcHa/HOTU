@@ -1,4 +1,4 @@
-import { getAllArtists, getAllCollectives, getCollectiveMembers } from "@/lib/db";
+import { getAllArtists, getAllCollectives, getCollectiveMembers, getPendingForCollective, getRecentDepartures } from "@/lib/db";
 import { COUNTRY_CODES } from "@/lib/roles";
 import { DISTRICTS } from "@/lib/districts";
 import { createCollective, updateCollective, deleteCollective } from "@/lib/db-write";
@@ -57,6 +57,20 @@ export default async function AdminColectivos() {
   ]);
   const artistOptions = artists.map((a) => ({ slug: a.slug, name: a.name }));
 
+  // Pending conversations and departures are per collective, so they are
+  // fetched once for all of them rather than inside the render loop.
+  const extras = new Map(
+    await Promise.all(
+      collectives.map(async (c) => [
+        c.slug,
+        {
+          pending: await getPendingForCollective(c.slug),
+          departures: await getRecentDepartures(c.slug, 5),
+        },
+      ] as const)
+    )
+  );
+
   return (
     <div className="space-y-12">
       <div className="border border-primary p-6">
@@ -106,6 +120,8 @@ export default async function AdminColectivos() {
                 <CollectiveMembersEditor
                   collectiveSlug={c.slug}
                   members={members.get(c.slug) ?? []}
+                  pending={extras.get(c.slug)?.pending ?? []}
+                  departures={extras.get(c.slug)?.departures ?? []}
                   artists={artistOptions}
                 />
               </div>

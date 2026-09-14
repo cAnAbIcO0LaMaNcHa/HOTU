@@ -42,7 +42,11 @@ export function ColectivosList({
           return (
             <article key={c.slug} className="border border-border bg-card p-6">
               <div className="flex flex-wrap items-center gap-3">
-                <h3 className="text-xl font-bold">{c.name}</h3>
+                <h3 className="text-xl font-bold">
+                  <Link href={`/colectivos/${c.slug}`} className="hover:text-primary">
+                    {c.name}
+                  </Link>
+                </h3>
                 <span className={`border px-2 py-1 font-mono text-[9px] tracking-widest ${badge}`}>
                   {c.type === "HOTU" ? "BY HOTU" : "LOCAL"}
                 </span>

@@ -53,74 +53,15 @@ export async function canEditCollective(slug: string, email?: string | null): Pr
   return await isSuperAdmin(email);
 }
 
-/**
- * Adds an artist to a collective.
+/*
+ * addMember was removed in tanda 3, pieza 3. A collective can no longer
+ * add somebody outright: a membership only counts with both sides
+ * agreeing, so what used to be an add is now an invitation that the DJ
+ * has to accept. That lives in lib/membership-write.ts.
  *
- * 'casa' is the exclusive one: a DJ has exactly one home. The partial
- * unique index would reject a second one anyway, but a caller deserves to
- * be told WHICH collective is already their home, not a raw constraint
- * violation.
- *
- * The index cannot express the other half of the rule — that a casa is
- * only ever a collective, never a venue — because it cannot see
- * entity_kind. Once venues share this table (pieza 5) that check belongs
- * here, in the write path.
+ * Deleted rather than left unused, for the same reason recalcMembership
+ * was: a function that still exists is a function somebody calls.
  */
-export async function addMember(
-  collectiveSlug: string,
-  artistSlug: string,
-  kind: MembershipKind,
-  actorEmail?: string | null
-): Promise<WriteResult> {
-  if (kind !== "casa" && kind !== "residente") {
-    return { ok: false, status: 400, error: "kind must be 'casa' or 'residente'" };
-  }
-
-  const collective = await sql`SELECT slug FROM collectives WHERE slug = ${collectiveSlug}`;
-  if (collective.length === 0) {
-    return { ok: false, status: 404, error: "Collective not found" };
-  }
-  const artist = await sql`SELECT slug, name FROM artists WHERE slug = ${artistSlug}`;
-  if (artist.length === 0) {
-    return { ok: false, status: 404, error: `No existe el artista "${artistSlug}"` };
-  }
-
-  if (!(await canEditCollective(collectiveSlug, actorEmail))) {
-    return { ok: false, status: 403, error: "Not allowed to edit this collective" };
-  }
-
-  const existing = await sql`
-    SELECT 1 FROM artist_collectives
-    WHERE artist_slug = ${artistSlug} AND collective_slug = ${collectiveSlug}
-      AND kind = ${kind} AND to_date IS NULL
-  `;
-  if (existing.length > 0) {
-    return { ok: false, status: 409, error: `${artist[0].name} ya está en el colectivo como ${kind}` };
-  }
-
-  if (kind === "casa") {
-    const elsewhere = await sql`
-      SELECT ac.collective_slug, c.name
-      FROM artist_collectives ac
-      JOIN collectives c ON c.slug = ac.collective_slug
-      WHERE ac.artist_slug = ${artistSlug} AND ac.kind = 'casa' AND ac.to_date IS NULL
-    `;
-    if (elsewhere.length > 0) {
-      return {
-        ok: false,
-        status: 409,
-        error: `${artist[0].name} ya tiene su casa en ${elsewhere[0].name}. Un DJ tiene una sola casa: cerrá esa primero, o sumalo acá como residente.`,
-      };
-    }
-  }
-
-  await sql`
-    INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, accepted_at)
-    VALUES (${artistSlug}, ${collectiveSlug}, ${kind}, CURRENT_DATE, now())
-  `;
-
-  return { ok: true, value: undefined };
-}
 
 /**
  * Removes an artist from a collective by CLOSING the membership, not

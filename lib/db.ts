@@ -357,13 +357,17 @@ export type CollectiveMember = {
 };
 
 /**
- * Active memberships for every collective, grouped by collective slug.
+ * ACCEPTED memberships for every collective, grouped by collective slug.
  *
- * This replaces reading collectives.artist_slugs. One query for the whole
- * page rather than one per collective, and it joins artists so the caller
- * does not have to hold a second lookup table just to print names.
+ * accepted_at IS NOT NULL is not a detail: a membership only counts with
+ * both sides agreeing, so a collective must not be able to list somebody
+ * who has not said yes. A pending invitation appears nowhere public.
  *
- * Residents first, then allies, each alphabetically — a stable order that
+ * One query for the whole page rather than one per collective, and it
+ * joins artists so the caller does not need a second lookup table just to
+ * print names.
+ *
+ * Casa first, then residentes, each alphabetically — a stable order that
  * does not shuffle as rows are added.
  */
 export async function getCollectiveMembers(): Promise<Map<string, CollectiveMember[]>> {
@@ -371,7 +375,7 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
     SELECT ac.collective_slug, ac.artist_slug, ac.kind, ac.from_date, a.name AS artist_name
     FROM artist_collectives ac
     JOIN artists a ON a.slug = ac.artist_slug
-    WHERE ac.to_date IS NULL
+    WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
     ORDER BY ac.collective_slug,
              CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END,
              a.name
@@ -396,6 +400,197 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
  * left once /colectivos stopped grouping by sector, and a dead grouping
  * helper is an invitation to group by it again.
  */
+
+export async function getCollectiveBySlug(slug: string): Promise<Collective | undefined> {
+  const rows = await sql`SELECT * FROM collectives WHERE slug = ${slug} AND status = 'published'`;
+  if (rows.length === 0) return undefined;
+  const r = rows[0];
+  return {
+    ...mapMeta(r),
+    slug: r.slug as string,
+    name: r.name as string,
+    type: r.type as "HOTU" | "LOCAL",
+    sector: r.sector as string,
+    bio: r.bio as string,
+    district: r.district as DistrictId,
+  };
+}
+
+/** The artist profile this account speaks for, if it has one. */
+export async function getMyArtistSlug(email: string): Promise<string | null> {
+  const rows = await sql`
+    SELECT slug FROM artists WHERE lower(owner_email) = lower(${email}) LIMIT 1
+  `;
+  return (rows[0]?.slug as string) ?? null;
+}
+
+/**
+ * Collectives this account owns.
+ *
+ * §4.2: the owner administers without switching accounts, from their own
+ * profile. That is what this feeds — the collective's inbox does not live
+ * behind /admin, which only a SUPER_ADMIN can reach.
+ */
+export async function getCollectivesOwnedBy(email: string): Promise<Collective[]> {
+  const rows = await sql`
+    SELECT * FROM collectives WHERE lower(owner_email) = lower(${email}) ORDER BY name
+  `;
+  return rows.map((r) => ({
+    ...mapMeta(r),
+    slug: r.slug as string,
+    name: r.name as string,
+    type: r.type as "HOTU" | "LOCAL",
+    sector: r.sector as string,
+    bio: r.bio as string,
+    district: r.district as DistrictId,
+  }));
+}
+
+/** One side of an open membership conversation. */
+export type PendingMembership = {
+  id: number;
+  artistSlug: string;
+  artistName: string;
+  collectiveSlug: string;
+  collectiveName: string;
+  /** Who opened it — decides whether this reads as an invitation or an
+   *  application, and therefore who is expected to answer. */
+  requestedBy: "artist" | "collective";
+  createdAt: string;
+};
+
+function mapPending(r: Record<string, unknown>): PendingMembership {
+  return {
+    id: Number(r.id),
+    artistSlug: r.artist_slug as string,
+    artistName: r.artist_name as string,
+    collectiveSlug: r.collective_slug as string,
+    collectiveName: r.collective_name as string,
+    requestedBy: r.requested_by as "artist" | "collective",
+    createdAt: new Date(r.created_at as string).toISOString(),
+  };
+}
+
+/** Everything waiting on this account as a DJ: invitations to answer, plus
+ *  their own applications still unanswered. */
+export async function getPendingForArtist(email: string): Promise<PendingMembership[]> {
+  const rows = await sql`
+    SELECT ac.id, ac.artist_slug, ac.collective_slug, ac.requested_by, ac.created_at,
+           a.name AS artist_name, c.name AS collective_name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.accepted_at IS NULL AND ac.rejected_at IS NULL AND ac.to_date IS NULL
+      AND lower(a.owner_email) = lower(${email})
+    ORDER BY ac.created_at DESC
+  `;
+  return rows.map(mapPending);
+}
+
+/** Everything waiting on one collective: applications to answer, plus its
+ *  own invitations still unanswered. */
+export async function getPendingForCollective(
+  collectiveSlug: string
+): Promise<PendingMembership[]> {
+  const rows = await sql`
+    SELECT ac.id, ac.artist_slug, ac.collective_slug, ac.requested_by, ac.created_at,
+           a.name AS artist_name, c.name AS collective_name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.accepted_at IS NULL AND ac.rejected_at IS NULL AND ac.to_date IS NULL
+      AND ac.collective_slug = ${collectiveSlug}
+    ORDER BY ac.created_at DESC
+  `;
+  return rows.map(mapPending);
+}
+
+/** An accepted, live membership seen from the DJ's side. */
+export type MyMembership = {
+  id: number;
+  collectiveSlug: string;
+  collectiveName: string;
+  kind: "casa" | "residente";
+  fromDate: string;
+};
+
+/**
+ * The collectives this account actually belongs to.
+ *
+ * Needed as its own read, not folded into the pending list: once the other
+ * side accepts, the row stops being pending but the DJ may still have to
+ * choose whether it is their casa — the spec puts that choice after the
+ * acceptance. Without this the choice would have nowhere to happen.
+ */
+export async function getMyMemberships(email: string): Promise<MyMembership[]> {
+  const rows = await sql`
+    SELECT ac.id, ac.collective_slug, ac.kind, ac.from_date, c.name AS collective_name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+      AND lower(a.owner_email) = lower(${email})
+    ORDER BY CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END, c.name
+  `;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    collectiveSlug: r.collective_slug as string,
+    collectiveName: r.collective_name as string,
+    kind: r.kind as "casa" | "residente",
+    fromDate: toISODate(r.from_date as string),
+  }));
+}
+
+/**
+ * The collective that is currently this account's home, if any.
+ *
+ * Used to name it when offering to replace it, so the warning reads "hoy
+ * tu casa es X" instead of something abstract the DJ has to go look up.
+ */
+export async function getMyCurrentCasa(
+  email: string
+): Promise<{ slug: string; name: string } | null> {
+  const rows = await sql`
+    SELECT c.slug, c.name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+      AND lower(a.owner_email) = lower(${email})
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  return { slug: rows[0].slug as string, name: rows[0].name as string };
+}
+
+/**
+ * Memberships this collective LOST — closed links, newest first.
+ *
+ * §3.2 says the owner always finds out when they lose somebody. This is
+ * that notification, read out of the history rather than pushed anywhere:
+ * the rows are already immutable, so the panel only has to show them.
+ */
+export async function getRecentDepartures(
+  collectiveSlug: string,
+  limit = 10
+): Promise<{ artistSlug: string; artistName: string; kind: string; toDate: string }[]> {
+  const rows = await sql`
+    SELECT ac.artist_slug, ac.kind, ac.to_date, a.name AS artist_name
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    WHERE ac.collective_slug = ${collectiveSlug}
+      AND ac.to_date IS NOT NULL
+      AND ac.accepted_at IS NOT NULL
+    ORDER BY ac.to_date DESC, ac.id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({
+    artistSlug: r.artist_slug as string,
+    artistName: r.artist_name as string,
+    kind: r.kind as string,
+    toDate: toISODate(r.to_date as string),
+  }));
+}
 
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll

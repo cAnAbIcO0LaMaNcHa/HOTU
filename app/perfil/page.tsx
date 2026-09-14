@@ -7,6 +7,9 @@ import { getMyTicketInstances } from "@/lib/tickets";
 import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
+import { MembershipInbox } from "@/components/membership-inbox";
+import { getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { CollectiveInbox } from "@/components/collective-inbox";
 
 export const revalidate = 0;
 
@@ -42,7 +45,29 @@ export default async function PerfilPage() {
     );
   }
 
-  const [orders, tickets, profile] = await Promise.all([getMyOrders(), getMyTicketInstances(), getMyProfile()]);
+  const email = session.user.email ?? "";
+  const [orders, tickets, profile, pending, currentCasa, memberships] = await Promise.all([
+    getMyOrders(),
+    getMyTicketInstances(),
+    getMyProfile(),
+    getPendingForArtist(email),
+    getMyCurrentCasa(email),
+    getMyMemberships(email),
+  ]);
+
+  // Collectives this account owns, with everything waiting on each. The
+  // owner administers from here, not from /admin, which only a SUPER_ADMIN
+  // can reach.
+  const owned = await getCollectivesOwnedBy(email);
+  const membersByCollective = owned.length > 0 ? await getCollectiveMembers() : new Map();
+  const ownedInboxes = await Promise.all(
+    owned.map(async (c) => ({
+      collective: c,
+      pending: await getPendingForCollective(c.slug),
+      members: membersByCollective.get(c.slug) ?? [],
+      departures: await getRecentDepartures(c.slug, 5),
+    }))
+  );
   const ticketsPreview = tickets.slice(0, 3);
 
   return (
@@ -57,6 +82,22 @@ export default async function PerfilPage() {
         initialCedula={profile.cedula}
         initialHasConsent={profile.hasConsent}
       />
+
+      {/* Conversaciones de membresía: invitaciones para responder y
+          postulaciones esperando. No renderiza nada si no hay ninguna. */}
+      <MembershipInbox pending={pending} memberships={memberships} currentCasa={currentCasa} />
+
+      {/* Un acceso al colectivo desde el perfil del dueño (§4.2). */}
+      {ownedInboxes.map((o) => (
+        <CollectiveInbox
+          key={o.collective.slug}
+          collectiveSlug={o.collective.slug}
+          collectiveName={o.collective.name}
+          pending={o.pending}
+          members={o.members}
+          departures={o.departures}
+        />
+      ))}
 
       {/* Mis pedidos */}
       <div className="mt-16">

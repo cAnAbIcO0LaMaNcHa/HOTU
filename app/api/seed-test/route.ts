@@ -46,30 +46,55 @@ const ACCOUNTS = [
   { email: "artista@test.hotu.local", name: "Camila Test", phone: "+57 300 000 0001" },
   { email: "colectivo@test.hotu.local", name: "OTU Test", phone: "+57 300 000 0002" },
   { email: "usuario@test.hotu.local", name: "Usuario Test", phone: "+57 300 000 0003" },
+  // The two sides of a membership conversation, so the flow can be driven
+  // end to end from a browser without borrowing anybody else's account.
+  { email: "aplicante@test.hotu.local", name: "Aplicante Test", phone: "+57 300 000 0004" },
+  { email: "duena@test.hotu.local", name: "Dueña Test", phone: "+57 300 000 0005" },
 ] as const;
 
 const ARTISTS = [
-  {
-    slug: "test-camila",
-    name: "Camila Test",
-    djCode: "CAMILA",
-    ownerEmail: "artista@test.hotu.local",
-    kind: "casa" as const,
-  },
-  {
-    slug: "test-pedro",
-    name: "Pedro Test",
-    djCode: "PEDRO",
-    ownerEmail: null,
-    kind: "casa" as const,
-  },
-  {
-    slug: "test-luna",
-    name: "Luna Test",
-    djCode: "LUNA",
-    ownerEmail: null,
-    kind: "residente" as const,
-  },
+  { slug: "test-camila", name: "Camila Test", djCode: "CAMILA", ownerEmail: "artista@test.hotu.local" },
+  { slug: "test-pedro", name: "Pedro Test", djCode: "PEDRO", ownerEmail: null },
+  { slug: "test-luna", name: "Luna Test", djCode: "LUNA", ownerEmail: null },
+  // Deliberately has NO membership anywhere: the "apply from zero" case.
+  { slug: "test-aplicante", name: "Aplicante Test", djCode: "APLICA", ownerEmail: "aplicante@test.hotu.local" },
+  // Owns the collective that receives applications.
+  { slug: "test-duena", name: "Dueña Test", djCode: "DUENA", ownerEmail: "duena@test.hotu.local" },
+];
+
+/** A collective nobody in the fixture belongs to, so an application to it
+ *  really starts from nothing — and whose owner is a test account, so the
+ *  other side of the conversation can be driven from a browser too. */
+const REISEN = {
+  slug: "reisen",
+  name: "Reisen",
+  ownerEmail: "duena@test.hotu.local",
+  district: "D05",
+};
+
+/**
+ * The membership fixture, declared rather than accumulated.
+ *
+ * Every DJ gets one casa and at least one residencia somewhere else, spread
+ * across the collectives that exist, so the two carousels of a press kit
+ * both have something in them.
+ *
+ * One casa per artist, which is the rule the partial unique index enforces
+ * — check it by eye before adding a row here: camila/otu, pedro/paramo,
+ * luna/subsuelo, dueña/reisen, and the aplicante with none at all.
+ *
+ * test-aplicante is absent ON PURPOSE. It is the account that applies from
+ * zero, and seeding it into anything would destroy the case it exists for.
+ */
+const MEMBERSHIPS = [
+  { artist: "test-camila", collective: "otu", kind: "casa" as const },
+  { artist: "test-camila", collective: "hotu-138", kind: "residente" as const },
+  { artist: "test-pedro", collective: "paramo-club", kind: "casa" as const },
+  { artist: "test-pedro", collective: "otu", kind: "residente" as const },
+  { artist: "test-luna", collective: "subsuelo-djs", kind: "casa" as const },
+  { artist: "test-luna", collective: "otu", kind: "residente" as const },
+  { artist: "test-duena", collective: REISEN.slug, kind: "casa" as const },
+  { artist: "test-duena", collective: "chia-underground", kind: "residente" as const },
 ];
 
 /**
@@ -183,7 +208,21 @@ export async function GET(request: Request) {
         owner_email = EXCLUDED.owner_email,
         district    = EXCLUDED.district
     `;
-    log.push("collective otu ready");
+    // The destination for applications. Its owner is a test account, so
+    // both halves of the conversation can be driven from a browser.
+    await sql`
+      INSERT INTO collectives
+        (slug, name, type, sector, bio, district, owner_email, status)
+      VALUES
+        (${REISEN.slug}, ${REISEN.name}, 'LOCAL', 'Bogotá',
+         'Colectivo de prueba para desarrollo. Recibe postulaciones. No es un colectivo real.',
+         ${REISEN.district}, ${REISEN.ownerEmail}, 'published')
+      ON CONFLICT (slug) DO UPDATE SET
+        name        = EXCLUDED.name,
+        owner_email = EXCLUDED.owner_email,
+        district    = EXCLUDED.district
+    `;
+    log.push("collectives otu y reisen listos");
 
     // --- EPK content for test-camila ------------------------------
     // Only Camila gets sets, tracks and gigs. Pedro and Luna are left
@@ -312,22 +351,56 @@ export async function GET(request: Request) {
     log.push("artist_gigs ready (1 hotu + 1 declarado)");
 
     // --- memberships ----------------------------------------------
-    // The partial unique indexes make this naturally idempotent, but the
-    // explicit guard keeps the re-run from raising instead of no-op'ing.
-    for (const a of ARTISTS) {
+    /**
+     * Declarative: make the database match MEMBERSHIPS, rather than adding
+     * to whatever is already there.
+     *
+     * CLOSE FIRST, THEN INSERT, and not the other way round. Moving a DJ's
+     * casa means there is a moment with two active casas if the insert goes
+     * first, and the partial unique index refuses exactly that. The order
+     * is not tidiness, it is the only one that works.
+     *
+     * Only the fixture's own artists are touched. Real memberships are
+     * never closed by the seed.
+     */
+    const fixtureArtists = ARTISTS.map((a) => a.slug);
+    let cerrados = 0;
+    let abiertos = 0;
+
+    for (const slug of fixtureArtists) {
+      const wanted = MEMBERSHIPS.filter((m) => m.artist === slug);
+      const live = await sql`
+        SELECT id, collective_slug, kind FROM artist_collectives
+        WHERE artist_slug = ${slug} AND to_date IS NULL
+      `;
+
+      for (const row of live) {
+        const keep = wanted.some(
+          (w) => w.collective === row.collective_slug && w.kind === row.kind
+        );
+        if (keep) continue;
+        await sql`UPDATE artist_collectives SET to_date = CURRENT_DATE WHERE id = ${row.id}`;
+        cerrados++;
+      }
+    }
+
+    for (const m of MEMBERSHIPS) {
       const existing = await sql`
         SELECT 1 FROM artist_collectives
-        WHERE artist_slug = ${a.slug} AND collective_slug = 'otu'
-          AND kind = ${a.kind} AND to_date IS NULL
+        WHERE artist_slug = ${m.artist} AND collective_slug = ${m.collective}
+          AND kind = ${m.kind} AND to_date IS NULL
       `;
       if (existing.length > 0) continue;
       await sql`
         INSERT INTO artist_collectives
-          (artist_slug, collective_slug, kind, from_date, accepted_at)
-        VALUES (${a.slug}, 'otu', ${a.kind}, DATE '2026-01-15', now())
+          (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
+        VALUES (${m.artist}, ${m.collective}, ${m.kind}, DATE '2026-01-15', now(), 'collective')
       `;
+      abiertos++;
     }
-    log.push("artist_collectives ready (2 residentes + 1 aliado)");
+    log.push(
+      `artist_collectives: ${MEMBERSHIPS.length} vínculos del fixture (${abiertos} abiertos, ${cerrados} cerrados en esta corrida). test-aplicante queda sin ninguno a propósito.`
+    );
 
     // No status_membership recalculation any more: tanda 3 (§1.1) removed
     // the 3-DJs/2-residents minimum, so there is no publishable flag left

@@ -1,48 +1,27 @@
 /**
- * POST /api/collectives/[slug]/members — add an artist to a collective.
+ * This route no longer adds members.
  *
- * Body: { artistSlug, kind: "casa" | "residente" }
+ * Adding somebody outright contradicted the model: a membership only counts
+ * with both sides agreeing, and a collective cannot list a DJ who never
+ * said yes (tanda 3, §3). Inviting goes through POST /api/memberships with
+ * requestedBy "collective", which is the same endpoint a DJ uses to apply —
+ * one pending row either way, differing only in who started it.
  *
- * Work lives in lib/collectives-write.ts; this does auth and shape only.
- * Adding a resident is refused with a 409 that names the collective the
- * artist is already resident of — the partial unique index would reject it
- * regardless, but a constraint violation is not an answer.
+ * DELETE lives one level down, at members/[artistSlug]: closing a
+ * membership is still the collective's call and needs no handshake.
  */
 
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { addMember, type MembershipKind } from "@/lib/collectives-write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  const { slug } = await params;
-
-  const session = await auth();
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-
-  let body: { artistSlug?: unknown; kind?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
-  }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
-  }
-
-  const artistSlug = typeof body.artistSlug === "string" ? body.artistSlug.trim() : "";
-  if (!artistSlug) {
-    return NextResponse.json({ error: "artistSlug is required" }, { status: 400 });
-  }
-
-  const result = await addMember(slug, artistSlug, body.kind as MembershipKind, email);
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-
-  return NextResponse.json({ ok: true }, { status: 201 });
+export async function POST() {
+  return NextResponse.json(
+    {
+      error:
+        "Los miembros ya no se agregan directo. Usá POST /api/memberships con requestedBy 'collective' para invitar; el DJ tiene que aceptar.",
+    },
+    { status: 410 }
+  );
 }
