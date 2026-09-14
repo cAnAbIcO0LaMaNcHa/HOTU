@@ -24,7 +24,14 @@ export async function PATCH(
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  let body: { name?: unknown; bio?: unknown; sector?: unknown };
+  let body: {
+    name?: unknown;
+    bio?: unknown;
+    sector?: unknown;
+    /** Solo venues. El lib rechaza estos dos si la fila es un colectivo. */
+    address?: unknown;
+    capacity?: unknown;
+  };
   try {
     body = await request.json();
   } catch {

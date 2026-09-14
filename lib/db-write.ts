@@ -197,8 +197,20 @@ export async function updateCollective(formData: FormData): Promise<void> {
   refreshAll();
 }
 
+/**
+ * Borra un colectivo desde el panel de admin.
+ *
+ * Acotado a entity_kind='collective' a propósito. Colectivos y venues
+ * comparten tabla, y el panel de colectivos lista colectivos: sin este
+ * filtro, borrar "un colectivo" de esa lista podría borrar un venue, y
+ * se llevaría en cascada sus géneros y sus vínculos. Los venues se
+ * borran desde su propio panel o no se borran.
+ */
 export async function deleteCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
-  await sql`DELETE FROM collectives WHERE slug = ${String(formData.get("slug"))}`;
+  await sql`
+    DELETE FROM collectives
+    WHERE slug = ${String(formData.get("slug"))} AND entity_kind = 'collective'
+  `;
   refreshAll();
 }

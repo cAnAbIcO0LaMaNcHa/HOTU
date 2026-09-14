@@ -20,6 +20,7 @@ export function CollectiveJoinButton({
   collectiveName,
   artistSlug,
   state,
+  entityKind = "collective",
 }: {
   collectiveSlug: string;
   collectiveName: string;
@@ -27,7 +28,15 @@ export function CollectiveJoinButton({
   artistSlug: string | null;
   /** Why the button is not actionable, when it is not. */
   state: "can-apply" | "signed-out" | "no-artist" | "pending" | "member";
+  /**
+   * Un venue admite residentes y nada más. Cambia el texto —no se ofrece
+   * elegir casa— y el enlace de vuelta después de iniciar sesión.
+   */
+  entityKind?: "collective" | "venue";
 }) {
+  const esVenue = entityKind === "venue";
+  const palabra = esVenue ? "venue" : "colectivo";
+  const volverA = esVenue ? `/venues/${collectiveSlug}` : `/colectivos/${collectiveSlug}`;
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +94,7 @@ export function CollectiveJoinButton({
           Entrá con tu cuenta de DJ para postularte a {collectiveName}.
         </p>
         <Link
-          href={`/auth/signin?callbackUrl=/colectivos/${collectiveSlug}`}
+          href={`/auth/signin?callbackUrl=${encodeURIComponent(volverA)}`}
           className="surface-chrome sheen mt-3 inline-flex px-5 py-2.5 font-mono text-[11px] font-bold tracking-[0.2em]"
         >
           INICIAR SESIÓN
@@ -98,7 +107,7 @@ export function CollectiveJoinButton({
     return (
       <div className="border-chrome mt-12 p-6 text-center">
         <p className="font-mono text-[11px] text-muted-foreground">
-          Solo una cuenta con perfil de DJ puede postularse a un colectivo.
+          Solo una cuenta con perfil de DJ puede postularse a un {palabra}.
         </p>
       </div>
     );
@@ -116,8 +125,18 @@ export function CollectiveJoinButton({
         {busy ? "ENVIANDO..." : "ÚNETE A NOSOTROS"}
       </button>
       <p className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
-        Enviás una postulación: {collectiveName} la acepta o la rechaza. Si te aceptan,
-        vos elegís si es tu casa o si entrás como residente.
+        {esVenue ? (
+          <>
+            Enviás una postulación: {collectiveName} la acepta o la rechaza. Si te
+            aceptan, entrás como residente. Tu casa sigue siendo tu colectivo — un
+            venue no es la casa de nadie.
+          </>
+        ) : (
+          <>
+            Enviás una postulación: {collectiveName} la acepta o la rechaza. Si te
+            aceptan, vos elegís si es tu casa o si entrás como residente.
+          </>
+        )}
       </p>
       {error && (
         <p role="alert" className="mt-3 font-mono text-[11px] text-primary">

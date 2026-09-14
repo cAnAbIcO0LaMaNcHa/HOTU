@@ -95,6 +95,18 @@ export type DjSet = ContentMeta & {
   sortOrder?: number;
 };
 
+/**
+ * Colectivo y venue comparten la tabla `collectives` (tanda 3, §5). Para
+ * el usuario son dos secciones distintas, con su propia navegación; para
+ * la base son la misma fila con un tipo distinto.
+ *
+ * TODA lectura de esta tabla tiene que decir cuál de los dos quiere. El
+ * default es 'collective' en todos lados, así que olvidarse deja fuera a
+ * los venues en vez de mezclarlos: si algo falla, falla mostrando de
+ * menos, nunca publicando un venue como si fuera un colectivo.
+ */
+export type EntityKind = "collective" | "venue";
+
 export type Collective = ContentMeta & {
   slug: string;
   name: string;
@@ -102,6 +114,11 @@ export type Collective = ContentMeta & {
   sector: string;
   bio: string;
   district: DistrictId;
+  entityKind: EntityKind;
+  /** Solo venues. Un colectivo no tiene dirección propia. */
+  address?: string;
+  /** Solo venues. Aforo. */
+  capacity?: number;
 };
 
 /*
@@ -334,21 +351,38 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
   }));
 }
 
-export async function getAllCollectives(opts: ReadOptions = {}): Promise<Collective[]> {
+/** Una sola conversión de fila a Collective, para que los tres lectores
+ *  no puedan divergir en qué columnas leen. */
+function mapCollective(r: Record<string, unknown>): Collective {
+  return {
+    ...mapMeta(r),
+    slug: r.slug as string,
+    name: r.name as string,
+    type: r.type as "HOTU" | "LOCAL",
+    sector: r.sector as string,
+    bio: r.bio as string,
+    district: r.district as DistrictId,
+    entityKind: (r.entity_kind as EntityKind) ?? "collective",
+    address: (r.address as string) ?? undefined,
+    capacity: r.capacity === null || r.capacity === undefined ? undefined : Number(r.capacity),
+  };
+}
+
+export async function getAllCollectives(
+  opts: ReadOptions & { kind?: EntityKind } = {}
+): Promise<Collective[]> {
   // Ordered by name alone. Sector stopped being the grouping axis in tanda
   // 3 (§1.4) — it is a plain city label now, not a heading to sort under.
+  const kind = opts.kind ?? "collective";
   const rows = opts.includeAll
-    ? await sql`SELECT * FROM collectives ORDER BY name`
-    : await sql`SELECT * FROM collectives WHERE status = 'published' ORDER BY name`;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug,
-    name: r.name,
-    type: r.type as "HOTU" | "LOCAL",
-    sector: r.sector,
-    bio: r.bio,
-    district: r.district as DistrictId,
-  }));
+    ? await sql`SELECT * FROM collectives WHERE entity_kind = ${kind} ORDER BY name`
+    : await sql`SELECT * FROM collectives WHERE entity_kind = ${kind} AND status = 'published' ORDER BY name`;
+  return rows.map(mapCollective);
+}
+
+/** Los venues, que son la misma tabla con otro entity_kind. */
+export async function getAllVenues(opts: ReadOptions = {}): Promise<Collective[]> {
+  return getAllCollectives({ ...opts, kind: "venue" });
 }
 
 /** One active membership, with the artist's display name resolved. */
@@ -374,12 +408,19 @@ export type CollectiveMember = {
  * Casa first, then residentes, each alphabetically — a stable order that
  * does not shuffle as rows are added.
  */
-export async function getCollectiveMembers(): Promise<Map<string, CollectiveMember[]>> {
+export async function getCollectiveMembers(
+  kind: EntityKind = "collective"
+): Promise<Map<string, CollectiveMember[]>> {
+  // El JOIN contra collectives es lo que separa los dos rosters. Sin él,
+  // los residentes de un venue saldrían listados bajo el venue en
+  // /colectivos, que es la mezcla que §5 dice que no se negocia.
   const rows = await sql`
     SELECT ac.collective_slug, ac.artist_slug, ac.kind, ac.from_date, a.name AS artist_name
     FROM artist_collectives ac
     JOIN artists a ON a.slug = ac.artist_slug
+    JOIN collectives c ON c.slug = ac.collective_slug
     WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+      AND c.entity_kind = ${kind}
     ORDER BY ac.collective_slug,
              CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END,
              a.name
@@ -405,19 +446,29 @@ export async function getCollectiveMembers(): Promise<Map<string, CollectiveMemb
  * helper is an invitation to group by it again.
  */
 
-export async function getCollectiveBySlug(slug: string): Promise<Collective | undefined> {
-  const rows = await sql`SELECT * FROM collectives WHERE slug = ${slug} AND status = 'published'`;
+/**
+ * El colectivo con ese slug, o undefined.
+ *
+ * Filtra por tipo, así que /colectivos/<slug-de-venue> devuelve undefined
+ * y la página hace notFound(), en vez de renderizar un venue con el press
+ * kit de un colectivo. Los slugs son únicos en toda la tabla, así que no
+ * hay ambigüedad: el filtro decide si ESTA sección lo muestra, no cuál de
+ * dos filas es.
+ */
+export async function getCollectiveBySlug(
+  slug: string,
+  kind: EntityKind = "collective"
+): Promise<Collective | undefined> {
+  const rows = await sql`
+    SELECT * FROM collectives
+    WHERE slug = ${slug} AND status = 'published' AND entity_kind = ${kind}
+  `;
   if (rows.length === 0) return undefined;
-  const r = rows[0];
-  return {
-    ...mapMeta(r),
-    slug: r.slug as string,
-    name: r.name as string,
-    type: r.type as "HOTU" | "LOCAL",
-    sector: r.sector as string,
-    bio: r.bio as string,
-    district: r.district as DistrictId,
-  };
+  return mapCollective(rows[0]);
+}
+
+export async function getVenueBySlug(slug: string): Promise<Collective | undefined> {
+  return getCollectiveBySlug(slug, "venue");
 }
 
 /** The artist profile this account speaks for, if it has one. */
@@ -435,19 +486,16 @@ export async function getMyArtistSlug(email: string): Promise<string | null> {
  * profile. That is what this feeds — the collective's inbox does not live
  * behind /admin, which only a SUPER_ADMIN can reach.
  */
-export async function getCollectivesOwnedBy(email: string): Promise<Collective[]> {
+export async function getCollectivesOwnedBy(
+  email: string,
+  kind: EntityKind = "collective"
+): Promise<Collective[]> {
   const rows = await sql`
-    SELECT * FROM collectives WHERE lower(owner_email) = lower(${email}) ORDER BY name
+    SELECT * FROM collectives
+    WHERE lower(owner_email) = lower(${email}) AND entity_kind = ${kind}
+    ORDER BY name
   `;
-  return rows.map((r) => ({
-    ...mapMeta(r),
-    slug: r.slug as string,
-    name: r.name as string,
-    type: r.type as "HOTU" | "LOCAL",
-    sector: r.sector as string,
-    bio: r.bio as string,
-    district: r.district as DistrictId,
-  }));
+  return rows.map(mapCollective);
 }
 
 /** One side of an open membership conversation. */
@@ -516,6 +564,14 @@ export type MyMembership = {
   collectiveName: string;
   kind: "casa" | "residente";
   fromDate: string;
+  /**
+   * Colectivo o venue. Acá NO se filtra por tipo, a diferencia de los
+   * listados públicos: el DJ tiene que ver todos sus vínculos juntos,
+   * porque son suyos. Lo que cambia es la etiqueta, y sobre todo que en
+   * un venue no se le ofrece "hacer mi casa": un venue no es la casa de
+   * nadie.
+   */
+  entityKind: EntityKind;
 };
 
 /**
@@ -528,13 +584,14 @@ export type MyMembership = {
  */
 export async function getMyMemberships(email: string): Promise<MyMembership[]> {
   const rows = await sql`
-    SELECT ac.id, ac.collective_slug, ac.kind, ac.from_date, c.name AS collective_name
+    SELECT ac.id, ac.collective_slug, ac.kind, ac.from_date,
+           c.name AS collective_name, c.entity_kind
     FROM artist_collectives ac
     JOIN artists a ON a.slug = ac.artist_slug
     JOIN collectives c ON c.slug = ac.collective_slug
     WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
       AND lower(a.owner_email) = lower(${email})
-    ORDER BY CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END, c.name
+    ORDER BY CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END, c.entity_kind, c.name
   `;
   return rows.map((r) => ({
     id: Number(r.id),
@@ -542,6 +599,7 @@ export async function getMyMemberships(email: string): Promise<MyMembership[]> {
     collectiveName: r.collective_name as string,
     kind: r.kind as "casa" | "residente",
     fromDate: toISODate(r.from_date as string),
+    entityKind: (r.entity_kind as EntityKind) ?? "collective",
   }));
 }
 
@@ -554,6 +612,13 @@ export async function getMyMemberships(email: string): Promise<MyMembership[]> {
 export async function getMyCurrentCasa(
   email: string
 ): Promise<{ slug: string; name: string } | null> {
+  // SIN filtro por entity_kind, a propósito. Una casa solo puede estar en
+  // un colectivo, y eso lo garantiza el write path. Filtrar acá por
+  // entity_kind = 'collective' ESCONDERÍA una casa que se hubiera colado
+  // en un venue en vez de mostrarla: el DJ vería "no tenés casa" teniendo
+  // una, y el diálogo de conflicto no se abriría nunca. Si alguna vez
+  // aparece una casa en un venue, es un bug del write path y tiene que
+  // verse, no taparse desde la lectura.
   const rows = await sql`
     SELECT c.slug, c.name
     FROM artist_collectives ac

@@ -21,6 +21,8 @@ export function SiteHeader() {
     { label: t("eventos"), href: "/eventos" },
     { label: t("artistas"), href: "/artistas" },
     { label: t("colectivos"), href: "/colectivos" },
+    // Sección propia, al lado de colectivos y no dentro (§5).
+    { label: t("venues"), href: "/venues" },
     { label: t("sets"), href: "/sets" },
     { label: t("discografia"), href: "/discografia" },
     { label: t("tienda"), href: "/tienda" },

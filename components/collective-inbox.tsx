@@ -26,6 +26,9 @@ export function CollectiveInbox({
   pending,
   members,
   departures,
+  entityKind = "collective",
+  address,
+  capacity,
 }: {
   collectiveSlug: string;
   collectiveName: string;
@@ -34,7 +37,14 @@ export function CollectiveInbox({
   pending: PendingMembership[];
   members: CollectiveMember[];
   departures: { artistSlug: string; artistName: string; kind: string; toDate: string }[];
+  /** El mismo panel sirve a los dos; cambian el enlace y el texto. */
+  entityKind?: "collective" | "venue";
+  /** Solo venues. Los edita el dueño desde acá. */
+  address?: string | null;
+  capacity?: number | null;
 }) {
+  const esVenue = entityKind === "venue";
+  const href = esVenue ? `/venues/${collectiveSlug}` : `/colectivos/${collectiveSlug}`;
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +78,7 @@ export function CollectiveInbox({
     <div className="border-chrome mt-6 p-6">
       <h3 className="inline-flex items-center gap-2 text-lg font-bold">
         <Inbox className="h-4 w-4 text-primary" />
-        <Link href={`/colectivos/${collectiveSlug}`} className="hover:text-primary">
+        <Link href={href} className="hover:text-primary">
           {collectiveName}
         </Link>
       </h3>
@@ -83,6 +93,9 @@ export function CollectiveInbox({
         name={collectiveName}
         bio={collectiveBio}
         sector={collectiveSector}
+        entityKind={entityKind}
+        address={address}
+        capacity={capacity}
       />
 
       {applications.length > 0 && (
@@ -100,8 +113,9 @@ export function CollectiveInbox({
                   {p.artistName}
                 </Link>
                 <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                  Quiere sumarse. Si aceptás, elige después si sos su casa o entra como
-                  residente.
+                  {esVenue
+                    ? "Quiere sumarse. Si aceptás, entra como residente: un venue no es la casa de nadie."
+                    : "Quiere sumarse. Si aceptás, elige después si sos su casa o entra como residente."}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button

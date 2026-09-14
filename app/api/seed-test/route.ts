@@ -73,6 +73,26 @@ const REISEN = {
 };
 
 /**
+ * Un venue de prueba (tanda 3, §5).
+ *
+ * Comparte la tabla `collectives` con los colectivos y se distingue por
+ * entity_kind. Existe para que /venues tenga contenido y para ejercitar
+ * lo único que un venue tiene y un colectivo no: dirección y aforo.
+ *
+ * Su dueña es la misma cuenta que ya tiene un colectivo, a propósito: es
+ * el caso que demuestra que "uno por cuenta" cuenta por tipo y no en
+ * total. Con el bug viejo, esta cuenta no habría podido tener los dos.
+ */
+const VENUE = {
+  slug: "bodega-prueba",
+  name: "Bodega Prueba",
+  ownerEmail: "duena@test.hotu.local",
+  district: "D08",
+  address: "Calle 80 # 14 - 11",
+  capacity: 400,
+};
+
+/**
  * The membership fixture, declared rather than accumulated.
  *
  * Every DJ gets one casa and at least one residencia somewhere else, spread
@@ -95,6 +115,12 @@ const MEMBERSHIPS = [
   { artist: "test-luna", collective: "otu", kind: "residente" as const },
   { artist: "test-duena", collective: REISEN.slug, kind: "casa" as const },
   { artist: "test-duena", collective: "chia-underground", kind: "residente" as const },
+  // Residencias en el VENUE. Nunca 'casa': un venue no es la casa de
+  // nadie, y el write path rechaza los tres caminos que podrían ponerla
+  // ahí. Poner 'casa' acá crearía a mano justo el estado que el código
+  // impide, y el fixture dejaría de representar algo alcanzable.
+  { artist: "test-duena", collective: VENUE.slug, kind: "residente" as const },
+  { artist: "test-camila", collective: VENUE.slug, kind: "residente" as const },
 ];
 
 /**
@@ -238,6 +264,27 @@ export async function GET(request: Request) {
         district    = EXCLUDED.district
     `;
     log.push("collectives otu y reisen listos");
+
+    // El venue. entity_kind lo separa de los colectivos en TODA lectura;
+    // sin esa columna en el INSERT caería en el default y aparecería en
+    // /colectivos.
+    await sql`
+      INSERT INTO collectives
+        (slug, name, type, sector, bio, district, owner_email, status,
+         entity_kind, address, capacity)
+      VALUES
+        (${VENUE.slug}, ${VENUE.name}, 'LOCAL', 'Bogotá',
+         'Venue de prueba para desarrollo. No es un lugar real.',
+         ${VENUE.district}, ${VENUE.ownerEmail}, 'published',
+         'venue', ${VENUE.address}, ${VENUE.capacity})
+      ON CONFLICT (slug) DO UPDATE SET
+        name        = EXCLUDED.name,
+        owner_email = EXCLUDED.owner_email,
+        entity_kind = EXCLUDED.entity_kind,
+        address     = EXCLUDED.address,
+        capacity    = EXCLUDED.capacity
+    `;
+    log.push(`venue ${VENUE.slug} listo (entity_kind='venue', aforo ${VENUE.capacity})`);
 
     // --- EPK content for test-camila ------------------------------
     // Only Camila gets sets, tracks and gigs. Pedro and Luna are left

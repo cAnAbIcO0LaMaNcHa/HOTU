@@ -117,13 +117,52 @@ export async function requestMembership(
 /** Loads a pending row plus who is allowed to answer it. */
 async function loadPending(id: number) {
   const rows = await sql`
-    SELECT ac.*, a.name AS artist_name, c.name AS collective_name
+    SELECT ac.*, a.name AS artist_name, c.name AS collective_name,
+           c.entity_kind AS collective_entity_kind
     FROM artist_collectives ac
     JOIN artists a ON a.slug = ac.artist_slug
     JOIN collectives c ON c.slug = ac.collective_slug
     WHERE ac.id = ${id}
   `;
   return rows[0];
+}
+
+/**
+ * UN VENUE NO ES LA CASA DE NADIE.
+ *
+ * Un DJ es residente de un venue —toca ahí, aparece en su roster— pero su
+ * casa es su colectivo. Es la regla de §5 y de AGENTS.md.
+ *
+ * POR QUÉ NO ALCANZA CON LA BASE, y por eso vive acá:
+ *
+ * El índice único parcial artist_collectives_one_active_casa_idx garantiza
+ * UNA sola casa activa por artista. No garantiza DÓNDE. El índice está
+ * sobre artist_collectives y no puede ver entity_kind, que es una columna
+ * de otra tabla.
+ *
+ * Un CHECK tampoco: un CHECK evalúa una fila contra sí misma y no puede
+ * consultar collectives. Y un FK compuesto contra (slug, entity_kind)
+ * obligaría a duplicar entity_kind dentro de artist_collectives, donde se
+ * desincronizaría el día que un venue pase a colectivo o al revés.
+ *
+ * Así que la base acepta feliz una casa en un venue, y el único lugar
+ * donde se puede impedir es el camino de escritura. Los tres caminos que
+ * pueden escribir 'casa' —aceptar una invitación eligiendo casa, resolver
+ * un conflicto de casa, y cambiar el kind de un vínculo ya aceptado—
+ * pasan por acá antes de escribir.
+ *
+ * Si esto faltara, el daño no sería solo una etiqueta mal puesta: §6 dice
+ * que los sets y tracks republicados siguen a la casa, así que la
+ * discografía del DJ se mudaría al venue, y devolver el kind no deshace
+ * la republicación.
+ */
+function rechazarCasaEnVenue(row: Record<string, unknown>): WriteResult<never> | null {
+  if ((row.collective_entity_kind as string) !== "venue") return null;
+  return {
+    ok: false,
+    status: 400,
+    error: `${row.collective_name} es un venue. Podés ser residente, pero tu casa va en un colectivo.`,
+  };
 }
 
 /**
@@ -184,8 +223,15 @@ export async function acceptMembership(
     return { ok: true, value: { kind: "residente", needsKindChoice: false } };
   }
 
-  // They asked for casa. If one already exists, hand back the options and
-  // leave the row pending — the DJ has to say which way explicitly.
+  // Pidió casa. Antes que nada: ¿se puede tener casa acá? Un venue no.
+  // Va ANTES del conflicto, porque si el destino no admite casa no hay
+  // nada que decidir: no tiene sentido ofrecerle mover su casa a un lugar
+  // donde no puede estar.
+  const enVenue = rechazarCasaEnVenue(row);
+  if (enVenue) return enVenue;
+
+  // If one already exists, hand back the options and leave the row
+  // pending — the DJ has to say which way explicitly.
   const conflict = await casaConflict(
     row.artist_slug as string,
     id,
@@ -229,6 +275,12 @@ export async function resolveCasa(
   if (!(await isArtistOwner(row.artist_slug as string, actorEmail))) {
     return { ok: false, status: 403, error: "Solo el DJ decide dónde está su casa" };
   }
+
+  // Toda rama de esta decisión termina poniendo la casa ACÁ, así que si
+  // este destino es un venue la decisión entera es inválida, incluso la
+  // que sale de un conflicto legítimo abierto antes.
+  const enVenue = rechazarCasaEnVenue(row);
+  if (enVenue) return enVenue;
 
   // Still pending means this call also accepts it.
   const alsoAccept = !row.accepted_at;
@@ -387,10 +439,19 @@ export async function chooseKind(
   }
   if (row.kind === kind) return { ok: true, value: undefined };
 
+  // Pasar a residente siempre se puede, incluso en un venue: residente es
+  // justamente lo único que un venue admite.
   if (kind === "residente") {
     await sql`UPDATE artist_collectives SET kind = 'residente' WHERE id = ${id}`;
     return { ok: true, value: undefined };
   }
+
+  // Pasar a casa, no. Este es el camino por el que un residente de un
+  // venue podría convertir ese vínculo en su casa sin que ningún índice
+  // ni CHECK lo note: si no tiene otra casa, casaConflict no encuentra
+  // conflicto y el UPDATE pasa limpio.
+  const enVenue = rechazarCasaEnVenue(row);
+  if (enVenue) return enVenue;
 
   const conflict = await casaConflict(
     row.artist_slug as string,

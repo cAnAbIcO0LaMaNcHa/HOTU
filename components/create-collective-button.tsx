@@ -15,7 +15,14 @@ import { Plus } from "lucide-react";
  * their back. Changing it is then the ordinary casa conversation, with its
  * three explicit options, in the panel right above.
  */
-export function CreateCollectiveButton() {
+export function CreateCollectiveButton({
+  /** Colectivo o venue: los dos se crean igual, con textos distintos. */
+  entityKind = "collective",
+}: {
+  entityKind?: "collective" | "venue";
+} = {}) {
+  const esVenue = entityKind === "venue";
+  const palabra = esVenue ? "VENUE" : "COLECTIVO";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -34,14 +41,18 @@ export function CreateCollectiveButton() {
       const res = await fetch("/api/collectives", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, entityKind }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? `No se pudo crear (HTTP ${res.status})`);
         return;
       }
-      if (data.kind === "residente") {
+      if (esVenue) {
+        setNote(
+          "Venue creado. Entraste como residente, que es el único vínculo que un venue tiene: tu casa sigue siendo tu colectivo."
+        );
+      } else if (data.kind === "residente") {
         setNote(
           "Creado. Como ya tenés casa en otro colectivo, entraste a este como residente. Si querés que sea tu casa, cambialo desde COLECTIVOS, acá arriba."
         );
@@ -70,7 +81,7 @@ export function CreateCollectiveButton() {
           onClick={() => setOpen(true)}
           className="inline-flex items-center gap-2 border border-border px-4 py-2 font-mono text-[11px] tracking-[0.2em] text-foreground/80 hover:border-primary hover:text-primary"
         >
-          <Plus className="h-3 w-3" /> CREAR COLECTIVO
+          <Plus className="h-3 w-3" /> CREAR {palabra}
         </button>
       </div>
     );
@@ -78,7 +89,7 @@ export function CreateCollectiveButton() {
 
   return (
     <div className="border-chrome mt-10 p-6">
-      <h2 className="text-xl font-bold">CREAR COLECTIVO</h2>
+      <h2 className="text-xl font-bold">CREAR {palabra}</h2>
       <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
         Uno por cuenta. Quedás como dueño y como primer miembro. La ciudad y el resto
         de la info salen de tu perfil y se editan después.
@@ -86,7 +97,7 @@ export function CreateCollectiveButton() {
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Nombre del colectivo"
+        placeholder={esVenue ? "Nombre del venue" : "Nombre del colectivo"}
         disabled={busy}
         className="mt-4 w-full max-w-sm border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
       />

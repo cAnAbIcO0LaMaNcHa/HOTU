@@ -61,9 +61,12 @@ export default async function PerfilPage() {
    * with CSS, not greyed out. A plain user's page has no press kit link
    * and no membership inbox because that markup never exists for them.
    */
-  const [myArtistSlug, owned] = await Promise.all([
+  // Colectivos y venues por separado: comparten tabla, pero son dos
+  // secciones distintas y dos paneles distintos. Uno de cada por cuenta.
+  const [myArtistSlug, owned, ownedVenues] = await Promise.all([
     getMyArtistSlug(email),
     getCollectivesOwnedBy(email),
+    getCollectivesOwnedBy(email, "venue"),
   ]);
   const isDJ = myArtistSlug !== null;
 
@@ -87,7 +90,22 @@ export default async function PerfilPage() {
 
   const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug) : undefined;
 
+  // Los dos rosters van por separado: getCollectiveMembers filtra por
+  // tipo, así que pedirlo una sola vez dejaría sin miembros a uno de los
+  // dos paneles.
   const membersByCollective = owned.length > 0 ? await getCollectiveMembers() : new Map();
+  const membersByVenue =
+    ownedVenues.length > 0 ? await getCollectiveMembers("venue") : new Map();
+
+  const ownedVenueInboxes = await Promise.all(
+    ownedVenues.map(async (v) => ({
+      collective: v,
+      pending: await getPendingForCollective(v.slug),
+      members: membersByVenue.get(v.slug) ?? [],
+      departures: await getRecentDepartures(v.slug, 5),
+    }))
+  );
+
   const ownedInboxes = await Promise.all(
     owned.map(async (c) => ({
       collective: c,
@@ -153,9 +171,11 @@ export default async function PerfilPage() {
         />
       )}
 
-      {/* Crear colectivo (§4.1): uno por cuenta, y sólo desde una cuenta
-          de DJ. Si ya tiene uno, el botón no se renderiza. */}
+      {/* Crear colectivo (§4.1) y crear venue (§5): uno de cada por
+          cuenta, y sólo desde una cuenta de DJ. El que ya existe no
+          vuelve a ofrecerse, y tener uno nunca bloquea al otro. */}
       {isDJ && owned.length === 0 && <CreateCollectiveButton />}
+      {isDJ && ownedVenues.length === 0 && <CreateCollectiveButton entityKind="venue" />}
 
       {/* Colectivo: el panel del dueño (§4.2, §5.2). Miembros, solicitudes
           pendientes y edición de la info. Una cuenta que no es dueña de
@@ -170,6 +190,23 @@ export default async function PerfilPage() {
           pending={o.pending}
           members={o.members}
           departures={o.departures}
+        />
+      ))}
+
+      {/* Venue: el mismo panel, para el dueño de un venue (§5). */}
+      {ownedVenueInboxes.map((o) => (
+        <CollectiveInbox
+          key={o.collective.slug}
+          collectiveSlug={o.collective.slug}
+          collectiveName={o.collective.name}
+          collectiveBio={o.collective.bio}
+          collectiveSector={o.collective.sector ?? null}
+          pending={o.pending}
+          members={o.members}
+          departures={o.departures}
+          entityKind="venue"
+          address={o.collective.address ?? null}
+          capacity={o.collective.capacity ?? null}
         />
       ))}
 

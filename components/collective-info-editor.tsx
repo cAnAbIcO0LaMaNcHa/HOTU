@@ -20,15 +20,27 @@ export function CollectiveInfoEditor({
   name,
   bio,
   sector,
+  entityKind = "collective",
+  address,
+  capacity,
 }: {
   slug: string;
   name: string;
   bio: string;
   sector: string | null;
+  /** Un venue edita dos campos más: dirección y aforo (§5). */
+  entityKind?: "collective" | "venue";
+  address?: string | null;
+  capacity?: number | null;
 }) {
+  const esVenue = entityKind === "venue";
   const [draftName, setDraftName] = useState(name);
   const [draftBio, setDraftBio] = useState(bio ?? "");
   const [draftSector, setDraftSector] = useState(sector ?? "");
+  const [draftAddress, setDraftAddress] = useState(address ?? "");
+  const [draftCapacity, setDraftCapacity] = useState(
+    capacity == null ? "" : String(capacity)
+  );
 
   return (
     <EpkEditableSection
@@ -41,6 +53,10 @@ export function CollectiveInfoEditor({
         name: draftName,
         bio: draftBio,
         sector: draftSector,
+        // Solo se mandan si es un venue: el endpoint rechaza estos dos
+        // contra un colectivo, y mandarlos vacíos haría fallar el guardado
+        // de la bio por un campo que este perfil ni siquiera muestra.
+        ...(esVenue ? { address: draftAddress, capacity: draftCapacity } : {}),
       })}
       form={(saving) => (
         <>
@@ -48,16 +64,35 @@ export function CollectiveInfoEditor({
             label="NOMBRE"
             value={draftName}
             onChange={setDraftName}
-            placeholder="Reisen"
+            placeholder={esVenue ? "Bodega 38" : "Reisen"}
             disabled={saving}
           />
           <Field
-            label="SECTOR (DE DÓNDE SON)"
+            label={esVenue ? "SECTOR (DÓNDE QUEDA)" : "SECTOR (DE DÓNDE SON)"}
             value={draftSector}
             onChange={setDraftSector}
             placeholder="Chapinero, Bogotá"
             disabled={saving}
           />
+          {esVenue && (
+            <>
+              <Field
+                label="DIRECCIÓN"
+                value={draftAddress}
+                onChange={setDraftAddress}
+                placeholder="Calle 80 # 14 - 11"
+                disabled={saving}
+              />
+              <Field
+                label="AFORO"
+                type="number"
+                value={draftCapacity}
+                onChange={setDraftCapacity}
+                placeholder="400"
+                disabled={saving}
+              />
+            </>
+          )}
           <TextAreaField
             label="BIO"
             value={draftBio}
@@ -69,6 +104,12 @@ export function CollectiveInfoEditor({
     >
       <div className="font-mono text-[11px] leading-relaxed text-muted-foreground">
         {sector && <div>{sector}</div>}
+        {esVenue && (
+          <div>
+            {address || "Sin dirección"}
+            {capacity != null ? ` · aforo ${capacity}` : " · sin aforo"}
+          </div>
+        )}
         {bio ? (
           <p className="mt-1 max-w-2xl">{bio}</p>
         ) : (

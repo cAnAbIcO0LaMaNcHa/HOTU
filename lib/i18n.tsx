@@ -15,14 +15,14 @@ export const LANGUAGES: { code: Lang; label: string; apiCode: string }[] = [
 ];
 
 type DictKey =
-  | "noticias" | "eventos" | "artistas" | "colectivos" | "sets" | "discografia" | "tienda"
+  | "noticias" | "eventos" | "artistas" | "colectivos" | "venues" | "sets" | "discografia" | "tienda"
   | "sobreNosotros" | "uneteANosotros" | "suscribirse" | "buscar" | "menu" | "verTodos" | "tema" | "perfil" | "tickets"
   | "footerSecciones" | "footerComunidad" | "footerContacto" | "footerDesc" | "footerRights"
   | "heroLine1" | "heroLine2" | "nuevos" | "nueva";
 
 const DICT: Record<Lang, Record<DictKey, string>> = {
   es: {
-    noticias: "NOTICIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLECTIVOS",
+    noticias: "NOTICIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLECTIVOS", venues: "VENUES",
     sets: "SETS", discografia: "DISCOGRAFÍA", tienda: "TIENDA",
     sobreNosotros: "SOBRE NOSOTROS", uneteANosotros: "ÚNETE A NOSOTROS",
     suscribirse: "SUSCRIBIRSE", buscar: "Buscar", menu: "Menú", verTodos: "VER TODOS",
@@ -33,7 +33,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "BIENVENIDO", heroLine2: "A LA CASA", nuevos: "NUEVOS", nueva: "NUEVA",
   },
   en: {
-    noticias: "NEWS", eventos: "EVENTS", artistas: "ARTISTS", colectivos: "COLLECTIVES",
+    noticias: "NEWS", eventos: "EVENTS", artistas: "ARTISTS", colectivos: "COLLECTIVES", venues: "VENUES",
     sets: "SETS", discografia: "DISCOGRAPHY", tienda: "STORE",
     sobreNosotros: "ABOUT US", uneteANosotros: "JOIN US",
     suscribirse: "SUBSCRIBE", buscar: "Search", menu: "Menu", verTodos: "VIEW ALL",
@@ -44,7 +44,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "WELCOME", heroLine2: "HOME", nuevos: "NEW", nueva: "NEW",
   },
   pt: {
-    noticias: "NOTÍCIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLETIVOS",
+    noticias: "NOTÍCIAS", eventos: "EVENTOS", artistas: "ARTISTAS", colectivos: "COLETIVOS", venues: "VENUES",
     sets: "SETS", discografia: "DISCOGRAFIA", tienda: "LOJA",
     sobreNosotros: "SOBRE NÓS", uneteANosotros: "JUNTE-SE A NÓS",
     suscribirse: "INSCREVER-SE", buscar: "Buscar", menu: "Menu", verTodos: "VER TODOS",
@@ -55,7 +55,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "BEM-VINDO", heroLine2: "À CASA", nuevos: "NOVOS", nueva: "NOVA",
   },
   fr: {
-    noticias: "ACTUALITÉS", eventos: "ÉVÉNEMENTS", artistas: "ARTISTES", colectivos: "COLLECTIFS",
+    noticias: "ACTUALITÉS", eventos: "ÉVÉNEMENTS", artistas: "ARTISTES", colectivos: "COLLECTIFS", venues: "LIEUX",
     sets: "SETS", discografia: "DISCOGRAPHIE", tienda: "BOUTIQUE",
     sobreNosotros: "À PROPOS", uneteANosotros: "REJOIGNEZ-NOUS",
     suscribirse: "S'ABONNER", buscar: "Rechercher", menu: "Menu", verTodos: "VOIR TOUT",
@@ -66,7 +66,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "BIENVENUE", heroLine2: "CHEZ TOI", nuevos: "NOUVEAUX", nueva: "NOUVEAU",
   },
   ru: {
-    noticias: "НОВОСТИ", eventos: "СОБҫТИЯ", artistas: "АРТИСТҫ", colectivos: "КОЛЛЕКТИВҫ",
+    noticias: "НОВОСТИ", eventos: "СОБҫТИЯ", artistas: "АРТИСТҫ", colectivos: "КОЛЛЕКТИВҫ", venues: "ПЛОЩАДКИ",
     sets: "СЕТҫ", discografia: "ДИСКОГРАФИЯ", tienda: "МАГАЗИН",
     sobreNosotros: "О НАС", uneteANosotros: "ПРИСОЕДИНЯЙТЕСЬ",
     suscribirse: "ПОДПИСАТЬСЯ", buscar: "Поиск", menu: "Меню", verTodos: "СМОТРЕТЬ ВСЕ",
@@ -77,7 +77,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "ДОБРО ПОЖАЛОВАТЬ", heroLine2: "ДОМОЙ", nuevos: "НОВЫЕ", nueva: "НОВОЕ",
   },
   ja: {
-    noticias: "ニュース", eventos: "イベント", artistas: "アーティスト", colectivos: "コレクティブ",
+    noticias: "ニュース", eventos: "イベント", artistas: "アーティスト", colectivos: "コレクティブ", venues: "会場",
     sets: "セット", discografia: "ディスコグレフィー", tienda: "ストア",
     sobreNosotros: "私たちについて", uneteANosotros: "参加する",
     suscribirse: "登録する", buscar: "検索", menu: "メニュー", verTodos: "すべて見る",
@@ -88,7 +88,7 @@ const DICT: Record<Lang, Record<DictKey, string>> = {
     heroLine1: "ようこそ", heroLine2: "我が家へ", nuevos: "新着", nueva: "新着",
   },
   zh: {
-    noticias: "新闻", eventos: "活动", artistas: "艺术家", colectivos: "团体",
+    noticias: "新闻", eventos: "活动", artistas: "艺术家", colectivos: "团体", venues: "场地",
     sets: "现场演出", discografia: "唱片目录", tienda: "商店",
     sobreNosotros: "关于我们", uneteANosotros: "加入我们",
     suscribirse: "订阅", buscar: "搜索", menu: "菜单", verTodos: "查看全部",

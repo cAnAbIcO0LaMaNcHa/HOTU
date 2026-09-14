@@ -1,9 +1,14 @@
 /**
- * POST /api/collectives — found a collective from a DJ's account (§4.1).
+ * POST /api/collectives — found a collective or a venue from a DJ's
+ * account (§4.1 y §5).
  *
- * Body: { name }. Everything else is derived: the caller's session decides
- * the owner, and their artist profile seeds the city and district. Nothing
- * about who owns it is taken from the request.
+ * Body: { name, entityKind? }. Todo lo demás se deriva: la sesión decide
+ * el dueño, y el perfil de artista siembra la ciudad y el distrito. Nada
+ * sobre quién es el dueño sale del request.
+ *
+ * entityKind por defecto es 'collective'. Un venue hay que pedirlo
+ * explícitamente, así que un cliente viejo que no sepa del campo sigue
+ * creando colectivos y nunca abre un venue sin querer.
  */
 
 import { NextResponse } from "next/server";
@@ -18,7 +23,7 @@ export async function POST(request: Request) {
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  let body: { name?: unknown };
+  let body: { name?: unknown; entityKind?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -28,7 +33,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
   }
 
-  const result = await createCollective(body.name, email);
+  if (
+    body.entityKind !== undefined &&
+    body.entityKind !== "collective" &&
+    body.entityKind !== "venue"
+  ) {
+    return NextResponse.json(
+      { error: "entityKind tiene que ser 'collective' o 'venue'" },
+      { status: 400 }
+    );
+  }
+  const entityKind = (body.entityKind as "collective" | "venue") ?? "collective";
+
+  const result = await createCollective(body.name, email, entityKind);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
   return NextResponse.json({ ok: true, ...result.value }, { status: 201 });

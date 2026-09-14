@@ -260,14 +260,26 @@ export function MembershipInbox({
                 <span className="min-w-0">
                   <span className="block truncate font-bold">{m.collectiveName}</span>
                   <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {m.kind === "casa" ? "TU CASA" : "RESIDENTE"} · desde {m.fromDate.slice(0, 10)}
+                    {m.kind === "casa" ? "TU CASA" : "RESIDENTE"}
+                    {m.entityKind === "venue" ? " · VENUE" : ""} · desde{" "}
+                    {m.fromDate.slice(0, 10)}
                   </span>
                 </span>
 
                 {/* The choice lives here because the spec puts it AFTER the
                     other side accepts — at which point the row is no longer
-                    pending and would otherwise have nowhere to be made. */}
-                {m.kind === "casa" ? (
+                    pending and would otherwise have nowhere to be made.
+
+                    En un venue no se ofrece: un venue no es la casa de
+                    nadie. El write path lo rechaza igual, pero un botón que
+                    siempre falla al tocarlo es peor que no tenerlo. */}
+                {m.entityKind === "venue" ? (
+                  <span className="shrink-0 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    Acá sos residente.
+                    <br />
+                    Tu casa va en un colectivo.
+                  </span>
+                ) : m.kind === "casa" ? (
                   <button
                     type="button"
                     onClick={() => act(m.id, { action: "kind", kind: "residente" })}
@@ -289,7 +301,8 @@ export function MembershipInbox({
               </li>
             ))}
           </ul>
-          {currentCasa && memberships.some((m) => m.kind !== "casa") && (
+          {currentCasa &&
+            memberships.some((m) => m.kind !== "casa" && m.entityKind !== "venue") && (
             <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
               Hacer tu casa en otro lado mueve la de <strong>{currentCasa.name}</strong>, que
               pasa a residente. Nunca tenés dos casas.

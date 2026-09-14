@@ -19,6 +19,7 @@ export function SiteFooter() {
         { label: t("eventos"), href: "/eventos" },
         { label: t("artistas"), href: "/artistas" },
         { label: t("colectivos"), href: "/colectivos" },
+        { label: t("venues"), href: "/venues" },
         { label: t("sets"), href: "/sets" },
       ],
     },

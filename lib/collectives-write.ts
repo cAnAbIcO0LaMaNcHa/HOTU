@@ -21,6 +21,9 @@
 
 import { neon } from "@neondatabase/serverless";
 import { isSuperAdmin } from "./roles-check";
+// Solo el tipo: import type se borra al compilar, así que no arrastra la
+// conexión de lib/db.ts a ningún lado.
+import type { EntityKind } from "./db";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -117,7 +120,7 @@ export async function removeMember(
  */
 export async function updateCollectiveInfo(
   slug: string,
-  patch: { name?: unknown; bio?: unknown; sector?: unknown },
+  patch: { name?: unknown; bio?: unknown; sector?: unknown; address?: unknown; capacity?: unknown },
   email?: string | null
 ): Promise<WriteResult<{ updated: string[] }>> {
   if (!(await canEditCollective(slug, email))) {
@@ -125,6 +128,24 @@ export async function updateCollectiveInfo(
   }
 
   const updated: string[] = [];
+
+  // address y capacity son de venues. Se aceptan solo si la fila LO ES:
+  // un colectivo no tiene dirección propia ni aforo, y dejar que los
+  // guarde igual llenaría la tabla de datos que nada muestra y que el
+  // día que alguien los lea van a estar mal.
+  const necesitaVenue = patch.address !== undefined || patch.capacity !== undefined;
+  let esVenue = false;
+  if (necesitaVenue) {
+    const filas = await sql`SELECT entity_kind FROM collectives WHERE slug = ${slug}`;
+    esVenue = filas[0]?.entity_kind === "venue";
+    if (!esVenue) {
+      return {
+        ok: false,
+        status: 400,
+        error: "La dirección y el aforo son de un venue, no de un colectivo",
+      };
+    }
+  }
 
   if (patch.name !== undefined) {
     if (typeof patch.name !== "string" || patch.name.trim() === "") {
@@ -153,6 +174,32 @@ export async function updateCollectiveInfo(
     updated.push("sector");
   }
 
+  if (patch.address !== undefined) {
+    if (typeof patch.address !== "string") {
+      return { ok: false, status: 400, error: "La dirección tiene que ser texto" };
+    }
+    const address = patch.address.trim().slice(0, 200);
+    await sql`UPDATE collectives SET address = ${address || null} WHERE slug = ${slug}`;
+    updated.push("address");
+  }
+
+  if (patch.capacity !== undefined) {
+    // Vacío borra el aforo; cualquier otra cosa tiene que ser un entero
+    // positivo. El CHECK de la base rechaza 0 y negativos igual, pero un
+    // mensaje entendible es mejor que una violación de constraint.
+    const crudo = patch.capacity;
+    let capacity: number | null = null;
+    if (crudo !== null && crudo !== "") {
+      const n = Number(crudo);
+      if (!Number.isInteger(n) || n <= 0) {
+        return { ok: false, status: 400, error: "El aforo tiene que ser un número entero mayor que cero" };
+      }
+      capacity = n;
+    }
+    await sql`UPDATE collectives SET capacity = ${capacity} WHERE slug = ${slug}`;
+    updated.push("capacity");
+  }
+
   if (updated.length === 0) {
     return { ok: false, status: 400, error: "No mandaste ningún campo para cambiar" };
   }
@@ -178,7 +225,16 @@ export async function updateCollectiveInfo(
  */
 export async function createCollective(
   name: unknown,
-  email: string
+  email: string,
+  /**
+   * Colectivo o venue. Los dos nacen igual: de una cuenta de DJ, uno por
+   * cuenta, con el fundador como dueño y primer miembro (§4.1 y §5).
+   *
+   * Lo único que cambia es el tipo y, con él, el vínculo: en un colectivo
+   * el fundador entra como casa si no tiene otra; en un VENUE entra
+   * siempre como residente, porque un venue no es la casa de nadie.
+   */
+  entityKind: EntityKind = "collective"
 ): Promise<
   WriteResult<{ slug: string; kind: MembershipKind; casaTaken: { slug: string; name: string } | null }>
 > {
@@ -194,19 +250,29 @@ export async function createCollective(
     WHERE lower(owner_email) = lower(${email}) AND status = 'published'
     ORDER BY slug LIMIT 1
   `;
+  const etiqueta = entityKind === "venue" ? "venue" : "colectivo";
+
   if (!artist) {
     return {
       ok: false,
       status: 403,
-      error: "Necesitás un perfil de DJ para crear un colectivo",
+      error: `Necesitás un perfil de DJ para crear un ${etiqueta}`,
     };
   }
 
+  // El "uno por cuenta" cuenta SOLO el mismo tipo.
+  //
+  // Sin el filtro, tener un venue te negaría el colectivo con un mensaje
+  // falso ("ya tenés un colectivo") y viceversa, y los seis dueños de
+  // colectivo que ya existen no podrían abrir un venue nunca. Es el tipo
+  // de bug que no se nota al escribirlo porque hoy no hay ningún venue:
+  // aparece entero el día que existe el primero.
   const owned = await sql`
-    SELECT slug FROM collectives WHERE lower(owner_email) = lower(${email})
+    SELECT slug FROM collectives
+    WHERE lower(owner_email) = lower(${email}) AND entity_kind = ${entityKind}
   `;
   if (owned.length > 0) {
-    return { ok: false, status: 409, error: "Ya tenés un colectivo. Es uno por cuenta." };
+    return { ok: false, status: 409, error: `Ya tenés un ${etiqueta}. Es uno por cuenta.` };
   }
 
   const slug = await freeSlug(clean);
@@ -214,9 +280,9 @@ export async function createCollective(
   // The founder's own district and city seed the collective's, since a
   // crew starts out where its founder is. Both are editable afterwards.
   await sql`
-    INSERT INTO collectives (slug, name, type, sector, bio, district, owner_email, status)
+    INSERT INTO collectives (slug, name, type, sector, bio, district, owner_email, status, entity_kind)
     VALUES (${slug}, ${clean}, 'LOCAL', ${artist.city ?? "Bogotá"}, '',
-            ${artist.district ?? "D00"}, ${email}, 'published')
+            ${artist.district ?? "D00"}, ${email}, 'published', ${entityKind})
   `;
 
   // Does the founder already have a home elsewhere? The partial unique
@@ -229,7 +295,10 @@ export async function createCollective(
       AND ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
     LIMIT 1
   `;
-  const kind: MembershipKind = casa ? "residente" : "casa";
+  // En un venue el fundador entra como residente SIEMPRE, tenga casa o
+  // no: un venue no es la casa de nadie, ni siquiera de quien lo abrió.
+  const kind: MembershipKind =
+    entityKind === "venue" ? "residente" : casa ? "residente" : "casa";
 
   await sql`
     INSERT INTO artist_collectives
