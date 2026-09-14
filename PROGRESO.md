@@ -1,330 +1,254 @@
-# PROGRESO — sesión larga sin supervisión
+# PROGRESO — sesión de tanda 4 y venues
 
-Todo contra la branch **dev** de Neon. **Nada tocó main.** Nada se
-pusheó: hay **9 commits locales** por delante de `origin/main`, desde
-`e4ca297`.
+Todo contra la branch **dev** de Neon. **Nada tocó main.** Nada se pusheó:
+hay **6 commits locales** por delante de `origin/main`, desde `0ac63de`.
 
-Verificación: `npx tsc --noEmit` limpio después de cada pieza, y `npm
-run dev` con curl contra `localhost:3000`. Nunca se corrió `next build`.
+Verificación: `npx tsc --noEmit` limpio después de cada pieza, y curl
+contra `npm run dev`. Nunca se corrió `next build`.
 
 ---
 
-## LO QUE QUEDÓ HECHO Y COMMITEADO
-
-En orden de trabajo. Los ocho puntos del encargo están terminados.
+## HECHO Y COMMITEADO
 
 | Commit | Pieza |
 |---|---|
-| `094f6a4` | Tanda 3 pieza 3 — membresía como conversación (estaba sin commitear) |
-| `6c65bc4` | HOTFIX 0 — `/login` |
-| `0e1fa8b` | HOTFIX 5 — fuera la cédula |
-| `38a313c` | HOTFIX 5.1 — artistas que me gustan |
-| `2c8db06` | HOTFIX 5.2 — el perfil según el tipo de cuenta |
-| `d53092d` | HOTFIX 6 — eventos, tarjetas clickeables, el hueco |
-| `3947277` | HOTFIX 4 — barra superior |
-| `e33b1e8` | HOTFIX 3 — layout estándar de listado |
-| `082205f` | Tanda 3 §4.1 — crear colectivo |
+| `f9673fe` | Pieza 0 — los dos agentes |
+| `b097f4c` | Tanda 4 pieza 1 — modelo de la taxonomía (SIN datos) |
+| `81aa0ee` | Tanda 4 pieza 2 — reglas de género en el write path |
+| `5f2467f` | Migración de venues (entity_kind, address, capacity) |
+| `63fb632` | Reglas nuevas en AGENTS.md + `npm run dev` que se protege |
+| `c68597c` | Venues completo, con los once puntos de contacto |
 
-### Punto 0 — el sitio no abre
+### Los dos agentes
 
-**La mitad del diagnóstico no reproduce, y lo dejé como estaba.**
+`.claude/agents/tester.md` y `.claude/agents/migration-reviewer.md`.
+Ninguno puede editar ni ejecutar: solo leen y reportan, que es lo que
+"reporta, no arregla" significa cuando se hace cumplir.
 
-El matcher del middleware es `["/admin/:path*"]`: no corre en ninguna
-ruta pública. `pages.signIn` es `/auth/signin`, que existe. No hay
-`redirects()` en `next.config.mjs`. Y no hay **ni una** referencia a
-`/login` en el árbol ni en `git log -S` en toda la historia del repo.
+**Ojo:** las definiciones de `.claude/agents/` se cargan al arrancar la
+sesión, así que en la sesión donde los creé no estaban disponibles por
+nombre. Corrí las revisiones igual, pasándoles el archivo como
+especificación. Mañana ya salen por nombre.
 
-Con curl y sin sesión, todas devuelven 200 y sin redirección:
+**Valieron la pena de inmediato.** El migration-reviewer auditó un
+arreglo MÍO en la migración de venues y encontró que abría un agujero
+peor que el que cerraba: yo había separado un `DROP CONSTRAINT` de su
+`ADD CONSTRAINT`, y con el driver HTTP de Neon son dos requests, así que
+un corte entre los dos dejaba la tabla **sin ningún CHECK**. Está
+arreglado con `sql.transaction` y la regla quedó en AGENTS.md.
 
-```
-/  /noticias  /eventos  /artistas  /colectivos  /sets  /discografia
-```
+El tester encontró que `address` y `capacity` eran columnas muertas: se
+leían y se dibujaban, pero ningún camino de escritura las nombraba.
+También arreglado.
 
-La causa más probable es un 308 cacheado por el navegador de cuando
-probabas otra cosa. **Abrilo en una ventana de incógnito y confirmame.**
-Cambiar el matcher o `pages.signIn` habría roto el guardado de `/admin`
-sin arreglar nada.
+### Venues (tanda 3 §5)
 
-**Lo que sí arreglé es el 404**, que era real: `/login` es la URL que la
-gente y los navegadores adivinan, y caer en un 404 ahí se lee como "el
-sitio está roto" y no como "esa no es la dirección". Ahora reenvía a
-`/auth/signin`. Solo viajan los `callbackUrl` relativos; si no, `/login`
-sería un redirector abierto.
+Comparten la tabla `collectives` con una columna `entity_kind`. Para el
+usuario son dos secciones separadas: `/venues` y `/colectivos`, con su
+propia navegación, y cruzar slugs da 404 en los dos sentidos.
 
-### Punto 5 — la cédula
+**Los once puntos de contacto entraron en el mismo commit que la primera
+fila venue**, incluidos los dos bugs que fallaban en silencio:
 
-Fuera de la vista, del formulario, de la escritura, de la lectura y del
-tipo. `getMyProfile` ya ni selecciona la columna: no queda nada que
-mostrar, así que desencriptarla sería exponer un dato sensible sin
-motivo.
+- `createCollective` contaba venues para el "uno por cuenta". Tener un
+  venue te negaba el colectivo con un mensaje falso.
+- Nada impedía que un DJ pusiera su casa en un venue. El índice único
+  garantiza UNA casa, no DÓNDE: vive en `artist_collectives` y no ve
+  `entity_kind`. Ahora los tres caminos que pueden escribir `casa` pasan
+  por una sola guarda en el write path.
 
-**La columna NO se borró** y los valores encriptados viejos quedan
-intactos. El INSERT no la nombra ni le pone `SET`, así que editar el
-teléfono no puede blanquearla. `lib/crypto.ts` queda sin importadores a
-propósito: la migración que algún día limpie esos valores va a
-necesitar `decryptField` para saber qué está borrando.
+---
 
-El consentimiento sigue: el teléfono solo ya es dato personal.
+## BLOQUEADO
 
-### Punto 5.1 — artistas que me gustan
+### Tanda 4 pieza 1 — el seed de los 34 branches y los ~700 tags
 
-La sección va debajo de MIS TIQUETES y no se renderiza si la cuenta no
-sigue a nadie.
+**NO corrió, y no es que haya fallado: falta el documento.**
 
-**Hice algo más de lo que pedía el punto, y quiero que lo sepas:** no
-había forma de dar like. `artist_likes` existía desde la tanda 1 sin
-lector, sin escritor y sin ningún control en la interfaz, así que la
-sección solo podía estar vacía para siempre. Agregué un botón SEGUIR en
-el press kit. Extender los likes a colectivos y venues sigue siendo
-tanda 3 §9 y no lo toqué.
+`HOTU_DJ_Genre_Classification_2026.docx` no está en el repo, ni en el
+historial de git, ni en ningún lado del disco de esta máquina. Lo busqué
+en el repo, en `git log --all --diff-filter=A`, en Documents, Downloads
+y Desktop.
 
-El like es un seguimiento, nunca una señal de ranking: no ordena ni
-promociona nada.
+Sin él no hay forma de saber cómo se llama cada branch ni qué tags
+cuelgan de cada uno. HOTFIX.md da los 34 códigos de tres letras, pero
+varios son ambiguos leídos solos (BOU, TFB, CAR, CTY, BRF), así que ni
+los nombres se deducen. Sembrar 700 etiquetas plausibles e inventadas
+sería peor que no sembrar ninguna, porque nadie sabría cuáles revisar.
 
-### Punto 5.2 — el perfil según el tipo de cuenta
+**Lo que SÍ está hecho:** las diez tablas existen y están probadas, y
+`lib/genre-taxonomy.ts` es el único archivo que hay que llenar cuando
+aparezca el .docx. Los 50 cross-tags (era, contexto, formato, energía,
+tipo de DJ) sí están sembrados, porque HOTFIX.md §2.5 los lista completos.
 
-Los roles salen de la propiedad, no de una columna: sos DJ porque tenés
-un artista, y colectivo porque tenés un colectivo. Mucha gente es las
-dos cosas. Lo que no corresponde **no se renderiza**; las consultas de
-DJ ni siquiera corren para un usuario normal.
+Estado en dev:
 
-Dos huecos reales que aproveché para tapar:
-
-- Un DJ no tenía **ninguna** forma de llegar a su propio press kit. Ahora
-  el perfil lleva MI PRESS KIT con su nombre, su `dj_code` y un enlace.
-- Un dueño de colectivo **no podía editar la info de su colectivo**: el
-  único editor vivía detrás de `/admin`, que está cerrado con
-  SUPER_ADMIN y por lo tanto le era inalcanzable.
-
-**VENUE NO ESTÁ HECHO.** Ver más abajo, en decisiones.
-
-### Punto 6 — los tres menores
-
-`/eventos` **no tenía un bug.** Hoy es 2026-09-14; los tres eventos
-publicados son de junio, julio y agosto, y el único futuro (10 de
-octubre) está en `draft`. El filtro hacía lo correcto sobre datos
-viejos. Pero una página que esconde todo apenas termina la temporada
-parece rota, así que los pasados ahora se muestran abajo bajo YA
-PASARON, apagados y sin botón de compra.
-
-Las tarjetas de `/colectivos` son clickeables enteras, con un overlay
-estirado y no envolviendo la tarjeta en un `<a>`: adentro hay enlaces a
-cada artista y anidar enlaces es HTML inválido.
-
-El hueco eran dos paddings sumándose, 96px de la sección más 64px del
-footer.
-
-### Punto 4 — barra superior
-
-Tres partes: menú y texto a la izquierda, logo solo en el centro,
-iconos igual que antes. El texto pasó de `0.75–1.1rem` a `0.85–1.35rem`.
-
-Centrado contra la barra, no entre los vecinos, así que cae en el medio
-real sin importar cuánto pese cada lado. **Debajo de `sm` el logo vuelve
-al flujo normal:** a ancho de celular el texto más cinco iconos no
-dejan lugar en el centro y un logo absoluto se montaría encima del
-título.
-
-### Punto 3 — layout estándar
-
-Las seis páginas tenían la misma forma copiada seis veces. Ahora es un
-componente, listo para `/venues` y `/convocatorias`.
-
-El buscador funciona en las seis. **Pliega acentos y mayúsculas**, que
-en español no es un lujo: "bogota" encuentra Bogotá, "chia" encuentra
-Chía, "senal" encuentra Señal Perdida. Todas las palabras tienen que
-aparecer pero el orden no importa. Cada página busca sobre los campos
-que realmente se imprimen en sus tarjetas; las bios de artista quedan
-afuera a propósito, porque una bio convierte cualquier palabra común en
-coincidencia.
-
-El orden de los filtros es deliberado: el buscador y el filtro 2
-**achican** la lista; el de género solo **reordena**, empujando arriba
-sin esconder nada, así que corre último.
-
-**Los dos filtros quedan con la taxonomía actual, como pediste.** El
-filtro 1 es el selector de distrito de siempre. El filtro 2 se arma con
-los valores que de verdad existen en las filas de cada página, así que
-no puede ofrecer una opción que no devuelva nada:
-
-| Página | Filtro 2 |
+| Tabla | Filas |
 |---|---|
-| `/noticias` | ETIQUETA |
-| `/eventos` | CIUDAD |
-| `/artistas` | GÉNERO |
-| `/colectivos` | SECTOR |
-| `/sets` | ARTISTA |
-| `/discografia` | SELLO |
+| `genre_branches` | 0 |
+| `genre_tags` | 0 |
+| `genre_aliases` | 0 |
+| `cross_tags` | **50** |
+| `artist_genres` / `collective_genres` | 0 |
 
-La franja de publicidad es placeholder, ancho fijo, a lo largo de toda
-la página. **Se oculta debajo de `lg`:** en tablet y celular no hay
-lugar al lado y metida a la fuerza dejaría el listado ilegible.
+### Tanda 4 pieza 2 — campos obligatorios al crear cuenta
 
-Un resultado vacío ahora distingue "todavía no hay nada" de "tu
-búsqueda excluyó todo".
+Bloqueada por dos razones, las dos de modelo y no de código.
 
-### Tanda 3 — flujo de membresías probado de punta a punta
+**No existe ningún flujo de alta de artista.** Los artistas solo nacen
+por migración o por seed; no hay ningún momento en la aplicación en el
+que se cree uno, así que no hay dónde exigir nada.
 
-La migración `/api/setup-membership-conversation` corrió **en dev dos
-veces** con salida idéntica. 36 filas, 32 activas.
+**Y exigir género con el vocabulario vacío no haría cumplir una regla,
+haría imposible crear una cuenta**, porque no habría de dónde elegir.
+Los colectivos sí tienen flujo de alta y se romperían.
 
-Probado contra dev, con las cuentas del fixture:
+Lo que sí quedó hecho es la lógica: `lib/genres-write.ts` hace cumplir
+1 branch primario, hasta 3 secundarios y de 3 a 8 tags, con diez casos
+probados. `genreVocabularyReady()` es el interruptor que se activa solo
+cuando la taxonomía esté sembrada.
 
-- El DJ se postula → la fila pendiente **no aparece** en el roster
-  público. Después de aceptar, sí.
-- Un tercero que no administra el colectivo: **403**.
-- **El conflicto de casa devuelve las opciones y NO actúa.** Lo verifiqué
-  releyendo las filas: nada se movió.
-- Las tres decisiones, una por una: `keep` deja la casa donde estaba;
-  `move + stay` mueve la casa y la anterior queda como residencia, con
-  el DJ todavía listado allá; `move + leave` mueve la casa y cierra del
-  todo el vínculo anterior, y el colectivo deja de listarlo.
-- Rechazar no bloquea: se puede volver a postular enseguida.
-- Retirar funciona de los dos lados, y `rejected_at` / `canceled_at`
-  distinguen rechazo de retiro.
-- Un DJ no puede decir que es el colectivo: el endpoint lo rechaza.
+### Tanda 4 pieza 3 — sacar los distritos
 
-**Ninguna fila se borró nunca.** Cada vínculo superado se cierra con
-`to_date`. El histórico quedó intacto.
+**NO se hizo. Los distritos siguen enteros en la UI.**
 
-Después corrí el seed otra vez y el fixture volvió exactamente a lo
-declarado: el aplicante sin ningún vínculo activo, Camila con casa en
-OTU y residencia en hotu-138.
+La pieza está definida como un *reemplazo*: el filtro 1 pasa a ser
+Main/Branch y el filtro 2 pasa a ser Tag. Sin taxonomía sembrada, sacar
+la mitad que existe dejaría las seis páginas de listado **sin ningún
+filtro de género**, que es peor que como están.
 
-### Tanda 3 §4.1 — crear colectivo
-
-Botón CREAR COLECTIVO en el perfil del DJ. Uno por cuenta, y solo desde
-una cuenta de DJ. El dueño sale de la sesión; la ciudad y el distrito,
-del perfil del fundador.
-
-**Un detalle que decidí hacia el lado seguro:** §4.1 dice que el
-colectivo nuevo es la casa del fundador, y lo es — salvo que ya tenga
-una. En ese caso entra como residente y lo dice de frente, porque mover
-la casa de alguien sin que lo pida es justo lo que las reglas de
-membresía prohíben, y fundar un colectivo no es más excusa que
-cualquier otro camino. El colectivo se crea igual.
+Hoy siguen: 18 archivos importan `lib/districts`, el selector de
+distrito es el filtro 1 de las seis páginas (vía `listing-layout`), y el
+distrito se muestra en la cabecera del perfil de colectivo y en "Sobre
+mí" del EPK. El agrupador de `/discografia` y `/sets` también sigue.
 
 ---
 
-## LO QUE QUEDÓ BLOQUEADO
+## DECISIONES QUE NECESITO
 
-**Solo una cosa, y no es un error: falta modelo.**
-
-### Perfil de VENUE (parte del punto 5.2)
-
-No hay entidad venue en ningún lado. `venue` es una columna de texto en
-`events`, nada más. El cambio que le da `entity_kind` a `collectives`
-para que la tabla sirva a los dos es la tanda 3 §5 y no está
-construido, así que **no hay tipo de cuenta sobre el cual ramificar**.
-Los otros tres tipos (usuario, DJ, colectivo) sí están.
-
-No lo inventé. Cuando exista `entity_kind`, el perfil de venue es el de
-colectivo más dirección y capacidad, y el sitio donde va ya está
-preparado.
-
-**Nada más quedó bloqueado, y nada falló dos veces seguidas.**
-
----
-
-## DECISIONES QUE NECESITO DE VOS
-
-Cuatro, en orden de cuánto frenan.
-
-### 1. `/login` — confirmame en incógnito
-
-Es la única que necesita algo tuyo de inmediato. Si en incógnito `/` y
-`/colectivos` cargan bien, era caché del navegador y el punto 0 está
-cerrado. Si **sí** redirigen en incógnito, hay algo fuera del repo
-(Vercel, un proxy, un service worker viejo) y quiero verlo con vos.
-
-### 2. `/mi-perfil` vs `/perfil`
-
-HOTFIX.md dice `/mi-perfil` en los puntos 5, 5.1, 5.2 y 6. **En el repo
-la ruta es `/perfil`** y no existe `/mi-perfil`. Asumí que son la misma
-página y trabajé sobre `/perfil`. Si querés que se llame `/mi-perfil`,
-decímelo: es un rename con un alias para no romper enlaces, como el de
-`/login`.
-
-### 3. El filtro 2 hasta la tanda 4
-
-Puse un filtro 2 distinto por página (ver la tabla de arriba), armado
-con datos reales. Si preferís que hasta la tanda 4 no haya filtro 2 en
-las páginas donde no hay un género de verdad, se saca en un minuto.
-
-### 4. Fundar colectivo teniendo casa
-
-Hoy entra como residente y avisa. La alternativa sería no dejar fundar
-hasta liberar la casa. Elegí la primera porque no pierde nada y la
-segunda frena a alguien por una regla que puede resolver después. Si
-preferís que el colectivo propio sea siempre la casa, hay que decidir
-qué pasa con la anterior — y esa decisión es tuya.
+1. **El .docx de la taxonomía.** Es lo único que destraba las tres
+   piezas de la tanda 4. Si no aparece, decime si querés que sembremos
+   solo los 34 branches con nombres que yo proponga para que los
+   corrijas, en vez de esperar.
+2. **El mínimo de tags.** HOTFIX.md se contradice: §2.3 pide "al menos
+   un tag" para crear la cuenta y §2.4 pide "de 3 a 8". Quedó en 3.
+   Cambiarlo es una línea en `lib/genre-taxonomy.ts`.
+3. **Las décadas de ERA.** El documento dice "70s a 2020s" y lo expandí
+   a las seis décadas. Es una lectura mía.
+4. **El género del contenido.** HOTFIX §3 quiere filtro de branch y tag
+   también en `/noticias`, `/eventos`, `/sets` y `/discografia`, pero el
+   modelo de género es solo para artistas y colectivos. Eventos, noticias,
+   sets y tracks no tienen por dónde. Hoy eso lo cubría `district`.
+5. **`/mi-perfil` vs `/perfil`** sigue sin respuesta desde la sesión
+   anterior. Trabajé sobre `/perfil`, que es lo que existe.
 
 ---
 
 ## MIGRACIONES PENDIENTES DE CORRER EN MAIN
 
-**Una sola, y es la única cosa de esta sesión que toca la base.**
+**Tres, y el orden importa.** Ninguna corrió nunca en main.
 
-### `/api/setup-membership-conversation`
+### El orden de despliegue, que esta vez sale sin commit sintético
 
-Agrega `requested_by`, `rejected_at` y `canceled_at` a
-`artist_collectives`, más dos CHECK y un índice de pendientes. **Nunca
-corrió en main.**
+Los commits quedaron en el orden correcto por casualidad: las dos rutas
+de migración están ANTES del código que las necesita.
 
-Secuencia, desde el navegador:
+**Paso 1 — pushear hasta `63fb632`.** Eso lleva las tres rutas de
+migración y nada que dependa de ellas. `lib/genres-write.ts` consulta
+`genre_branches`, pero solo cuando alguien llama `/api/genres/...`, que
+no pasa en ninguna carga de página. Ninguna página pública se rompe.
+
+**Paso 2 — correr las migraciones (abajo).**
+
+**Paso 3 — pushear `c68597c`.** Recién ahí se despliega el código que
+lee `entity_kind`. Si esto fuera antes del paso 2, `/colectivos` y
+`/colectivos/[slug]` tirarían 500 para cualquier visitante, porque
+`getAllCollectives` filtra por una columna que main todavía no tiene.
+
+### 1. `/api/setup-genres` — las diez tablas de la taxonomía
 
 ```
-1. https://hotu-one.vercel.app/api/setup-membership-conversation?secret=<MIGRATE_SECRET>&dryRun=1
-2. https://hotu-one.vercel.app/api/setup-membership-conversation?secret=<MIGRATE_SECRET>
-3. la misma que 2, otra vez
+https://hotu-one.vercel.app/api/setup-genres?secret=TU_SECRET&dryRun=1
+https://hotu-one.vercel.app/api/setup-genres?secret=TU_SECRET
+https://hotu-one.vercel.app/api/setup-genres?secret=TU_SECRET
 ```
 
-Qué mirar en cada JSON:
+- **dryRun:** `seCrearian` tiene que listar las diez tablas y `estado.tablas`
+  venir vacío. Si lista menos de diez, hay algo preexistente: mirá `forma`
+  antes de seguir.
+- **Real:** `ok:true` y once líneas de log. En `estado.forma`, cada tabla
+  con su cantidad de columnas y sus índices. Los que importan:
+  `artist_genres_one_primary_idx`, `collective_genres_one_primary_idx`,
+  `artist_genre_tags_one_per_tag_idx`, `collective_genre_tags_one_per_tag_idx`.
+- **Segunda:** idéntica a la primera, palabra por palabra.
 
-1. **dryRun** — `ok: true`, y en `estado.filas` el total y cuántas están
-   aceptadas. Anotá esos dos números antes de seguir. `seAgregarian`
-   lista lo que falta; si viene vacío, main ya estaba al día.
-2. **real** — `ok: true` y las cinco líneas del `log`: columnas, los dos
-   checks, el índice, y el conteo. **El total de filas tiene que ser el
-   mismo que viste en el dryRun.** Si cambió, pará y avisame.
-3. **segunda corrida** — tiene que devolver **exactamente lo mismo** que
-   la segunda. Esa es la prueba de idempotencia.
+### 2. `/api/seed-genres` — el vocabulario
 
-En dev corrió tres veces (dryRun + dos reales) con salida idéntica.
+Va **después** de la anterior; si no, contesta 409 diciendo que falta.
 
-**Ojo con el orden:** la migración va **antes** de desplegar este
-código. `lib/membership-write.ts` escribe `requested_by` en cada fila
-nueva y explotaría contra una tabla sin la columna.
+```
+https://hotu-one.vercel.app/api/seed-genres?secret=TU_SECRET&dryRun=1
+https://hotu-one.vercel.app/api/seed-genres?secret=TU_SECRET
+https://hotu-one.vercel.app/api/seed-genres?secret=TU_SECRET
+```
 
-### Nada más toca la base
+- Va a decir **PENDIENTE: BRANCHES está vacío** y **0 branches escritos**.
+  Eso es lo esperado hoy, no un error: falta el .docx.
+- Lo que sí tiene que escribir: **50 cross-tags**. En la segunda corrida
+  `antes` y `despues` tienen que dar los dos 50.
+- `faltaElDocumento: true` es el recordatorio de que hay que volver a
+  correrla cuando el archivo exista.
 
-El resto de la sesión es interfaz y lectura. El seed de likes es solo
-dev: `/api/seed-test` está cerrado con `NODE_ENV !== "development"` y
-no puede correr en producción.
+### 3. `/api/setup-venues` — entity_kind, address y capacity
+
+**Es la única de las tres que toca una tabla con datos reales de
+producción.** En main hay 6 colectivos publicados.
+
+```
+https://hotu-one.vercel.app/api/setup-venues?secret=TU_SECRET&dryRun=1
+https://hotu-one.vercel.app/api/setup-venues?secret=TU_SECRET
+https://hotu-one.vercel.app/api/setup-venues?secret=TU_SECRET
+```
+
+- **dryRun:** `seAgregarian` tiene que listar `entity_kind`, `address` y
+  `capacity`, y `estado.filas.total` decir **6**. Anotá ese número.
+  `estado.checks` tiene que traer solo `collectives_status_membership_check`.
+  Si trae un `collectives_entity_kind_check`, pará y avisame.
+- **Real:** `ok:true`, y en `despues.columnasNuevas` la línea de
+  `entity_kind` tiene que decir **`"aceptaNull": false`** y
+  **`"default": "'collective'::text"`**. Esos dos campos son el punto:
+  una `entity_kind` que acepte NULL después deja pasar filas que el CHECK
+  no rechaza (`NULL IN (...)` es NULL, no false), y esa fila sería un
+  colectivo publicado invisible en `/colectivos` y en `/venues` a la vez,
+  sin un error en ningún log.
+- `despues.filas.porTipo` tiene que ser exactamente `{"collective": 6}` y
+  `sinTipo` **0**. Si el total cambió, el log trae una línea que empieza
+  con **ALERTA**.
+- **Segunda:** el `antes` de la segunda corrida tiene que ser idéntico al
+  `despues` de la primera. Esa igualdad es la prueba de idempotencia y se
+  lee directo del JSON.
 
 ### Deuda vieja que sigue abierta
 
-`dryRun` **todavía no está** en `setup-profiles` ni en
-`setup-epk-content`. Lo aprobaste hace tiempo y nunca se hizo. Las dos
-ya corrieron en main, así que no bloquea nada; queda para cuando haya
-que reaplicarlas.
+`dryRun` todavía no está en `setup-profiles` ni en `setup-epk-content`.
+Las dos ya corrieron en main, así que no bloquea nada.
 
 ---
 
-## CÓMO PROBARLO VOS
+## CÓMO PROBARLO EN LOCAL
 
-`npm run dev`, y las cuentas del fixture con contraseña `test1234`:
+`npm run dev` ahora aborta si ya hay un server en el puerto, con las
+instrucciones para limpiar. Si querés uno igual: `npm run dev:force`, o
+`PORT=3001 npm run dev`.
+
+Cuentas del fixture, contraseña `test1234`:
 
 | Cuenta | Qué probar |
 |---|---|
-| `usuario@test.hotu.local` | Perfil de usuario: pedidos, tiquetes, ARTISTAS QUE ME GUSTAN. Sin press kit, sin paneles. |
-| `artista@test.hotu.local` | Camila. MI PRESS KIT, sus membresías, el botón SEGUIR en `/artistas/test-camila`. |
-| `aplicante@test.hotu.local` | Sin colectivo a propósito. Entrá a `/colectivos/reisen` y tocá ÚNETE A NOSOTROS. |
-| `duena@test.hotu.local` | Dueña de Reisen. Acá se acepta o rechaza, y se edita la info del colectivo. |
-| `colectivo@test.hotu.local` | Dueña de OTU. Para armar el conflicto de casa con dos colectivos. |
+| `duena@test.hotu.local` | Dueña de Reisen **y** de Bodega Prueba. Los dos paneles en su perfil. Editar dirección y aforo del venue. |
+| `artista@test.hotu.local` | Camila: casa en OTU, residente en hotu-138 y en el venue. En el venue NO le ofrece "hacer mi casa". |
+| `aplicante@test.hotu.local` | Sin ningún vínculo. Postularse a `/venues/bodega-prueba`. |
 
-**El camino que más me importa que veas** es el conflicto de casa: con
-el aplicante, postulate a Reisen, aceptá con la dueña, hacé de Reisen tu
-casa, después postulate a OTU, aceptá con `colectivo@`, y ahí pedí casa
-en OTU. Tienen que aparecer las tres opciones con las dos mitades
-escritas, y **nada tiene que haber cambiado** hasta que toques una.
+**Lo que más me importa que mires:** entrá a `/venues/bodega-prueba` y a
+`/colectivos/reisen` y fijate que son dos secciones distintas, aunque por
+dentro sean la misma tabla. Y que `/colectivos/bodega-prueba` da 404.
