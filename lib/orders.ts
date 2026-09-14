@@ -2,7 +2,6 @@ import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import type { MerchItem, OrderRecord, PurchasedTicket, UserProfile } from "./commerce-types";
 import type { DistrictId } from "./districts";
-import { decryptField } from "./crypto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -82,13 +81,14 @@ export async function getMyTickets(): Promise<PurchasedTicket[]> {
 export async function getMyProfile(): Promise<UserProfile> {
   const session = await auth();
   const email = session?.user?.email;
-  if (!email) return { phone: null, cedula: null, hasConsent: false };
+  if (!email) return { phone: null, hasConsent: false };
 
-  const rows = await sql`SELECT phone, cedula, consent_at FROM user_profiles WHERE email = ${email}`;
-  if (rows.length === 0) return { phone: null, cedula: null, hasConsent: false };
+  // cedula is deliberately not selected. Nothing displays it any more, and
+  // reading it would mean decrypting sensitive data for no purpose.
+  const rows = await sql`SELECT phone, consent_at FROM user_profiles WHERE email = ${email}`;
+  if (rows.length === 0) return { phone: null, hasConsent: false };
   return {
     phone: rows[0].phone,
-    cedula: rows[0].cedula ? decryptField(rows[0].cedula) : null,
     hasConsent: !!rows[0].consent_at,
   };
 }

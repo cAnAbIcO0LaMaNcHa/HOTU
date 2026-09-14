@@ -2,14 +2,19 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Pencil, Eye, EyeOff, Check, X } from "lucide-react";
+import { Pencil, Check, X } from "lucide-react";
 import { updateMyProfile } from "@/lib/actions";
 
-function maskCedula(cedula: string) {
-  if (cedula.length <= 4) return cedula;
-  return "•".repeat(cedula.length - 4) + cedula.slice(-4);
-}
-
+/**
+ * The cédula is gone from this component entirely — no display, no input,
+ * no state, no masking. It is sensitive data under Ley 1581 de 2012 and
+ * HOTU does not need it: birth_date already answers the only question it
+ * was ever asked, which is whether someone is of age.
+ *
+ * The column still exists and old rows still hold encrypted values. It is
+ * not read here and never written again; dropping it is a later migration,
+ * deliberately not the same one that stopped using it.
+ */
 export function ProfileHeader({
   name,
   email,
@@ -17,7 +22,6 @@ export function ProfileHeader({
   ordersCount,
   ticketsCount,
   initialPhone,
-  initialCedula,
   initialHasConsent,
 }: {
   name: string;
@@ -26,21 +30,18 @@ export function ProfileHeader({
   ordersCount: number;
   ticketsCount: number;
   initialPhone: string | null;
-  initialCedula: string | null;
   initialHasConsent: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState(initialPhone ?? "");
-  const [cedula, setCedula] = useState(initialCedula ?? "");
   const [savedPhone, setSavedPhone] = useState(initialPhone ?? "");
-  const [savedCedula, setSavedCedula] = useState(initialCedula ?? "");
   const [hasConsent, setHasConsent] = useState(initialHasConsent);
   const [consentChecked, setConsentChecked] = useState(false);
-  const [showCedula, setShowCedula] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const needsConsent = !hasConsent && (phone.trim() || cedula.trim());
+  // Still required: a phone number is personal data on its own.
+  const needsConsent = !hasConsent && !!phone.trim();
 
   const save = () => {
     setError(null);
@@ -49,23 +50,20 @@ export function ProfileHeader({
       return;
     }
     startTransition(async () => {
-      const result = await updateMyProfile({ phone, cedula, consent: consentChecked });
+      const result = await updateMyProfile({ phone, consent: consentChecked });
       if ("error" in result) {
         setError(
           result.error === "invalid_phone"
             ? "Ese número de teléfono no se ve válido."
-            : result.error === "invalid_cedula"
-              ? "Esa cédula no se ve válida (solo números)."
-              : result.error === "consent_required"
-                ? "Marcá la casilla de autorización para guardar estos datos."
-                : result.error === "rate_limited"
-                  ? "Esperá unos segundos antes de guardar de nuevo."
-                  : "Algo falló. Probá de nuevo."
+            : result.error === "consent_required"
+              ? "Marcá la casilla de autorización para guardar estos datos."
+              : result.error === "rate_limited"
+                ? "Esperá unos segundos antes de guardar de nuevo."
+                : "Algo falló. Probá de nuevo."
         );
         return;
       }
       setSavedPhone(phone);
-      setSavedCedula(cedula);
       if (consentChecked) setHasConsent(true);
       setEditing(false);
     });
@@ -73,7 +71,6 @@ export function ProfileHeader({
 
   const cancel = () => {
     setPhone(savedPhone);
-    setCedula(savedCedula);
     setConsentChecked(false);
     setError(null);
     setEditing(false);
@@ -123,18 +120,8 @@ export function ProfileHeader({
           </span>
         </div>
 
-        {!editing && (savedPhone || savedCedula) && (
-          <div className="mt-4 flex flex-col gap-1 font-mono text-xs text-muted-foreground sm:items-start">
-            {savedPhone && <div>Tel: {savedPhone}</div>}
-            {savedCedula && (
-              <div className="flex items-center gap-2">
-                CC: {showCedula ? savedCedula : maskCedula(savedCedula)}
-                <button onClick={() => setShowCedula((s) => !s)} aria-label="Mostrar cédula">
-                  {showCedula ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                </button>
-              </div>
-            )}
-          </div>
+        {!editing && savedPhone && (
+          <div className="mt-4 font-mono text-xs text-muted-foreground">Tel: {savedPhone}</div>
         )}
 
         {editing && (
@@ -146,17 +133,6 @@ export function ProfileHeader({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+57 300 000 0000"
-                className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-mono text-[10px] tracking-widest text-muted-foreground">CÉDULA (CC)</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={cedula}
-                onChange={(e) => setCedula(e.target.value)}
-                placeholder="1000000000"
                 className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
               />
             </div>

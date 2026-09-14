@@ -3,7 +3,6 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import type { CartItem } from "./commerce-types";
-import { encryptField } from "./crypto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -45,21 +44,25 @@ export async function createPendingOrder(items: CartItem[]): Promise<{ orderId: 
 }
 
 /**
- * Updates the signed-in user's contact phone and cedula (Colombian national ID).
+ * Updates the signed-in user's contact phone.
+ *
+ * The cédula is no longer accepted, validated or written. It is sensitive
+ * data under Ley 1581 de 2012 and birth_date already covers the only use
+ * it had. The column is left in place with its old encrypted values —
+ * dropping it belongs to a later migration, not to the change that stops
+ * using it. Existing rows simply keep whatever they already held.
  *
  * Security measures:
  * - Only ever writes to the row matching the caller's own session email.
  * - Validates format before writing anything.
  * - Requires explicit Habeas Data consent (Ley 1581/2012) the first time
- *   phone or cedula is saved; consent, once given, is remembered.
+ *   the phone is saved; consent, once given, is remembered.
  * - Rate-limited: rejects updates within 3s of the previous one.
- * - The cedula is encrypted at rest (see ./crypto) before it is stored.
  * - Writes an audit_log row (email + action only, never the values).
- * - Never logs the phone or cedula value anywhere.
+ * - Never logs the phone number anywhere.
  */
 export async function updateMyProfile(data: {
   phone: string;
-  cedula: string;
   consent: boolean;
 }): Promise<{ ok: true } | { error: string }> {
   const session = await auth();
@@ -67,10 +70,8 @@ export async function updateMyProfile(data: {
   if (!email) return { error: "not_authenticated" };
 
   const phone = data.phone.trim().slice(0, 20);
-  const cedula = data.cedula.trim().replace(/[^0-9]/g, "").slice(0, 15);
 
   if (phone && !/^[0-9+()\-\s]{7,20}$/.test(phone)) return { error: "invalid_phone" };
-  if (cedula && !/^[0-9]{5,15}$/.test(cedula)) return { error: "invalid_cedula" };
 
   const existing = await sql`SELECT updated_at, consent_at FROM user_profiles WHERE email = ${email}`;
 
@@ -80,18 +81,18 @@ export async function updateMyProfile(data: {
   }
 
   const hadConsent = existing.length > 0 && !!existing[0].consent_at;
-  const needsConsent = (phone || cedula) && !hadConsent;
+  const needsConsent = !!phone && !hadConsent;
   if (needsConsent && !data.consent) return { error: "consent_required" };
 
   const consentAt = hadConsent ? existing[0].consent_at : data.consent ? new Date().toISOString() : null;
-  const encryptedCedula = cedula ? encryptField(cedula) : null;
 
+  // cedula is absent from both the column list and the SET clause, so an
+  // old value is neither overwritten nor re-encrypted by an unrelated edit.
   await sql`
-    INSERT INTO user_profiles (email, phone, cedula, consent_at, updated_at)
-    VALUES (${email}, ${phone || null}, ${encryptedCedula}, ${consentAt}, now())
+    INSERT INTO user_profiles (email, phone, consent_at, updated_at)
+    VALUES (${email}, ${phone || null}, ${consentAt}, now())
     ON CONFLICT (email) DO UPDATE SET
       phone = ${phone || null},
-      cedula = ${encryptedCedula},
       consent_at = COALESCE(user_profiles.consent_at, ${consentAt}),
       updated_at = now()
   `;

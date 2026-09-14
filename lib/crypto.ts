@@ -1,8 +1,14 @@
 import crypto from "crypto";
 
 /**
- * Field-level encryption for sensitive PII (currently: cedula).
+ * Field-level encryption for sensitive PII.
  * Uses AES-256-GCM with a key from PROFILE_ENCRYPTION_KEY (base64, 32 bytes).
+ *
+ * NOTHING IMPORTS THIS RIGHT NOW. Its only caller was user_profiles.cedula,
+ * which is no longer read or written (HOTFIX punto 5). It is kept because
+ * the column still holds encrypted values: the migration that eventually
+ * clears them needs decryptField to confirm what it is deleting, and the
+ * next sensitive field will need the same envelope.
  *
  * If the key isn't configured yet, fields are stored/read as plain text so
  * the app keeps working during rollout - but this should be set in

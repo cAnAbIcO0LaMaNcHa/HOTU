@@ -69,6 +69,5 @@ export type PurchasedTicket = {
 
 export type UserProfile = {
   phone: string | null;
-  cedula: string | null;
   hasConsent: boolean;
 };
