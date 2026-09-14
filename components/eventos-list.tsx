@@ -11,47 +11,115 @@ import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-
 const formatCOP = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
-export function EventosList({ events }: { events: EventItem[] }) {
+/**
+ * The agenda, in two parts.
+ *
+ * Upcoming events are the page's job. Past ones used to vanish entirely,
+ * which meant that on a quiet week the page read "No hay eventos todavía"
+ * while the database held a season's worth of them — the site looked empty
+ * and broken rather than simply between parties.
+ *
+ * So the past is shown too, below and clearly separated, with no ticket
+ * button: a finished event is history, not stock. The wording of the empty
+ * state is now honest as well — "todavía" claimed nothing had ever
+ * happened, which was never what the filter meant.
+ */
+export function EventosList({
+  events,
+  pastEvents = [],
+}: {
+  events: EventItem[];
+  /** Already over, newest first. Shown as an archive, never as buyable. */
+  pastEvents?: EventItem[];
+}) {
   const { selected } = useDistrictFilter();
   const sorted = sortByDistrict(events, selected);
+  const past = sortByDistrict(pastEvents, selected);
 
   return (
-    <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      {sorted.map((e) => (
-        <article key={e.id} className="group flex flex-col overflow-hidden border border-border bg-card">
-          {e.flyerUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={e.flyerUrl}
-              alt=""
-              className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+    <>
+      <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {sorted.map((e) => (
+          <EventCard key={e.id} event={e} />
+        ))}
+        {sorted.length === 0 && (
+          <p className="col-span-full font-mono text-sm text-muted-foreground">
+            <AutoTranslate
+              text={
+                past.length > 0
+                  ? "No hay eventos anunciados por ahora. Abajo están los que ya pasaron."
+                  : "No hay eventos anunciados por ahora."
+              }
             />
-          ) : (
-            <div data-district={e.district} className="sheen border-chrome aspect-[3/4] w-full" />
-          )}
-          <div className="flex flex-1 flex-col p-4">
-            <div className="font-mono text-[10px] tracking-widest text-primary">{formatShortDate(e.date)}</div>
-            <h3 className="mt-1 text-lg font-bold leading-tight">
-              <AutoTranslate text={e.title} />
-            </h3>
-            <div className="mt-1 flex items-center gap-1 font-mono text-[9px] tracking-widest text-muted-foreground">
-              <MapPin className="h-3 w-3 shrink-0" /> {e.city} · {e.venue}
-            </div>
-            <p className="mt-2 line-clamp-2 font-mono text-[10px] text-muted-foreground">
-              <AutoTranslate text={e.lineup} />
-            </p>
+          </p>
+        )}
+      </div>
+
+      {past.length > 0 && (
+        <div className="mt-16">
+          <h2 className="font-mono text-[10px] tracking-[0.3em] text-muted-foreground">
+            <AutoTranslate text="YA PASARON" />
+          </h2>
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {past.map((e) => (
+              <EventCard key={e.id} event={e} past />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function EventCard({ event: e, past = false }: { event: EventItem; past?: boolean }) {
+  return (
+    <article
+      className={`group flex flex-col overflow-hidden border border-border bg-card ${
+        past ? "opacity-70 transition-opacity hover:opacity-100" : ""
+      }`}
+    >
+      {e.flyerUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={e.flyerUrl}
+          alt=""
+          className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        />
+      ) : (
+        <div data-district={e.district} className="sheen border-chrome aspect-[3/4] w-full" />
+      )}
+      <div className="flex flex-1 flex-col p-4">
+        <div
+          className={`font-mono text-[10px] tracking-widest ${
+            past ? "text-muted-foreground" : "text-primary"
+          }`}
+        >
+          {formatShortDate(e.date)}
+        </div>
+        <h3 className="mt-1 text-lg font-bold leading-tight">
+          <AutoTranslate text={e.title} />
+        </h3>
+        <div className="mt-1 flex items-center gap-1 font-mono text-[9px] tracking-widest text-muted-foreground">
+          <MapPin className="h-3 w-3 shrink-0" /> {e.city} · {e.venue}
+        </div>
+        <p className="mt-2 line-clamp-2 font-mono text-[10px] text-muted-foreground">
+          <AutoTranslate text={e.lineup} />
+        </p>
+
+        {past ? (
+          // No price and no button: the party already happened.
+          <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">
+            <AutoTranslate text="FINALIZADO" />
+          </div>
+        ) : (
+          <>
             <div className="mt-3 font-mono text-sm font-bold">
               <AutoTranslate text="Desde" /> {formatCOP(TICKET_PRICES.normal)}
             </div>
             <AddTicketButton eventId={e.id} eventTitle={e.title} />
-          </div>
-        </article>
-      ))}
-      {sorted.length === 0 && (
-        <p className="col-span-full font-mono text-sm text-muted-foreground">
-          <AutoTranslate text="No hay eventos todavía." />
-        </p>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </article>
   );
 }

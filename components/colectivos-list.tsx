@@ -40,10 +40,27 @@ export function ColectivosList({
               ? "border-primary text-primary"
               : "border-muted-foreground text-muted-foreground";
           return (
-            <article key={c.slug} className="border border-border bg-card p-6">
+            /**
+             * The whole card is the link, not just the title.
+             *
+             * Done with a stretched overlay rather than by wrapping
+             * everything in an <a>, because the roster inside is a row of
+             * links to each artist and nesting links is invalid HTML — the
+             * browser would break the markup apart and the inner ones
+             * would stop working. The overlay sits behind them (z-0 under
+             * relative children), so clicking an artist still goes to that
+             * artist and clicking anywhere else goes to the collective.
+             */
+            <article
+              key={c.slug}
+              className="relative border border-border bg-card p-6 transition-colors hover:border-primary"
+            >
               <div className="flex flex-wrap items-center gap-3">
                 <h3 className="text-xl font-bold">
-                  <Link href={`/colectivos/${c.slug}`} className="hover:text-primary">
+                  <Link
+                    href={`/colectivos/${c.slug}`}
+                    className="hover:text-primary after:absolute after:inset-0 after:z-0 after:content-['']"
+                  >
                     {c.name}
                   </Link>
                 </h3>
@@ -74,7 +91,7 @@ export function ColectivosList({
                       <Link
                         key={m.artistSlug}
                         href={`/artistas/${m.artistSlug}`}
-                        className="border border-border px-2 py-1 font-mono text-[10px] tracking-widest hover:border-primary hover:text-primary"
+                        className="relative z-10 border border-border px-2 py-1 font-mono text-[10px] tracking-widest hover:border-primary hover:text-primary"
                       >
                         <AutoTranslate text={m.artistName} />
                       </Link>

@@ -97,8 +97,15 @@ export default async function PerfilPage() {
   );
   const ticketsPreview = tickets.slice(0, 3);
 
+  /**
+   * Asymmetric padding on purpose. The footer already opens with 64px of
+   * its own, so a matching 96px at the bottom of this section stacked into
+   * a 160px void between the last ticket and the first line of the footer
+   * — the "hueco grande" of HOTFIX punto 6. The top keeps its full spacing,
+   * where there is nothing above to share the gap with.
+   */
   return (
-    <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
+    <section className="mx-auto max-w-5xl px-4 pb-10 pt-16 md:pb-12 md:pt-24">
       <ProfileHeader
         name={session.user.name ?? "Perfil"}
         email={session.user.email ?? ""}
