@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AutoTranslate } from "@/components/auto-translate";
+import { ListingLayout } from "@/components/listing-layout";
 import { ArtistasList } from "@/components/artistas-list";
-import { DistrictFilterButton } from "@/components/district-filter-button";
 import { getAllArtists } from "@/lib/db";
+import { uniqueSorted } from "@/lib/listing-options";
 
 export const revalidate = 0;
 
@@ -15,18 +15,13 @@ export default async function ArtistasPage() {
   const artists = await getAllArtists();
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-16 md:py-24">
-      <h1 className="text-5xl font-bold leading-[0.9] md:text-7xl">
-        <AutoTranslate text="ARTISTAS" />
-      </h1>
-      <div className="mt-6">
-        <DistrictFilterButton />
-      </div>
-      <p className="mt-4 max-w-2xl font-mono text-sm text-muted-foreground">
-        <AutoTranslate text="Tocá una burbuja para ver la biografía, sets y tracks de cada artista." />
-      </p>
-
+    <ListingLayout
+      title="ARTISTAS"
+      description="Tocá una burbuja para ver la biografía, sets y tracks de cada artista."
+      secondaryLabel="GÉNERO"
+      secondaryOptions={uniqueSorted(artists.map((a) => a.genre))}
+    >
       <ArtistasList artists={artists} />
-    </section>
+    </ListingLayout>
   );
 }

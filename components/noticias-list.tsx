@@ -3,11 +3,17 @@
 import type { NewsItem } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { formatShortDate } from "@/lib/date-utils";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import { useFilteredList, useListingFilters } from "@/components/listing-filters";
+import { EmptyResult } from "@/components/listing-empty";
 
 export function NoticiasList({ news: allNews }: { news: NewsItem[] }) {
-  const { selected } = useDistrictFilter();
-  const news = sortByDistrict(allNews, selected);
+  const { active } = useListingFilters();
+  const news = useFilteredList(allNews, {
+    // Tag, headline and excerpt — the whole of a news item that is
+    // visible on this page, so what you can read is what you can find.
+    search: (n) => [n.tag, n.title, n.excerpt],
+    secondaryOf: (n) => n.tag,
+  });
 
   return (
     <div className="mt-14 grid gap-8 md:grid-cols-3">
@@ -26,9 +32,7 @@ export function NoticiasList({ news: allNews }: { news: NewsItem[] }) {
         </article>
       ))}
       {news.length === 0 && (
-        <p className="font-mono text-sm text-muted-foreground">
-          <AutoTranslate text="Todavía no hay noticias." />
-        </p>
+        <EmptyResult active={active} empty="Todavía no hay noticias." />
       )}
     </div>
   );

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import type { Collective, CollectiveMember } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import { useFilteredList, useListingFilters } from "@/components/listing-filters";
+import { EmptyResult } from "@/components/listing-empty";
 
 /**
  * Members now come from artist_collectives rather than the artist_slugs
@@ -24,11 +25,21 @@ export function ColectivosList({
   collectives: Collective[];
   members: Record<string, CollectiveMember[]>;
 }) {
-  const { selected } = useDistrictFilter();
+  const { active } = useListingFilters();
   // One flat grid, ordered by the district filter's push-to-top. Grouping
   // by sector was dropped in tanda 3 (§1.4): sector is a city label inside
   // a card now, not a heading that splits the page into sections.
-  const sorted = sortByDistrict(all, selected);
+  const sorted = useFilteredList(all, {
+    // The roster is searchable too: people look for a collective by a DJ
+    // they know plays there at least as often as by its own name.
+    search: (c) => [
+      c.name,
+      c.sector,
+      c.bio,
+      ...(members[c.slug] ?? []).map((m) => m.artistName),
+    ],
+    secondaryOf: (c) => c.sector,
+  });
 
   return (
     <div className="mt-16">
@@ -105,9 +116,7 @@ export function ColectivosList({
       </div>
 
       {sorted.length === 0 && (
-        <p className="font-mono text-sm text-muted-foreground">
-          <AutoTranslate text="Todavía no hay colectivos." />
-        </p>
+        <EmptyResult active={active} empty="Todavía no hay colectivos." />
       )}
     </div>
   );

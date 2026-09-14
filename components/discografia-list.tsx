@@ -5,11 +5,16 @@ import { Play } from "lucide-react";
 import type { Track } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { formatShortDate } from "@/lib/date-utils";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import { useFilteredList, useListingFilters } from "@/components/listing-filters";
+import { EmptyResult } from "@/components/listing-empty";
 
 export function DiscografiaList({ tracks: allTracks }: { tracks: Track[] }) {
-  const { selected } = useDistrictFilter();
-  const tracks = sortByDistrict(allTracks, selected);
+  const { active } = useListingFilters();
+  const tracks = useFilteredList(allTracks, {
+    // Title, artist and imprint: the three things printed on a release.
+    search: (t) => [t.title, t.artistName, t.label],
+    secondaryOf: (t) => t.label,
+  });
 
   return (
     <div className="mt-10 divide-y divide-border border-y border-border">
@@ -43,9 +48,9 @@ export function DiscografiaList({ tracks: allTracks }: { tracks: Track[] }) {
         </div>
       ))}
       {tracks.length === 0 && (
-        <p className="py-8 font-mono text-sm text-muted-foreground">
-          <AutoTranslate text="Todavía no hay tracks." />
-        </p>
+        <div className="py-8">
+          <EmptyResult active={active} empty="Todavía no hay tracks." />
+        </div>
       )}
     </div>
   );

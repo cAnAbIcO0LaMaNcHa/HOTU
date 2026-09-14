@@ -6,7 +6,8 @@ import { AutoTranslate } from "@/components/auto-translate";
 import { AddTicketButton } from "@/components/add-ticket-button";
 import { TICKET_PRICES } from "@/lib/commerce-types";
 import { formatShortDate } from "@/lib/date-utils";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import { useFilteredList, useListingFilters } from "@/components/listing-filters";
+import { EmptyResult } from "@/components/listing-empty";
 
 const formatCOP = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
@@ -32,9 +33,12 @@ export function EventosList({
   /** Already over, newest first. Shown as an archive, never as buyable. */
   pastEvents?: EventItem[];
 }) {
-  const { selected } = useDistrictFilter();
-  const sorted = sortByDistrict(events, selected);
-  const past = sortByDistrict(pastEvents, selected);
+  const { active } = useListingFilters();
+  // Search and filters apply to both halves: looking for a party you went
+  // to last winter has to reach the archive, not just what is on sale.
+  const searchFields = (e: EventItem) => [e.title, e.venue, e.city, e.lineup];
+  const sorted = useFilteredList(events, { search: searchFields, secondaryOf: (e) => e.city });
+  const past = useFilteredList(pastEvents, { search: searchFields, secondaryOf: (e) => e.city });
 
   return (
     <>
@@ -43,15 +47,14 @@ export function EventosList({
           <EventCard key={e.id} event={e} />
         ))}
         {sorted.length === 0 && (
-          <p className="col-span-full font-mono text-sm text-muted-foreground">
-            <AutoTranslate
-              text={
-                past.length > 0
-                  ? "No hay eventos anunciados por ahora. Abajo están los que ya pasaron."
-                  : "No hay eventos anunciados por ahora."
-              }
-            />
-          </p>
+          <EmptyResult
+            active={active}
+            empty={
+              past.length > 0
+                ? "No hay eventos anunciados por ahora. Abajo están los que ya pasaron."
+                : "No hay eventos anunciados por ahora."
+            }
+          />
         )}
       </div>
 

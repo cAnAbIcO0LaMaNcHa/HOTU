@@ -4,11 +4,16 @@ import Link from "next/link";
 import { Play } from "lucide-react";
 import type { DjSet } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import { useFilteredList, useListingFilters } from "@/components/listing-filters";
+import { EmptyResult } from "@/components/listing-empty";
 
 export function SetsList({ sets: allSets }: { sets: DjSet[] }) {
-  const { selected } = useDistrictFilter();
-  const sets = sortByDistrict(allSets, selected);
+  const { active } = useListingFilters();
+  const sets = useFilteredList(allSets, {
+    // Title and artist. Somebody hunting a set knows one or the other.
+    search: (s) => [s.title, s.artistName],
+    secondaryOf: (s) => s.artistName,
+  });
 
   return (
     <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -39,9 +44,7 @@ export function SetsList({ sets: allSets }: { sets: DjSet[] }) {
         </div>
       ))}
       {sets.length === 0 && (
-        <p className="font-mono text-sm text-muted-foreground">
-          <AutoTranslate text="Todavía no hay sets." />
-        </p>
+        <EmptyResult active={active} empty="Todavía no hay sets." />
       )}
     </div>
   );
