@@ -28,6 +28,18 @@
  * archivo: un DELETE acá se llevaría en cascada los géneros que los
  * usuarios ya eligieron. Las bajas de vocabulario son a mano, y el FK
  * RESTRICT de la migración obliga a mirarlas una por una.
+ *
+ * OJO CON LOS RENOMBRES, que ya mordió una vez. El conflicto se resuelve
+ * por SLUG, y el slug sale del nombre. Cambiar "Radio" por "Radio /
+ * Broadcast" no actualiza la fila: inserta una nueva con otro slug y deja
+ * la vieja ahí, y el conteo sube en vez de quedarse igual. Pasó en dev
+ * con tres cross-tags cuyos nombres yo había adivinado antes de tener el
+ * documento, y se vio solo porque el total dio 53 donde tenía que dar 50.
+ *
+ * Por eso el conteo de antes y después vale la pena mirarlo: si sube
+ * cuando esperabas que quedara igual, hubo un renombre y quedó un
+ * huérfano. Limpiarlo es a mano y solo es seguro si ningún perfil lo usa,
+ * cosa que el FK RESTRICT garantiza que se note.
  */
 
 import { NextResponse } from "next/server";

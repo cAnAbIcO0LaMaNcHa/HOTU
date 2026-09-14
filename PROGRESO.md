@@ -61,35 +61,29 @@ fila venue**, incluidos los dos bugs que fallaban en silencio:
 
 ## BLOQUEADO
 
-### Tanda 4 pieza 1 — el seed de los 34 branches y los ~700 tags
+### ~~Tanda 4 pieza 1 — el seed~~ DESBLOQUEADA Y SEMBRADA
 
-**NO corrió, y no es que haya fallado: falta el documento.**
-
-`HOTU_DJ_Genre_Classification_2026.docx` no está en el repo, ni en el
-historial de git, ni en ningún lado del disco de esta máquina. Lo busqué
-en el repo, en `git log --all --diff-filter=A`, en Documents, Downloads
-y Desktop.
-
-Sin él no hay forma de saber cómo se llama cada branch ni qué tags
-cuelgan de cada uno. HOTFIX.md da los 34 códigos de tres letras, pero
-varios son ambiguos leídos solos (BOU, TFB, CAR, CTY, BRF), así que ni
-los nombres se deducen. Sembrar 700 etiquetas plausibles e inventadas
-sería peor que no sembrar ninguna, porque nadie sabría cuáles revisar.
-
-**Lo que SÍ está hecho:** las diez tablas existen y están probadas, y
-`lib/genre-taxonomy.ts` es el único archivo que hay que llenar cuando
-aparezca el .docx. Los 50 cross-tags (era, contexto, formato, energía,
-tipo de DJ) sí están sembrados, porque HOTFIX.md §2.5 los lista completos.
+Llegó el `.docx`. Está convertido a `GENEROS.md`, el binario se borró, y
+el vocabulario está sembrado en dev.
 
 Estado en dev:
 
 | Tabla | Filas |
 |---|---|
-| `genre_branches` | 0 |
-| `genre_tags` | 0 |
-| `genre_aliases` | 0 |
+| `genre_branches` | **34** |
+| `genre_tags` | **719** |
+| `genre_aliases` | **6** |
 | `cross_tags` | **50** |
-| `artist_genres` / `collective_genres` | 0 |
+| `artist_genres` / `collective_genres` | 0 (nadie eligió todavía) |
+
+`GENEROS.md` es la fuente de verdad y se edita a mano.
+`lib/genre-taxonomy.ts` se regenera desde él con
+`node scripts/genre-taxonomy-from-md.mjs`, y después hay que volver a
+correr `/api/seed-genres`.
+
+Lo que las tres piezas de la tanda 4 tenían bloqueado por esto ya no lo
+está. Las piezas 2 y 3 siguen frenadas por las razones propias que están
+más abajo, no por el documento.
 
 ### Tanda 4 pieza 2 — campos obligatorios al crear cuenta
 
@@ -126,20 +120,13 @@ mí" del EPK. El agrupador de `/discografia` y `/sets` también sigue.
 
 ## DECISIONES QUE NECESITO
 
-1. **El .docx de la taxonomía.** Es lo único que destraba las tres
-   piezas de la tanda 4. Si no aparece, decime si querés que sembremos
-   solo los 34 branches con nombres que yo proponga para que los
-   corrijas, en vez de esperar.
-2. **El mínimo de tags.** HOTFIX.md se contradice: §2.3 pide "al menos
-   un tag" para crear la cuenta y §2.4 pide "de 3 a 8". Quedó en 3.
-   Cambiarlo es una línea en `lib/genre-taxonomy.ts`.
-3. **Las décadas de ERA.** El documento dice "70s a 2020s" y lo expandí
-   a las seis décadas. Es una lectura mía.
-4. **El género del contenido.** HOTFIX §3 quiere filtro de branch y tag
+1. **El mínimo de tags.** HOTFIX.md se contradice: §2.3 pide "al menos un tag" y §2.4 pide "de 3 a 8". El documento original zanja: "Allow 3-8 genre Tags per DJ". Quedó en 3, y ahora con respaldo. Confirmame que va así.
+2. **Las décadas de ERA** quedaron confirmadas por el documento: las seis, más Old School, Classic, Current / New Music y Throwbacks. Ya no es una lectura mía.
+3. **El género del contenido.** HOTFIX §3 quiere filtro de branch y tag
    también en `/noticias`, `/eventos`, `/sets` y `/discografia`, pero el
    modelo de género es solo para artistas y colectivos. Eventos, noticias,
    sets y tracks no tienen por dónde. Hoy eso lo cubría `district`.
-5. **`/mi-perfil` vs `/perfil`** sigue sin respuesta desde la sesión
+4. **`/mi-perfil` vs `/perfil`** sigue sin respuesta desde la sesión
    anterior. Trabajé sobre `/perfil`, que es lo que existe.
 
 ---
@@ -192,12 +179,16 @@ https://hotu-one.vercel.app/api/seed-genres?secret=TU_SECRET
 https://hotu-one.vercel.app/api/seed-genres?secret=TU_SECRET
 ```
 
-- Va a decir **PENDIENTE: BRANCHES está vacío** y **0 branches escritos**.
-  Eso es lo esperado hoy, no un error: falta el .docx.
-- Lo que sí tiene que escribir: **50 cross-tags**. En la segunda corrida
-  `antes` y `despues` tienen que dar los dos 50.
-- `faltaElDocumento: true` es el recordatorio de que hay que volver a
-  correrla cuando el archivo exista.
+- **dryRun:** tiene que decir que escribiría **34 branches, 719 tags,
+  6 alias y 50 cross-tags**, y `antes` venir todo en 0.
+- **Real:** las cuatro líneas de log con esos mismos cuatro números, y
+  `despues` igual a `{34, 719, 6, 50}`. `faltaElDocumento: false`.
+- **Segunda:** `antes` y `despues` iguales entre sí y a los de la
+  primera. **Si algún conteo SUBE cuando esperabas que quedara igual,
+  hubo un renombre y quedó un huérfano** — el conflicto se resuelve por
+  slug, y el slug sale del nombre. Pasó en dev con tres cross-tags
+  míos y se vio solo porque el total dio 53 donde tenía que dar 50.
+- Tarda bastante: son 809 filas de a una.
 
 ### 3. `/api/setup-venues` — entity_kind, address y capacity
 
