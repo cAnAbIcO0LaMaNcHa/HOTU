@@ -11,6 +11,7 @@ import { MembershipInbox } from "@/components/membership-inbox";
 import { getArtistBySlug, getLikedArtists, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { LikedArtists } from "@/components/liked-artists";
+import { CreateCollectiveButton } from "@/components/create-collective-button";
 
 export const revalidate = 0;
 
@@ -151,6 +152,10 @@ export default async function PerfilPage() {
           currentCasa={currentCasa}
         />
       )}
+
+      {/* Crear colectivo (§4.1): uno por cuenta, y sólo desde una cuenta
+          de DJ. Si ya tiene uno, el botón no se renderiza. */}
+      {isDJ && owned.length === 0 && <CreateCollectiveButton />}
 
       {/* Colectivo: el panel del dueño (§4.2, §5.2). Miembros, solicitudes
           pendientes y edición de la info. Una cuenta que no es dueña de

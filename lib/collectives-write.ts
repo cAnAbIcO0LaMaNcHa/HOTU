@@ -159,3 +159,118 @@ export async function updateCollectiveInfo(
 
   return { ok: true, value: { updated } };
 }
+
+/**
+ * Creates a collective from a DJ's account (§4.1).
+ *
+ * One per account. The creator becomes owner_email and joins as a member
+ * straight away — a collective with nobody in it is not a collective.
+ *
+ * §4.1 says the new collective is the founder's casa, and it is, UNLESS
+ * they already have one somewhere else. In that case the link opens as
+ * residente and the caller is handed the usual casa conflict, so the DJ
+ * decides explicitly what happens to their old home. Moving it silently
+ * here would be the exact thing the membership rules forbid, and founding
+ * a collective is no more of an excuse than any other route.
+ *
+ * The collective is always created either way. That part of the request is
+ * unambiguous; only the kind of the link is in question.
+ */
+export async function createCollective(
+  name: unknown,
+  email: string
+): Promise<
+  WriteResult<{ slug: string; kind: MembershipKind; casaTaken: { slug: string; name: string } | null }>
+> {
+  if (typeof name !== "string" || name.trim() === "") {
+    return { ok: false, status: 400, error: "Poné un nombre para el colectivo" };
+  }
+  const clean = name.trim().slice(0, 120);
+
+  // Only a DJ can found one: the collective has to have a first member,
+  // and that member is the founder's artist profile.
+  const [artist] = await sql`
+    SELECT slug, name, district, city FROM artists
+    WHERE lower(owner_email) = lower(${email}) AND status = 'published'
+    ORDER BY slug LIMIT 1
+  `;
+  if (!artist) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Necesitás un perfil de DJ para crear un colectivo",
+    };
+  }
+
+  const owned = await sql`
+    SELECT slug FROM collectives WHERE lower(owner_email) = lower(${email})
+  `;
+  if (owned.length > 0) {
+    return { ok: false, status: 409, error: "Ya tenés un colectivo. Es uno por cuenta." };
+  }
+
+  const slug = await freeSlug(clean);
+
+  // The founder's own district and city seed the collective's, since a
+  // crew starts out where its founder is. Both are editable afterwards.
+  await sql`
+    INSERT INTO collectives (slug, name, type, sector, bio, district, owner_email, status)
+    VALUES (${slug}, ${clean}, 'LOCAL', ${artist.city ?? "Bogotá"}, '',
+            ${artist.district ?? "D00"}, ${email}, 'published')
+  `;
+
+  // Does the founder already have a home elsewhere? The partial unique
+  // index would refuse a second active casa, so ask before, not after.
+  const [casa] = await sql`
+    SELECT ac.collective_slug, c.name
+    FROM artist_collectives ac
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.artist_slug = ${artist.slug}
+      AND ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+    LIMIT 1
+  `;
+  const kind: MembershipKind = casa ? "residente" : "casa";
+
+  await sql`
+    INSERT INTO artist_collectives
+      (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
+    VALUES (${artist.slug}, ${slug}, ${kind}, CURRENT_DATE, now(), 'artist')
+  `;
+
+  return {
+    ok: true,
+    value: {
+      slug,
+      kind,
+      casaTaken: casa ? { slug: casa.collective_slug as string, name: casa.name as string } : null,
+    },
+  };
+}
+
+/**
+ * Turns a name into a slug nobody is using yet.
+ *
+ * The slug is the primary key and the public address, so a collision has
+ * to be resolved at creation — renaming later would break every link. The
+ * counter is plain and visible ("reisen-2") rather than a random suffix,
+ * because a person has to read this out loud eventually.
+ */
+async function freeSlug(name: string): Promise<string> {
+  const base =
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "colectivo";
+
+  for (let n = 1; n < 100; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    const taken = await sql`SELECT 1 FROM collectives WHERE slug = ${candidate}`;
+    if (taken.length === 0) return candidate;
+  }
+  // 99 collectives with the same name is not a real case, but returning a
+  // duplicate slug would violate the primary key, so fall back to time.
+  return `${base}-${Date.now()}`;
+}
