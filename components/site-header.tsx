@@ -29,7 +29,12 @@ export function SiteHeader() {
   return (
     <>
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
+      {/*
+        Three parts, not two (HOTFIX punto 4): the menu and the wordmark on
+        the left, the circular logo alone in the middle, the icons on the
+        right. `relative` is what the centred logo positions against.
+      */}
+      <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 shrink-0 items-center gap-3">
           <button
             className="text-foreground"
@@ -40,21 +45,38 @@ export function SiteHeader() {
             {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
-          <Link href="/" className="flex min-w-0 items-center gap-2" aria-label="HOTU — Inicio">
-            <Image
-              src="/logo.svg"
-              alt="HOTU logo"
-              width={30}
-              height={30}
-              className="h-7 w-7 shrink-0 object-contain"
-              priority
-              unoptimized
-            />
-            <span className="whitespace-nowrap text-[clamp(0.75rem,2vw,1.1rem)] font-bold leading-none tracking-tight text-white">
+          <Link href="/" className="min-w-0">
+            <span className="whitespace-nowrap text-[clamp(0.85rem,2.4vw,1.35rem)] font-bold leading-none tracking-tight text-white">
               HOUSE OF THE UNKNOWN
             </span>
           </Link>
         </div>
+
+        {/*
+          Centred on the BAR, not between its neighbours: left-1/2 measures
+          against the header's own box, so the logo lands on the real middle
+          whatever the two side groups happen to weigh.
+
+          Below sm it stays an ordinary flex item instead. At phone width
+          the wordmark and five icons leave no room for anything pinned to
+          the centre, and an absolute logo would sit on top of the title.
+          In the flow it simply takes the space that is left.
+        */}
+        <Link
+          href="/"
+          aria-label="HOTU — Inicio"
+          className="shrink-0 sm:absolute sm:left-1/2 sm:-translate-x-1/2"
+        >
+          <Image
+            src="/logo.svg"
+            alt="HOTU logo"
+            width={30}
+            height={30}
+            className="h-7 w-7 shrink-0 object-contain"
+            priority
+            unoptimized
+          />
+        </Link>
 
         <div className="flex shrink-0 items-center gap-2">
           <Link
