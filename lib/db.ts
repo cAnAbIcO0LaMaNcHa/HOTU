@@ -713,6 +713,45 @@ export async function countArtistLikes(artistSlug: string): Promise<number> {
   return (rows[0]?.n as number) ?? 0;
 }
 
+export type BranchOption = { code: string; name: string; category: string };
+export type TagOption = { slug: string; name: string; branchCode: string };
+
+/** Los 34 branches, en el orden del documento. */
+export async function getGenreBranches(): Promise<BranchOption[]> {
+  const rows = await sql`
+    SELECT code, name, category FROM genre_branches ORDER BY sort_order, code
+  `;
+  return rows.map((r) => ({
+    code: r.code as string,
+    name: r.name as string,
+    category: r.category as string,
+  }));
+}
+
+/**
+ * TODOS los tags, los 719, de una sola vez.
+ *
+ * Se cargan enteros a propósito. El selector NO puede quedar encerrado
+ * en la rama elegida: 71 slugs viven en más de un branch y electro-house
+ * vive en tres, así que un DJ de TECHNO tiene que poder tomar
+ * acid-techno desde ACID. Con todo en memoria, esa búsqueda cruzada es
+ * instantánea; pidiéndolos por rama habría que ir al servidor cada vez
+ * que alguien escribe una letra, y el caso interesante —buscar fuera de
+ * tu propia rama— sería el más lento.
+ *
+ * Son unos 36KB. Menos que una foto de perfil.
+ */
+export async function getGenreTags(): Promise<TagOption[]> {
+  const rows = await sql`
+    SELECT slug, name, branch_code FROM genre_tags ORDER BY branch_code, sort_order, name
+  `;
+  return rows.map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    branchCode: r.branch_code as string,
+  }));
+}
+
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM events ORDER BY event_date ASC`

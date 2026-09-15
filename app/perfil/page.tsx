@@ -8,10 +8,11 @@ import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
 import { MembershipInbox } from "@/components/membership-inbox";
-import { getArtistBySlug, getLikedArtists, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { getArtistBySlug, getGenreBranches, getGenreTags, getLikedArtists, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { LikedArtists } from "@/components/liked-artists";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
+import { CrearArtista } from "@/components/crear-artista";
 
 export const revalidate = 0;
 
@@ -89,6 +90,13 @@ export default async function PerfilPage() {
     : [[], null, []];
 
   const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug) : undefined;
+
+  // El vocabulario de géneros solo hace falta si la cuenta TODAVÍA no es
+  // DJ, que es cuando se le ofrece crear el perfil. Pedirlo siempre serían
+  // 719 filas en cada carga del perfil de alguien que ya tiene el suyo.
+  const [genreBranches, genreTags] = isDJ
+    ? [[], []]
+    : await Promise.all([getGenreBranches(), getGenreTags()]);
 
   // Los dos rosters van por separado: getCollectiveMembers filtra por
   // tipo, así que pedirlo una sola vez dejaría sin miembros a uno de los
@@ -170,6 +178,11 @@ export default async function PerfilPage() {
           currentCasa={currentCasa}
         />
       )}
+
+      {/* Crear el perfil de DJ (ALTA-DJ paso 3). Es el primer escalón:
+          sin artista no se puede fundar colectivo ni venue, así que va
+          antes que los dos. Una cuenta que ya es DJ no lo ve. */}
+      {!isDJ && <CrearArtista branches={genreBranches} tags={genreTags} />}
 
       {/* Crear colectivo (§4.1) y crear venue (§5): uno de cada por
           cuenta, y sólo desde una cuenta de DJ. El que ya existe no

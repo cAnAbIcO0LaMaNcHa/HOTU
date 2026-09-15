@@ -40,27 +40,33 @@ export type GenreSelection = {
   tags: Array<{ slug: string; branchCode: string }>;
 };
 
-/**
- * Escribe el género de un perfil, reemplazando lo que hubiera.
- *
- * Devuelve qué quedó guardado, no lo que se pidió: si alguna vez
- * divergen, el llamador tiene que ver lo que está en la base.
- */
-export async function setGenres(
-  owner: GenreOwner,
-  slug: string,
-  selection: GenreSelection,
-  email?: string | null
-): Promise<WriteResult<{ primaryBranch: string; secondaryBranches: string[]; tags: number }>> {
-  const permitido =
-    owner === "artist"
-      ? await canEditArtist(slug, email)
-      : await canEditCollective(slug, email);
-  if (!permitido) {
-    return { ok: false, status: 403, error: "No podés editar este perfil" };
-  }
+export type GenreSelectionOk = {
+  primary: string;
+  secundarios: string[];
+  tagsUnicos: Array<{ slug: string; branchCode: string }>;
+};
 
-  // --- forma de la selección --------------------------------------
+/**
+ * Las reglas de género, en un solo lugar.
+ *
+ * La usan el alta de un artista nuevo y la edición de uno existente. Si
+ * viviera dentro de setGenres, el alta tendría que repetirla, y dos
+ * copias de "de 3 a 8 tags" se separan la primera vez que alguien cambia
+ * una sola.
+ *
+ * Valida la forma y que el vocabulario exista. NO valida permisos: eso
+ * es de quien llama, porque el alta y la edición se preguntan cosas
+ * distintas (una, si ya tenés un artista; la otra, si sos su dueño).
+ *
+ * UN TAG PUEDE VENIR DE CUALQUIER RAMA, no solo de la elegida. 71 slugs
+ * viven en más de un branch y electro-house vive en tres, así que un DJ
+ * de TECHNO puede tomar acid-techno desde ACID. Por eso acá se verifica
+ * que el par (slug, branch) exista, y nunca que el branch del tag esté
+ * entre los branches elegidos: eso sería la inferencia que §2.4 prohíbe.
+ */
+export async function validateGenreSelection(
+  selection: GenreSelection
+): Promise<WriteResult<GenreSelectionOk>> {
   const primary = typeof selection.primaryBranch === "string" ? selection.primaryBranch.trim() : "";
   if (!primary) {
     return { ok: false, status: 400, error: "Elegí un género principal" };
@@ -112,11 +118,19 @@ export async function setGenres(
     return { ok: false, status: 400, error: `Estos géneros no existen: ${faltantes.join(", ")}` };
   }
 
+  // Una sola consulta para los N tags, no una por tag: con 8 tags eran 8
+  // viajes a la base en el camino más caliente del alta.
+  const slugs = tagsUnicos.map((t) => t.slug);
+  const ramas = tagsUnicos.map((t) => t.branchCode);
+  const existentes = await sql`
+    SELECT slug, branch_code FROM genre_tags
+    WHERE (slug, branch_code) IN (
+      SELECT * FROM unnest(${slugs}::text[], ${ramas}::text[])
+    )
+  `;
+  const pares = new Set(existentes.map((r) => `${r.slug}|${r.branch_code}`));
   for (const t of tagsUnicos) {
-    const existe = await sql`
-      SELECT 1 FROM genre_tags WHERE slug = ${t.slug} AND branch_code = ${t.branchCode}
-    `;
-    if (existe.length === 0) {
+    if (!pares.has(`${t.slug}|${t.branchCode}`)) {
       return {
         ok: false,
         status: 400,
@@ -124,6 +138,33 @@ export async function setGenres(
       };
     }
   }
+
+  return { ok: true, value: { primary, secundarios, tagsUnicos } };
+}
+
+/**
+ * Escribe el género de un perfil, reemplazando lo que hubiera.
+ *
+ * Devuelve qué quedó guardado, no lo que se pidió: si alguna vez
+ * divergen, el llamador tiene que ver lo que está en la base.
+ */
+export async function setGenres(
+  owner: GenreOwner,
+  slug: string,
+  selection: GenreSelection,
+  email?: string | null
+): Promise<WriteResult<{ primaryBranch: string; secondaryBranches: string[]; tags: number }>> {
+  const permitido =
+    owner === "artist"
+      ? await canEditArtist(slug, email)
+      : await canEditCollective(slug, email);
+  if (!permitido) {
+    return { ok: false, status: 403, error: "No podés editar este perfil" };
+  }
+
+  const v = await validateGenreSelection(selection);
+  if (!v.ok) return v;
+  const { primary, secundarios, tagsUnicos } = v.value;
 
   // --- escritura ---------------------------------------------------
   // Borrar e insertar en una sola transacción. En el medio el perfil no
