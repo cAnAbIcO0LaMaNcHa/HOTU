@@ -49,9 +49,9 @@ export async function GET(request: Request) {
     // in. The columns stay in the table, frozen.
     for (const a of ARTISTS) {
       await sql`
-        INSERT INTO artists (slug, name, genre, district, city, photo, bio, joined_at)
+        INSERT INTO artists (slug, name, genre, district, city, photo, bio, joined_at, status)
         VALUES (${a.slug}, ${a.name}, ${a.genre}, ${a.district}, ${a.city}, ${a.photo ?? null},
-                ${a.bio}, ${a.joinedAt})
+                ${a.bio}, ${a.joinedAt}, 'published')
         ON CONFLICT (slug) DO NOTHING
       `;
     }
