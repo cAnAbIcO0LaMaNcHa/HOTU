@@ -19,22 +19,35 @@ import {
 
 export const revalidate = 0;
 
+/**
+ * El título tampoco puede delatar un borrador. Sin el email del que
+ * mira, getArtistBySlug solo devuelve publicados, así que un borrador
+ * ajeno sale sin metadata, igual que un slug que no existe.
+ */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const artist = await getArtistBySlug(slug);
+  const session = await auth();
+  const artist = await getArtistBySlug(slug, session?.user?.email ?? null);
   if (!artist) return {};
   return { title: `${artist.name} — Bio, sets y tracks`, description: artist.bio };
 }
 
 export default async function ArtistPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const artist = await getArtistBySlug(slug);
+
+  // La sesión va ANTES de leer el artista: un borrador solo lo ve su
+  // dueño o un SUPER_ADMIN, y para decidirlo hay que saber quién mira.
+  const session = await auth();
+  const email = session?.user?.email ?? null;
+
+  const artist = await getArtistBySlug(slug, email);
+  // notFound() y nunca un 403. Un 403 confirmaría que el slug existe, y
+  // con eso se enumeran los borradores probando nombres. Para quien no
+  // puede verlo, el perfil no existe.
   if (!artist) notFound();
 
   // Same check the API route runs before accepting a write. Hiding the edit
   // controls is presentation; the route is what actually protects the data.
-  const session = await auth();
-  const email = session?.user?.email ?? null;
   const [canEdit, sets, tracks, gigs, likeCount, liked] = await Promise.all([
     canEditArtist(slug, email),
     getSetsByArtist(slug),

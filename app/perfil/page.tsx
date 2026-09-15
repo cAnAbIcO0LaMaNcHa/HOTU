@@ -89,7 +89,9 @@ export default async function PerfilPage() {
       ])
     : [[], null, []];
 
-  const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug) : undefined;
+  // Con el email propio: un perfil recién creado está en borrador, y sin
+  // esto el dueño no vería su propio press kit en su propio perfil.
+  const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug, email) : undefined;
 
   // El vocabulario de géneros solo hace falta si la cuenta TODAVÍA no es
   // DJ, que es cuando se le ofrece crear el perfil. Pedirlo siempre serían

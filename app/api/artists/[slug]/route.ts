@@ -47,6 +47,10 @@ export async function PATCH(
 
   // Return the saved profile so the caller can render from the database's
   // version rather than from what it hoped it wrote.
-  const artist = await getArtistBySlug(slug);
+  //
+  // Con el email de quien escribe: si el perfil está en borrador, sin eso
+  // esta relectura devolvería undefined y el dueño recibiría un cuerpo
+  // vacío justo después de guardar bien.
+  const artist = await getArtistBySlug(slug, email);
   return NextResponse.json({ ok: true, artist });
 }

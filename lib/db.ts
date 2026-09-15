@@ -1,5 +1,8 @@
 import { neon } from "@neondatabase/serverless";
 import type { DistrictId } from "./districts";
+// roles-check y no roles.ts: el primero no importa @/auth, así que no
+// arrastra nada de next-auth acá.
+import { isSuperAdmin } from "./roles-check";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -208,10 +211,39 @@ export async function getAllArtists(opts: ReadOptions = {}): Promise<Artist[]> {
   return rows.map(mapArtist);
 }
 
-export async function getArtistBySlug(slug: string): Promise<Artist | undefined> {
-  const rows = await sql`SELECT * FROM artists WHERE slug = ${slug} AND status = 'published'`;
+/**
+ * El artista con ese slug, si quien mira puede verlo.
+ *
+ * Publicado, lo ve cualquiera. Sin publicar, SOLO su dueño y un
+ * SUPER_ADMIN: un perfil recién creado nace en borrador y su dueño tiene
+ * que poder llenarlo antes de mandarlo a revisar, cosa que hasta ahora
+ * era imposible porque este lector filtraba por status y le daba 404 a
+ * su propia cara.
+ *
+ * DEVUELVE undefined, NO UN ERROR DE PERMISO. Quien llama hace
+ * notFound(), así que un borrador ajeno contesta 404 y no 403. Un 403
+ * confirmaría que el slug existe, y con eso se enumeran los borradores
+ * probando nombres. Para quien no puede verlo, el perfil no existe.
+ *
+ * Sin viewerEmail se comporta como antes: solo publicados. Así el que se
+ * olvida de pasarlo muestra de menos y nunca de más.
+ */
+export async function getArtistBySlug(
+  slug: string,
+  viewerEmail?: string | null
+): Promise<Artist | undefined> {
+  const rows = await sql`SELECT * FROM artists WHERE slug = ${slug}`;
   if (rows.length === 0) return undefined;
-  return mapArtist(rows[0]);
+
+  const artist = mapArtist(rows[0]);
+  if (artist.status === "published") return artist;
+
+  if (!viewerEmail) return undefined;
+  const owner = (rows[0].owner_email as string | null) ?? null;
+  if (owner && owner.toLowerCase() === viewerEmail.toLowerCase()) return artist;
+  if (await isSuperAdmin(viewerEmail)) return artist;
+
+  return undefined;
 }
 
 /** Nullable integer column to an optional number, without turning 0 into

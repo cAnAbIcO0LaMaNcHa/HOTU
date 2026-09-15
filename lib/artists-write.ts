@@ -128,7 +128,7 @@ export async function updateArtistProfile(
   patch: ArtistProfilePatch,
   actorEmail?: string | null
 ): Promise<WriteResult> {
-  const rows = await sql`SELECT slug, photo, cover_url FROM artists WHERE slug = ${slug}`;
+  const rows = await sql`SELECT slug, photo, cover_url, status FROM artists WHERE slug = ${slug}`;
   if (rows.length === 0) return { ok: false, status: 404, error: "Artist not found" };
   const previous = {
     photo: (rows[0].photo as string | null) ?? null,
@@ -136,7 +136,17 @@ export async function updateArtistProfile(
   };
 
   if (!(await canEditArtist(slug, actorEmail))) {
-    return { ok: false, status: 403, error: "Not allowed to edit this profile" };
+    // 403 si el perfil es público, 404 si no lo es.
+    //
+    // Sobre un artista publicado, su existencia ya es pública, así que un
+    // 403 no cuenta nada nuevo y es el error honesto. Sobre un BORRADOR,
+    // un 403 confirmaría que el slug existe, y con eso se enumeran los
+    // borradores probando nombres contra esta ruta. Para quien no puede
+    // verlo, tiene que ser indistinguible de un slug que no existe.
+    const publico = (rows[0].status as string) === "published";
+    return publico
+      ? { ok: false, status: 403, error: "Not allowed to edit this profile" }
+      : { ok: false, status: 404, error: "Artist not found" };
   }
 
   // name, genre, city and bio are NOT NULL in the table, so an explicit
