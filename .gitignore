@@ -7,3 +7,7 @@ out
 .vercel
 .env*
 tsconfig.tsbuildinfo
+
+# Agentes generados por otra herramienta. Los nuestros viven en
+# .claude/agents/*.md, que son los que se revisan.
+.codex/

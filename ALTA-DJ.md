@@ -140,9 +140,20 @@ formulario:
 - **`genre`** se llena con el nombre del branch primario. Así la columna
   sigue significando algo y el filtro actual de `/artistas` sigue
   andando hasta que la pieza 3 lo reemplace por el filtro de branch.
-- **`district`** no tiene de dónde salir. Migración chiquita que le ponga
-  `DEFAULT 'D00'`, para que el formulario nunca lo mencione. Se va a
-  borrar igual en la pieza 3.
+- **`district`** no tiene de dónde salir. Le pusimos `DEFAULT 'D00'` para
+  que el formulario nunca lo mencione. Se va a borrar igual en la pieza 3.
+
+> **Conocido y aceptado: `D00` no es un valor neutro.** Es el distrito
+> **T/RAP**. Todo DJ que se registre va a mostrar "DISTRITO 00 · T/RAP"
+> en su sección SOBRE MÍ hasta que corra la pieza 3 de la tanda 4.
+>
+> Y no se queda en esa columna: `lib/epk-write.ts` lee el distrito del
+> artista y se lo copia a cada `dj_sets`, `tracks` y `artist_gigs` que el
+> DJ cargue, así que el default se derrama a tres tablas más.
+>
+> Se deja así a propósito. No hay ningún valor neutro en el enum actual,
+> y agregarle uno sería sumarle deuda a un sistema que ya está condenado.
+> Lo limpia la pieza 3, que deja de leer `district` en todos lados.
 
 El resto: `bio` arranca vacía, `joined_at` es hoy, `owner_email` es el
 email de la sesión.
