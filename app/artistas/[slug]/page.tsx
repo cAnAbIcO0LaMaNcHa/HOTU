@@ -7,7 +7,8 @@ import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
 import { ArtistLikeButton } from "@/components/artist-like-button";
-import { canEditArtist } from "@/lib/artists-write";
+import { FranjaRevision } from "@/components/franja-revision";
+import { canEditArtist, loQueFalta } from "@/lib/artists-write";
 import {
   countArtistLikes,
   getArtistBySlug,
@@ -57,8 +58,24 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
     email ? hasLikedArtist(email, slug) : Promise.resolve(false),
   ]);
 
+  // Qué le falta al perfil, solo si quien mira lo puede editar: es lo
+  // único que hace falta para la franja, y para un visitante ese cálculo
+  // no tendría a quién mostrarse.
+  const faltantes = canEdit ? await loQueFalta(slug) : [];
+
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
+      {/* La franja de revisión, solo para el dueño y el admin. Un
+          visitante nunca llega acá con un perfil sin publicar: le da 404. */}
+      {canEdit && (
+        <FranjaRevision
+          slug={slug}
+          reviewStatus={artist.reviewStatus}
+          reviewNote={artist.reviewNote}
+          faltantes={faltantes}
+        />
+      )}
+
       <EpkHeader artist={artist} canEdit={canEdit} />
 
       {/* Following is not editing: it shows for visitors, and for the owner

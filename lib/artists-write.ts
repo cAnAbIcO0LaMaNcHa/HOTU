@@ -128,7 +128,9 @@ export async function updateArtistProfile(
   patch: ArtistProfilePatch,
   actorEmail?: string | null
 ): Promise<WriteResult> {
-  const rows = await sql`SELECT slug, photo, cover_url, status FROM artists WHERE slug = ${slug}`;
+  const rows = await sql`
+    SELECT slug, photo, cover_url, status, review_status FROM artists WHERE slug = ${slug}
+  `;
   if (rows.length === 0) return { ok: false, status: 404, error: "Artist not found" };
   const previous = {
     photo: (rows[0].photo as string | null) ?? null,
@@ -147,6 +149,31 @@ export async function updateArtistProfile(
     return publico
       ? { ok: false, status: 403, error: "Not allowed to edit this profile" }
       : { ok: false, status: 404, error: "Artist not found" };
+  }
+
+  /**
+   * EN REVISIÓN, EL PERFIL ESTÁ CONGELADO.
+   *
+   * Sin esto, aprobar no significaría nada: el DJ podría mandar un perfil
+   * limpio y cambiarle el contenido entre que el revisor lo mira y
+   * aprieta aprobar, y quedaría publicado algo que nadie revisó. El
+   * revisor tiene que estar juzgando algo que no se mueve.
+   *
+   * La salida es retirarlo, no esperar: withdrawFromReview lo devuelve a
+   * borrador mientras nadie haya decidido.
+   *
+   * Un SUPER_ADMIN sí puede editar, porque es quien revisa y a veces
+   * arregla una tilde en vez de rechazar el perfil entero por eso.
+   */
+  if ((rows[0].review_status as string) === "en_revision") {
+    const esAdmin = await isSuperAdmin(actorEmail ?? "");
+    if (!esAdmin) {
+      return {
+        ok: false,
+        status: 403,
+        error: "Tu perfil está en revisión. Retiralo si querés seguir editándolo.",
+      };
+    }
   }
 
   // name, genre, city and bio are NOT NULL in the table, so an explicit
@@ -452,4 +479,158 @@ export async function createArtist(
   }
 
   return { ok: true, value: { slug, djCode } };
+}
+
+/* ===================================================================
+ * LA REVISIÓN, DEL LADO DEL DJ (ALTA-DJ paso 5)
+ * =================================================================== */
+
+export type Faltante = { campo: string; que: string; bloquea: boolean };
+
+/**
+ * Qué le falta al perfil para poder mandarse a revisión.
+ *
+ * Existe porque "tu perfil está en borrador" no le dice a nadie qué
+ * hacer. Un DJ que no sabe qué le falta no completa nada, y el perfil se
+ * queda ahí para siempre.
+ *
+ * Dos niveles. BLOQUEA lo que hace imposible decidir: sin bio y sin foto
+ * el revisor no tiene con qué, y la cola se le llena de perfiles que
+ * tiene que abrir uno por uno. NO BLOQUEA la música: un DJ que recién
+ * arranca puede no tener nada subido todavía, y prefiero que llegue a la
+ * cola y se rechace de un vistazo antes que trabarle el camino. Pero se
+ * lo decimos de frente, porque es lo que más pesa en la decisión.
+ */
+export async function loQueFalta(slug: string): Promise<Faltante[]> {
+  const [a] = await sql`
+    SELECT bio, photo,
+           (SELECT COUNT(*)::int FROM dj_sets WHERE artist_slug = ${slug}) AS sets,
+           (SELECT COUNT(*)::int FROM tracks  WHERE artist_slug = ${slug}) AS tracks
+    FROM artists WHERE slug = ${slug}
+  `;
+  if (!a) return [];
+
+  const faltan: Faltante[] = [];
+  const bio = ((a.bio as string) ?? "").trim();
+  if (bio.length < 40) {
+    faltan.push({
+      campo: "Tu biografía",
+      que:
+        bio.length === 0
+          ? "Contá quién sos en unas líneas. Es lo primero que lee un organizador."
+          : "Quedó muy corta. Con menos de 40 caracteres no hay con qué decidir.",
+      bloquea: true,
+    });
+  }
+  if (!a.photo) {
+    faltan.push({
+      campo: "Tu foto",
+      que: "Sin foto, tu perfil se revisa a ciegas y en un flyer no servís.",
+      bloquea: true,
+    });
+  }
+  if ((a.sets as number) + (a.tracks as number) === 0) {
+    faltan.push({
+      campo: "Un set o un track",
+      que:
+        "No es obligatorio para enviar, pero un perfil sin nada para escuchar es muy probable que se rechace.",
+      bloquea: false,
+    });
+  }
+  return faltan;
+}
+
+/**
+ * El DJ manda su perfil a revisión.
+ *
+ * ============================================================
+ * ENVIAR CONGELA EL PERFIL
+ * ============================================================
+ *
+ * Mientras está en revisión no se puede editar. Sin eso, aprobar no
+ * significaría nada: el DJ podría mandar un perfil limpio y cambiarle el
+ * contenido entre que el revisor lo mira y aprieta aprobar, y quedaría
+ * publicado algo que nadie revisó.
+ *
+ * Por eso mismo RETIRAR tiene que existir: si el perfil queda trabado, una
+ * errata que el DJ ve un segundo después de enviar se quedaría ahí hasta
+ * que alguien la rechace, gastando una revisión entera en algo que él ya
+ * sabe que está mal. Retirar lo devuelve a borrador, lo edita y lo manda
+ * de nuevo.
+ *
+ * Se puede retirar solo MIENTRAS NADIE DECIDIÓ. Una vez aprobado o
+ * rechazado, la decisión ya está tomada y deshacerla no es del DJ.
+ */
+export async function submitForReview(
+  slug: string,
+  actorEmail?: string | null
+): Promise<Resultado<{ enviado: true }>> {
+  const [a] = await sql`SELECT slug, status, review_status FROM artists WHERE slug = ${slug}`;
+  if (!a) return { ok: false, status: 404, error: "Artist not found" };
+  if (!(await canEditArtist(slug, actorEmail))) {
+    // Mismo criterio que updateArtistProfile: 404 si no es público, para
+    // no confirmar que el slug existe.
+    const publico = (a.status as string) === "published";
+    return publico
+      ? { ok: false, status: 403, error: "No es tu perfil" }
+      : { ok: false, status: 404, error: "Artist not found" };
+  }
+
+  const estado = a.review_status as string;
+  if (estado === "en_revision") return { ok: true, value: { enviado: true } };
+  if (estado === "aprobado") {
+    return { ok: false, status: 409, error: "Tu perfil ya está aprobado y publicado" };
+  }
+
+  const bloqueantes = (await loQueFalta(slug)).filter((f) => f.bloquea);
+  if (bloqueantes.length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Todavía falta: ${bloqueantes.map((f) => f.campo.toLowerCase()).join(", ")}`,
+    };
+  }
+
+  // El WHERE repite el estado esperado: si el admin decidió en el medio,
+  // esto no pisa su decisión, simplemente no hace nada.
+  await sql`
+    UPDATE artists SET review_status = 'en_revision'
+    WHERE slug = ${slug} AND review_status IN ('borrador','rechazado')
+  `;
+  return { ok: true, value: { enviado: true } };
+}
+
+/**
+ * El DJ retira su perfil de la cola y vuelve a borrador.
+ *
+ * Solo desde 'en_revision'. El WHERE lo repite para que una carrera
+ * contra el admin no deshaga una aprobación: si él decidió primero, esto
+ * no toca nada.
+ *
+ * El motivo de un rechazo anterior se limpia acá y no antes: mientras el
+ * DJ no vuelva a tocar el perfil, tiene que poder seguir leyendo por qué
+ * se lo rechazaron.
+ */
+export async function withdrawFromReview(
+  slug: string,
+  actorEmail?: string | null
+): Promise<Resultado<{ retirado: true }>> {
+  const [a] = await sql`SELECT slug, status, review_status FROM artists WHERE slug = ${slug}`;
+  if (!a) return { ok: false, status: 404, error: "Artist not found" };
+  if (!(await canEditArtist(slug, actorEmail))) {
+    const publico = (a.status as string) === "published";
+    return publico
+      ? { ok: false, status: 403, error: "No es tu perfil" }
+      : { ok: false, status: 404, error: "Artist not found" };
+  }
+
+  if ((a.review_status as string) !== "en_revision") {
+    return { ok: false, status: 409, error: "Tu perfil no está esperando revisión" };
+  }
+
+  await sql`
+    UPDATE artists SET review_status = 'borrador'
+    WHERE slug = ${slug} AND review_status = 'en_revision'
+  `;
+  return { ok: true, value: { retirado: true } };
 }

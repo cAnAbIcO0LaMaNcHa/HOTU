@@ -68,6 +68,14 @@ export type Artist = ContentMeta & {
    *  Matched case-insensitively: CAMILA and camila are the same code. */
   djCode?: string;
   socials: ArtistSocials;
+  /**
+   * Dónde está en la cola de aprobación. Es distinto de `status`, que es
+   * la visibilidad editorial: uno dice si es público y el otro dónde está
+   * en la revisión. Ver la migración setup-artist-signup.
+   */
+  reviewStatus: "borrador" | "en_revision" | "rechazado" | "aprobado";
+  /** El motivo del rechazo, que lee el DJ. Solo con 'rechazado'. */
+  reviewNote?: string;
 };
 
 export type Track = ContentMeta & {
@@ -201,6 +209,11 @@ function mapArtist(r: Record<string, unknown>): Artist {
     bpmMax: r.bpm_max === null || r.bpm_max === undefined ? undefined : Number(r.bpm_max),
     djCode: (r.dj_code as string) ?? undefined,
     socials: (r.socials ?? {}) as ArtistSocials,
+    // Las filas anteriores a la migración no tienen la columna en algunos
+    // lectores viejos; 'aprobado' es el default seguro porque es el que la
+    // migración le puso a todo lo que ya estaba publicado.
+    reviewStatus: (r.review_status as Artist["reviewStatus"]) ?? "aprobado",
+    reviewNote: (r.review_note as string) ?? undefined,
   };
 }
 
