@@ -108,6 +108,18 @@ export default async function SignInPage({
             CONTINUAR CON GOOGLE
           </button>
         </form>
+
+        {/* Hasta ahora esta página no ofrecía ninguna salida para quien
+            todavía no tiene cuenta, y crear una era imposible. */}
+        <p className="mt-6 text-center font-mono text-[11px] text-muted-foreground">
+          ¿No tenés cuenta?{" "}
+          <a
+            href={`/auth/registro?callbackUrl=${encodeURIComponent(redirectTo)}`}
+            className="text-primary underline"
+          >
+            Creá una
+          </a>
+        </p>
       </div>
     </main>
   );

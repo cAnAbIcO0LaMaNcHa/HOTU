@@ -99,6 +99,132 @@ export async function upsertAccount(input: {
   `;
 }
 
+/** Mínimo de la contraseña. Largo y nada más: exigir símbolos empuja a
+ *  la gente a "Password1!" y no compra nada. */
+const MIN_PASSWORD = 10;
+
+/** Edad mínima, que es la única razón por la que se guarda la fecha. */
+const MIN_AGE = 18;
+
+export type CreateAccountInput = {
+  email: unknown;
+  password: unknown;
+  displayName: unknown;
+  birthDate: unknown;
+  consent: unknown;
+};
+
+export type CreateAccountResult =
+  | { ok: true }
+  | { ok: false; status: 400; error: string };
+
+/** ¿Cumplió MIN_AGE años a día de hoy? Compara por fecha, no por días,
+ *  para no equivocarse por un año bisiesto o por la hora. */
+function esMayor(birthDate: string): boolean {
+  const n = new Date(birthDate + "T00:00:00Z");
+  if (Number.isNaN(n.getTime())) return false;
+  const hoy = new Date();
+  const limite = new Date(
+    Date.UTC(hoy.getUTCFullYear() - MIN_AGE, hoy.getUTCMonth(), hoy.getUTCDate())
+  );
+  return n.getTime() <= limite.getTime();
+}
+
+/**
+ * Crea una cuenta con email y contraseña.
+ *
+ * ============================================================
+ * LA RESPUESTA ES LA MISMA EXISTA O NO LA CUENTA
+ * ============================================================
+ *
+ * Tres casos, una sola respuesta:
+ *
+ *   el email no existe                 -> se crea
+ *   existe con auth_provider 'google'  -> NO SE TOCA NADA
+ *   existe con 'credentials'           -> NO SE TOCA NADA
+ *
+ * El segundo es el que importa y no es un caso borde: si el formulario
+ * dejara ponerle contraseña a un email que ya es cuenta de Google,
+ * cualquiera que sepa tu correo se queda con tu cuenta. Por eso el
+ * INSERT lleva ON CONFLICT DO NOTHING y no un DO UPDATE: contra una fila
+ * que ya existe, esta función es incapaz de escribir, no solo se
+ * abstiene de hacerlo.
+ *
+ * Y el scrypt SE PAGA SIEMPRE, incluso cuando el hash se va a tirar.
+ * Sin eso el tiempo de respuesta delata cuál de los tres casos fue, que
+ * es exactamente la enumeración que la respuesta única evita. Es la
+ * misma defensa que verifyCredentials ya hace con su DUMMY_HASH, y se
+ * hace igual acá a propósito: una defensa consistente con la que ya
+ * existe vale más que una nueva.
+ *
+ * Los errores de VALIDACIÓN sí son específicos —formato de email,
+ * contraseña corta, menor de edad—, porque no dicen nada sobre si la
+ * cuenta existe. Lo único que se calla es la existencia.
+ *
+ * Quien llame a esto NO puede iniciar sesión sola cuando devuelve ok.
+ * Hacerlo solo cuando la cuenta es nueva sería la filtración misma.
+ */
+export async function createAccount(input: CreateAccountInput): Promise<CreateAccountResult> {
+  const email = typeof input.email === "string" ? normalizeEmail(input.email) : "";
+  const password = typeof input.password === "string" ? input.password : "";
+  const displayName = typeof input.displayName === "string" ? input.displayName.trim() : "";
+  const birthDate = typeof input.birthDate === "string" ? input.birthDate.trim() : "";
+
+  // Deliberadamente laxo: cualquier cosa con arroba y un punto después.
+  // Validar emails con precisión rechaza direcciones válidas, y acá el
+  // que se equivoca se queda sin poder entrar, que ya es el castigo.
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { ok: false, status: 400, error: "Ese correo no se ve válido" };
+  }
+  if (password.length < MIN_PASSWORD) {
+    return {
+      ok: false,
+      status: 400,
+      error: `La contraseña tiene que tener al menos ${MIN_PASSWORD} caracteres`,
+    };
+  }
+  if (displayName.length < 2 || displayName.length > 60) {
+    return { ok: false, status: 400, error: "Poné un nombre de entre 2 y 60 caracteres" };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+    return { ok: false, status: 400, error: "Poné tu fecha de nacimiento" };
+  }
+  if (!esMayor(birthDate)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Tenés que tener al menos ${MIN_AGE} años para abrir una cuenta`,
+    };
+  }
+  if (input.consent !== true) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Necesitamos tu autorización para tratar tus datos personales",
+    };
+  }
+
+  // El scrypt va ANTES de mirar si la cuenta existe, así los tres caminos
+  // cuestan lo mismo. Si se hiciera después del SELECT, el caso "ya
+  // existe" saldría más rápido y eso solo ya enumera.
+  const passwordHash = await hashPassword(password);
+
+  // ON CONFLICT DO NOTHING: contra una fila que ya existe, esto no puede
+  // escribir. No hay forma de que un error de más arriba termine pisando
+  // la contraseña de una cuenta ajena.
+  await sql`
+    INSERT INTO user_profiles
+      (email, display_name, birth_date, password_hash, auth_provider, consent_at, updated_at)
+    VALUES
+      (${email}, ${displayName}, ${birthDate}, ${passwordHash}, 'credentials', now(), now())
+    ON CONFLICT (email) DO NOTHING
+  `;
+
+  // Sin RETURNING y sin mirar el resultado: quien llama no tiene que
+  // poder distinguir los casos ni por accidente.
+  return { ok: true };
+}
+
 /**
  * A dummy hash with the real format and cost. When the email does not
  * exist we still run one scrypt against it, so "no such account" and
