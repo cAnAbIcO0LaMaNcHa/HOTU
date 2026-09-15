@@ -594,7 +594,7 @@ export async function submitForReview(
   // El WHERE repite el estado esperado: si el admin decidió en el medio,
   // esto no pisa su decisión, simplemente no hace nada.
   await sql`
-    UPDATE artists SET review_status = 'en_revision'
+    UPDATE artists SET review_status = 'en_revision', submitted_at = now()
     WHERE slug = ${slug} AND review_status IN ('borrador','rechazado')
   `;
   return { ok: true, value: { enviado: true } };
@@ -629,8 +629,86 @@ export async function withdrawFromReview(
   }
 
   await sql`
-    UPDATE artists SET review_status = 'borrador'
+    UPDATE artists SET review_status = 'borrador', submitted_at = NULL
     WHERE slug = ${slug} AND review_status = 'en_revision'
   `;
   return { ok: true, value: { retirado: true } };
+}
+
+/* ===================================================================
+ * LA REVISIÓN, DEL LADO DEL ADMIN (ALTA-DJ pantalla 4)
+ * =================================================================== */
+
+/**
+ * Aprueba un perfil y lo publica.
+ *
+ * Publicar es lo que se aprueba, no crear: el perfil ya existía y su
+ * dueño ya lo llenó. Esto le abre la URL pública, lo mete en /artistas y
+ * pone su dj_code en juego para la atribución de ventas.
+ *
+ * El WHERE repite 'en_revision' para no aprobar algo que el DJ retiró en
+ * el medio: si retiró primero, esto no hace nada y el admin ve la cola
+ * actualizada.
+ */
+export async function approveArtist(
+  slug: string,
+  adminEmail?: string | null
+): Promise<Resultado<{ aprobado: true }>> {
+  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un administrador aprueba perfiles" };
+  }
+  const filas = await sql`
+    UPDATE artists
+    SET status = 'published', review_status = 'aprobado',
+        review_note = NULL, reviewed_at = now(), reviewed_by = ${adminEmail}
+    WHERE slug = ${slug} AND review_status = 'en_revision'
+    RETURNING slug
+  `;
+  if (filas.length === 0) {
+    return { ok: false, status: 409, error: "Ese perfil ya no está esperando revisión" };
+  }
+  return { ok: true, value: { aprobado: true } };
+}
+
+/**
+ * Rechaza un perfil, CON MOTIVO.
+ *
+ * El motivo es obligatorio acá y también en la base: el CHECK
+ * artists_rechazo_con_motivo_check no deja guardar un rechazo sin texto.
+ * Dos guardas para lo mismo a propósito — si el motivo fuera opcional,
+ * la mitad de los rechazos saldrían sin explicación y el DJ no sabría
+ * qué corregir. Un rechazo mudo es un perfil abandonado.
+ *
+ * NO toca status: el perfil sigue siendo un borrador, que es lo que ya
+ * era. Rechazar no despublica nada, porque nunca estuvo publicado.
+ */
+export async function rejectArtist(
+  slug: string,
+  note: unknown,
+  adminEmail?: string | null
+): Promise<Resultado<{ rechazado: true }>> {
+  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un administrador rechaza perfiles" };
+  }
+
+  const motivo = typeof note === "string" ? note.trim() : "";
+  if (motivo.length < 10) {
+    return {
+      ok: false,
+      status: 400,
+      error: "El motivo tiene que explicar qué corregir: al menos 10 caracteres",
+    };
+  }
+
+  const filas = await sql`
+    UPDATE artists
+    SET review_status = 'rechazado', review_note = ${motivo.slice(0, 2000)},
+        reviewed_at = now(), reviewed_by = ${adminEmail}
+    WHERE slug = ${slug} AND review_status = 'en_revision'
+    RETURNING slug
+  `;
+  if (filas.length === 0) {
+    return { ok: false, status: 409, error: "Ese perfil ya no está esperando revisión" };
+  }
+  return { ok: true, value: { rechazado: true } };
 }

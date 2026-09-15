@@ -5,7 +5,7 @@
  *   /api/setup-artist-signup?secret=YOUR_SECRET&dryRun=1
  *   /api/setup-artist-signup?secret=YOUR_SECRET
  *
- * PURAMENTE ADITIVA. Un default nuevo, cuatro columnas, dos CHECK y un
+ * PURAMENTE ADITIVA. Dos defaults, cinco columnas, dos CHECK y un
  * índice. Ninguna fila se borra, y lo único que se reescribe es el
  * backfill de review_status, que llena filas que hasta ahora no tenían
  * la columna.
@@ -94,7 +94,7 @@ import { neon } from "@neondatabase/serverless";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COLUMNAS = ["review_status", "review_note", "reviewed_at", "reviewed_by"];
+const COLUMNAS = ["review_status", "review_note", "submitted_at", "reviewed_at", "reviewed_by"];
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -237,6 +237,10 @@ export async function GET(request: Request) {
     const pasos = await sql.transaction([
       sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS review_status TEXT`,
       sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS review_note TEXT`,
+      // submitted_at: cuándo entró a la cola. Sin esto no se puede saber
+      // cuánto lleva esperando, y una cola sin antigüedad visible es una
+      // cola donde lo viejo se hunde y nadie se entera.
+      sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ`,
       sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`,
       sql`ALTER TABLE artists ADD COLUMN IF NOT EXISTS reviewed_by TEXT`,
       // Backfill por status, no a ciegas: un artista publicado ya pasó el
@@ -253,7 +257,7 @@ export async function GET(request: Request) {
     ]);
     const aprobados = pasos[4] as unknown[];
     const borradores = pasos[5] as unknown[];
-    log.push("columnas review_status, review_note, reviewed_at y reviewed_by listas");
+    log.push("columnas review_status, review_note, submitted_at, reviewed_at y reviewed_by listas");
     log.push(
       `backfill: ${aprobados.length} publicados a 'aprobado', ${borradores.length} no publicados a 'borrador'`
     );

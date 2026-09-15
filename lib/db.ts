@@ -758,6 +758,80 @@ export async function countArtistLikes(artistSlug: string): Promise<number> {
   return (rows[0]?.n as number) ?? 0;
 }
 
+export type EnRevision = {
+  slug: string;
+  name: string;
+  photo: string | null;
+  bio: string;
+  city: string;
+  origin: string | null;
+  djCode: string | null;
+  ownerEmail: string | null;
+  submittedAt: string | null;
+  /** Días enteros que lleva esperando. Lo calcula la base, que es la que
+   *  sabe qué hora es, y no el navegador de quien mira. */
+  diasEnCola: number | null;
+  branchPrimario: string | null;
+  branchesSecundarios: string[];
+  tags: string[];
+  sets: number;
+  tracks: number;
+  /** Si ya fue rechazado antes, el motivo de aquella vez. Sirve para ver
+   *  de un vistazo si corrigió lo que se le pidió. */
+  rechazoAnterior: string | null;
+};
+
+/**
+ * La cola de aprobación de /admin/artistas.
+ *
+ * Trae TODO lo que hace falta para decidir sin abrir el perfil: foto,
+ * bio, género, ciudad, cuántos sets y tracks tiene, y cuánto lleva
+ * esperando. Si hubiera que abrir cada uno, la cola se acumula y la
+ * aprobación deja de pasar, que es el modo de fallar de este diseño.
+ *
+ * Ordenada por antigüedad, lo más viejo primero: una cola donde lo nuevo
+ * va arriba es una cola donde lo viejo no se revisa nunca.
+ */
+export async function getArtistsInReview(): Promise<EnRevision[]> {
+  const rows = await sql`
+    SELECT a.slug, a.name, a.photo, a.bio, a.city, a.origin, a.dj_code, a.owner_email,
+           a.submitted_at, a.review_note,
+           EXTRACT(DAY FROM (now() - a.submitted_at))::int AS dias,
+           (SELECT COUNT(*)::int FROM dj_sets WHERE artist_slug = a.slug) AS sets,
+           (SELECT COUNT(*)::int FROM tracks  WHERE artist_slug = a.slug) AS tracks,
+           (SELECT b.name FROM artist_genres ag
+              JOIN genre_branches b ON b.code = ag.branch_code
+             WHERE ag.artist_slug = a.slug AND ag.is_primary LIMIT 1) AS branch_primario,
+           COALESCE((SELECT array_agg(b.name ORDER BY ag.sort_order) FROM artist_genres ag
+              JOIN genre_branches b ON b.code = ag.branch_code
+             WHERE ag.artist_slug = a.slug AND NOT ag.is_primary), '{}') AS secundarios,
+           COALESCE((SELECT array_agg(t.name ORDER BY agt.sort_order) FROM artist_genre_tags agt
+              JOIN genre_tags t ON t.slug = agt.tag_slug AND t.branch_code = agt.branch_code
+             WHERE agt.artist_slug = a.slug), '{}') AS tags
+    FROM artists a
+    WHERE a.review_status = 'en_revision'
+    ORDER BY a.submitted_at ASC NULLS LAST
+  `;
+  return rows.map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    photo: (r.photo as string | null) ?? null,
+    bio: (r.bio as string) ?? "",
+    city: (r.city as string) ?? "",
+    origin: (r.origin as string | null) ?? null,
+    djCode: (r.dj_code as string | null) ?? null,
+    ownerEmail: (r.owner_email as string | null) ?? null,
+    submittedAt: r.submitted_at ? String(r.submitted_at) : null,
+    diasEnCola: r.dias === null || r.dias === undefined ? null : Number(r.dias),
+    branchPrimario: (r.branch_primario as string | null) ?? null,
+    branchesSecundarios: (r.secundarios as string[]) ?? [],
+    tags: (r.tags as string[]) ?? [],
+    sets: Number(r.sets ?? 0),
+    tracks: Number(r.tracks ?? 0),
+    rechazoAnterior: (r.review_note as string | null) ?? null,
+  }));
+}
+
 export type BranchOption = { code: string; name: string; category: string };
 export type TagOption = { slug: string; name: string; branchCode: string };
 
