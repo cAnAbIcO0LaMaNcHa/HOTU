@@ -3,23 +3,43 @@
 import { useState } from "react";
 import { AutoTranslate } from "./auto-translate";
 import { EpkEditableSection, Field, TextAreaField } from "./epk-editable-section";
-import { getDistrict } from "@/lib/districts";
 import type { Artist } from "@/lib/db";
 
 /**
- * "Sobre mí": origin, BPM range, genre/district, biography.
+ * "Sobre mí": origen, rango de BPM, biografía.
  *
  * `origin` is where the artist is from and `city` (edited in the header) is
  * where they live now — the project doc is explicit that these are not the
  * same field and must not be merged.
+ *
+ * EL DISTRITO SE FUE (tanda 4 §3). Lo que mostraba era
+ * "{distrito} · {artist.genre}", y de eso solo el distrito era decorado:
+ * artist.genre es un campo propio del artista.
+ *
+ * Por eso genre queda de SUPLENTE de la sección GÉNERO, que va acá
+ * abajo: si el perfil ya declaró género de taxonomía, esa sección lo
+ * dice mejor y esta fila no se muestra; si no —los 12 artistas de
+ * producción, que son anteriores a la taxonomía—, se muestra la vieja.
+ * Sin eso, a un visitante esos perfiles le quedaban sin ningún género a
+ * la vista, porque GÉNERO vacía no se renderiza para quien no puede
+ * editar. Una transición no deja una página peor que antes.
  */
-export function EpkAbout({ artist, canEdit }: { artist: Artist; canEdit: boolean }) {
+export function EpkAbout({
+  artist,
+  canEdit,
+  tieneGeneroDeclarado,
+}: {
+  artist: Artist;
+  canEdit: boolean;
+  /** ¿Ya declaró género de taxonomía? Si sí, el viejo no hace falta. */
+  tieneGeneroDeclarado: boolean;
+}) {
   const [origin, setOrigin] = useState(artist.origin ?? "");
   const [bpmMin, setBpmMin] = useState(artist.bpmMin?.toString() ?? "");
   const [bpmMax, setBpmMax] = useState(artist.bpmMax?.toString() ?? "");
   const [bio, setBio] = useState(artist.bio);
 
-  const district = getDistrict(artist.district);
+  const generoViejo = !tieneGeneroDeclarado && artist.genre ? artist.genre : null;
   const hasBpm = artist.bpmMin != null || artist.bpmMax != null;
   const bpmLabel =
     artist.bpmMin != null && artist.bpmMax != null
@@ -28,7 +48,7 @@ export function EpkAbout({ artist, canEdit }: { artist: Artist; canEdit: boolean
 
   // Nothing written yet and nobody who could write it: render nothing at all
   // rather than an empty heading.
-  const isEmpty = !artist.bio && !artist.origin && !hasBpm;
+  const isEmpty = !artist.bio && !artist.origin && !hasBpm && !generoViejo;
   if (isEmpty && !canEdit) return null;
 
   return (
@@ -91,12 +111,12 @@ export function EpkAbout({ artist, canEdit }: { artist: Artist; canEdit: boolean
                   <dd className="mt-1 text-foreground/80">{bpmLabel}</dd>
                 </div>
               )}
-              <div>
-                <dt className="text-[10px] tracking-[0.3em] text-primary">DISTRITO</dt>
-                <dd className="mt-1 text-foreground/80">
-                  {district.title} · {artist.genre}
-                </dd>
-              </div>
+              {generoViejo && (
+                <div>
+                  <dt className="text-[10px] tracking-[0.3em] text-primary">GÉNERO</dt>
+                  <dd className="mt-1 text-foreground/80">{generoViejo}</dd>
+                </div>
+              )}
             </dl>
           )}
 

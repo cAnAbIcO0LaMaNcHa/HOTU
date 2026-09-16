@@ -16,7 +16,6 @@ import {
   getMyArtistSlug,
   getPendingForCollective,
 } from "@/lib/db";
-import { getDistrict } from "@/lib/districts";
 
 export const revalidate = 0;
 
@@ -69,7 +68,6 @@ export default async function CollectivePage({
   const roster = membersByCollective.get(slug) ?? [];
   const casa = roster.filter((m) => m.kind === "casa");
   const residentes = roster.filter((m) => m.kind === "residente");
-  const district = getDistrict(collective.district);
 
   // Why the join button is or is not actionable, decided here so the
   // button itself never has to guess.
@@ -110,9 +108,6 @@ export default async function CollectivePage({
             <MapPin className="h-3 w-3" /> <AutoTranslate text={collective.sector} />
           </span>
         )}
-        <span data-district={collective.district}>
-          {district.title} · {district.genre}
-        </span>
       </div>
 
       <p className="mt-6 max-w-3xl font-mono text-sm leading-relaxed text-muted-foreground">

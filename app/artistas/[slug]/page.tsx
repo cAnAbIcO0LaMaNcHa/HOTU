@@ -100,7 +100,14 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
         />
       </div>
 
-      <EpkAbout artist={artist} canEdit={canEdit} />
+      {/* genero.primary decide si "Sobre mí" muestra el género viejo de
+          texto libre: es el suplente de la sección GÉNERO de acá abajo,
+          que no se renderiza vacía para un visitante. */}
+      <EpkAbout
+        artist={artist}
+        canEdit={canEdit}
+        tieneGeneroDeclarado={genero.primary !== null}
+      />
 
       {/* GÉNERO, justo después de SOBRE MÍ. Es la regla en la EDICIÓN:
           los perfiles anteriores a la taxonomía no tienen género y nunca
