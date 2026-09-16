@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ListingLayout } from "@/components/listing-layout";
 import { ArtistasList } from "@/components/artistas-list";
 import { getAllArtists, getFilterOptions, getGenreIndex, pickGenreIndex } from "@/lib/db";
+import { uniqueSorted } from "@/lib/listing-options";
 
 export const revalidate = 0;
 
@@ -35,6 +36,12 @@ export default async function ArtistasPage({
       description="Tocá una burbuja para ver la biografía, sets y tracks de cada artista."
       branches={branches}
       tagOptions={tags}
+      // El género viejo de texto libre, de suplente. Hoy en producción
+      // nadie declaró taxonomía, así que sin esto la página salía con el
+      // buscador y nada más: menos de lo que tenía. En cuanto haya tags,
+      // el layout lo reemplaza solo.
+      secondaryLabel="GÉNERO"
+      secondaryOptions={uniqueSorted(artists.map((a) => a.genre))}
     >
       <ArtistasList artists={artists} genreIndex={genreIndex} />
     </ListingLayout>

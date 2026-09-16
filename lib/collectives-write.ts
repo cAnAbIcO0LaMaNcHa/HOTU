@@ -313,13 +313,15 @@ export async function createCollective(
   // La ciudad del fundador siembra la del colectivo: el crew arranca
   // donde está quien lo funda, y después se edita.
   //
-  // El distrito NO se nombra (tanda 4 §3). Sale del DEFAULT 'D00' de la
-  // columna, que queda congelada hasta que se borre. Copiarlo del
-  // fundador era además propagar el D00 que todo DJ nuevo hereda.
+  // El distrito ya no se copia del fundador (tanda 4 §3): eso propagaba
+  // el D00 que todo DJ nuevo hereda del DEFAULT. Va un literal congelado
+  // en vez de omitirse, para no depender de que main tenga el mismo
+  // DEFAULT que dev — no hay forma de consultar main desde acá, y si no
+  // lo tuviera esto sería un not-null en producción.
   await sql`
-    INSERT INTO collectives (slug, name, type, sector, bio, owner_email, status, entity_kind)
+    INSERT INTO collectives (slug, name, type, sector, bio, district, owner_email, status, entity_kind)
     VALUES (${slug}, ${clean}, 'LOCAL', ${artist.city ?? "Bogotá"}, '',
-            ${email}, 'published', ${entityKind})
+            'D00', ${email}, 'published', ${entityKind})
   `;
 
   if (genero) {

@@ -19,6 +19,9 @@ export function ArtistasList({
     // into a match and the results stop meaning anything.
     search: (a) => [a.name, a.genre, a.city, a.origin],
     genreOf: (a) => genreIndex[a.slug],
+    // El suplente del tag. El layout renderiza uno de los dos, nunca los
+    // dos, así que acá pueden convivir sin pisarse.
+    secondaryOf: (a) => a.genre,
   });
 
   return (

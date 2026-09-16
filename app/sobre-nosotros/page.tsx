@@ -7,8 +7,8 @@ export const metadata: Metadata = {
 };
 
 const PARAGRAPHS = [
-  "HOTU — House of the Unknown — nació en Bogotá como un hub para la cultura electrónica de la sabana: un lugar donde artistas, colectivos y aficionados encuentran el sonido que comparten, sin importar en qué distrito de la escena estén.",
-  "No somos un festival. Somos un universo dividido en 10 distritos, cada uno con su propia identidad sonora, desde el T/RAP hasta el Hard Core. Cada distrito filtra eventos, artistas, sets y discografía, para que cada quien encuentre su mood.",
+  "HOTU — House of the Unknown — nació en Bogotá como un hub para la cultura electrónica de la sabana: un lugar donde artistas, colectivos y aficionados encuentran el sonido que comparten.",
+  "No somos un festival. Somos un mapa del sonido: cada artista y cada colectivo declara su género, y con eso se filtran eventos, artistas, sets y discografía, para que cada quien encuentre su mood.",
 ];
 
 const BULLETS = [

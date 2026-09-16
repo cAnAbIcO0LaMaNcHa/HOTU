@@ -14,8 +14,12 @@ const sql = neon(process.env.DATABASE_URL!);
  * INSERT revienta. Ponerle un DEFAULT a una columna que se va a borrar
  * es trabajo para deshacer después, y esta tanda no lleva migración.
  *
- * news y collectives no necesitan esto: sus columnas ya tienen DEFAULT
- * 'D00', así que ahí el distrito se omite entero.
+ * news y collectives SÍ tienen DEFAULT 'D00', pero igual lo escriben
+ * explícito. Apoyarse en el default obligaría a verificar que main tenga
+ * exactamente el mismo schema que dev antes de cada despliegue, y no
+ * tengo forma de consultar main desde acá. Escribir el valor no depende
+ * del schema: si el default está, es idéntico; si no está, es lo único
+ * que evita un not-null en producción.
  *
  * Los UPDATE directamente dejan de tocar la columna: lo que ya está
  * guardado se queda como está, congelado, hasta que se borre.
@@ -134,8 +138,8 @@ export async function createNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
   await sql`
-    INSERT INTO news (tag, news_date, title, excerpt, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO news (tag, news_date, title, excerpt, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
   `;
   refreshAll();
 }
@@ -182,8 +186,8 @@ export async function createCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
   await sql`
-    INSERT INTO collectives (slug, name, type, sector, bio, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("slug"))}, ${String(formData.get("name"))}, ${String(formData.get("type"))}, ${String(formData.get("sector"))}, ${String(formData.get("bio"))}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO collectives (slug, name, type, sector, bio, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("slug"))}, ${String(formData.get("name"))}, ${String(formData.get("type"))}, ${String(formData.get("sector"))}, ${String(formData.get("bio"))}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
   `;
   refreshAll();
 }

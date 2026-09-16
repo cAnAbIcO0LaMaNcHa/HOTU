@@ -20,6 +20,9 @@ export function SetsList({
     // Title and artist. Somebody hunting a set knows one or the other.
     search: (s) => [s.title, s.artistName],
     genreOf: (s) => (s.artistSlug ? genreIndex[s.artistSlug] : undefined),
+    // El suplente del tag. El layout renderiza uno de los dos, nunca los
+    // dos, así que acá pueden convivir sin pisarse.
+    secondaryOf: (s) => s.artistName,
   });
 
   return (

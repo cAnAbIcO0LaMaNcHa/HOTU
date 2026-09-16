@@ -22,6 +22,9 @@ export function DiscografiaList({
     // El sello sigue siendo buscable aunque ya no sea el filtro 2.
     search: (t) => [t.title, t.artistName, t.label],
     genreOf: (t) => (t.artistSlug ? genreIndex[t.artistSlug] : undefined),
+    // El suplente del tag. El layout renderiza uno de los dos, nunca los
+    // dos, así que acá pueden convivir sin pisarse.
+    secondaryOf: (t) => t.label,
   });
 
   return (
