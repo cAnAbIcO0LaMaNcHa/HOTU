@@ -23,7 +23,14 @@ export async function POST(request: Request) {
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  let body: { name?: unknown; entityKind?: unknown };
+  let body: {
+    name?: unknown;
+    entityKind?: unknown;
+    // Género: obligatorio para un colectivo, ignorado para un venue.
+    primaryBranch?: unknown;
+    secondaryBranches?: unknown;
+    tags?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -45,7 +52,11 @@ export async function POST(request: Request) {
   }
   const entityKind = (body.entityKind as "collective" | "venue") ?? "collective";
 
-  const result = await createCollective(body.name, email, entityKind);
+  const result = await createCollective(body.name, email, entityKind, {
+    primaryBranch: body.primaryBranch,
+    secondaryBranches: body.secondaryBranches,
+    tags: body.tags,
+  });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
   return NextResponse.json({ ok: true, ...result.value }, { status: 201 });

@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import type { BranchOption, TagOption } from "@/lib/db";
+import {
+  GenrePicker,
+  MAX_TAGS,
+  MIN_TAGS,
+  type SeleccionGenero,
+} from "@/components/genre-picker";
 
 /**
  * "Crear colectivo", on a DJ's own profile (§4.1).
@@ -18,8 +25,14 @@ import { Plus } from "lucide-react";
 export function CreateCollectiveButton({
   /** Colectivo o venue: los dos se crean igual, con textos distintos. */
   entityKind = "collective",
+  branches = [],
+  tags = [],
 }: {
   entityKind?: "collective" | "venue";
+  /** El vocabulario, solo necesario para un colectivo: un venue no
+   *  declara género, porque el género lo tiene la fiesta y no el lugar. */
+  branches?: BranchOption[];
+  tags?: TagOption[];
 } = {}) {
   const esVenue = entityKind === "venue";
   const palabra = esVenue ? "VENUE" : "COLECTIVO";
@@ -29,11 +42,29 @@ export function CreateCollectiveButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [buscar, setBuscar] = useState("");
+  const [genero, setGenero] = useState<SeleccionGenero>({
+    primary: "",
+    secundarios: [],
+    tags: [],
+  });
 
   async function create() {
     if (name.trim() === "") {
       setError("Poné un nombre.");
       return;
+    }
+    // El género es obligatorio para un colectivo (§2.3) y no aplica a un
+    // venue. Se chequea acá y otra vez en el servidor, que es el que manda.
+    if (!esVenue) {
+      if (!genero.primary) {
+        setError("Elegí el género principal del colectivo.");
+        return;
+      }
+      if (genero.tags.length < MIN_TAGS || genero.tags.length > MAX_TAGS) {
+        setError(`Elegí entre ${MIN_TAGS} y ${MAX_TAGS} tags.`);
+        return;
+      }
     }
     setBusy(true);
     setError(null);
@@ -41,7 +72,17 @@ export function CreateCollectiveButton({
       const res = await fetch("/api/collectives", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, entityKind }),
+        body: JSON.stringify({
+          name,
+          entityKind,
+          ...(esVenue
+            ? {}
+            : {
+                primaryBranch: genero.primary,
+                secondaryBranches: genero.secundarios,
+                tags: genero.tags.map((t) => ({ slug: t.slug, branchCode: t.branchCode })),
+              }),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -101,6 +142,23 @@ export function CreateCollectiveButton({
         disabled={busy}
         className="mt-4 w-full max-w-sm border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
       />
+
+      {/* Un venue no declara género: el género lo tiene la fiesta, no el
+          lugar. Por eso el selector no existe en ese camino. */}
+      {!esVenue && (
+        <div className="mt-6 border-t border-border pt-5">
+          <GenrePicker
+            branches={branches}
+            tags={tags}
+            valor={genero}
+            onChange={setGenero}
+            buscar={buscar}
+            onBuscar={setBuscar}
+            disabled={busy}
+          />
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="mt-3 font-mono text-[11px] text-primary">
           {error}

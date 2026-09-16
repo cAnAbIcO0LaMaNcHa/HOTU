@@ -5,8 +5,13 @@ import { MapPin } from "lucide-react";
 import { auth } from "@/auth";
 import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
+import { GeneroEditable } from "@/components/genero-editable";
+import { canEditCollective } from "@/lib/collectives-write";
 import {
   getCollectiveBySlug,
+  getGenreBranches,
+  getGenreTags,
+  getProfileGenres,
   getCollectiveMembers,
   getMyArtistSlug,
   getPendingForCollective,
@@ -52,6 +57,14 @@ export default async function CollectivePage({
     getPendingForCollective(slug),
     email ? getMyArtistSlug(email) : Promise.resolve(null),
   ]);
+
+  // El dueño edita desde su propio perfil (§4.2), pero el género se
+  // edita acá, que es donde se ve. Misma regla que el press kit del DJ.
+  const puedeEditar = await canEditCollective(slug, email);
+  const genero = await getProfileGenres("collective", slug);
+  const [branches, allTags] = puedeEditar
+    ? await Promise.all([getGenreBranches(), getGenreTags()])
+    : [[], []];
 
   const roster = membersByCollective.get(slug) ?? [];
   const casa = roster.filter((m) => m.kind === "casa");
@@ -105,6 +118,18 @@ export default async function CollectivePage({
       <p className="mt-6 max-w-3xl font-mono text-sm leading-relaxed text-muted-foreground">
         <AutoTranslate text={collective.bio} />
       </p>
+
+      {/* GÉNERO. Mismo componente y misma regla que el artista: los seis
+          colectivos anteriores a la taxonomía no tienen ninguno, y este
+          es el único lugar donde su dueño lo puede completar. */}
+      <GeneroEditable
+        owner="collective"
+        slug={collective.slug}
+        genero={genero}
+        branches={branches}
+        tags={allTags}
+        canEdit={puedeEditar}
+      />
 
       <Roster title="ARTISTAS DE LA CASA" members={casa} />
       <Roster title="ARTISTAS RESIDENTES" members={residentes} />

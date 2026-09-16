@@ -8,10 +8,14 @@ import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
 import { ArtistLikeButton } from "@/components/artist-like-button";
 import { FranjaRevision } from "@/components/franja-revision";
+import { GeneroEditable } from "@/components/genero-editable";
 import { canEditArtist, loQueFalta } from "@/lib/artists-write";
 import {
   countArtistLikes,
   getArtistBySlug,
+  getGenreBranches,
+  getGenreTags,
+  getProfileGenres,
   getGigsByArtist,
   getSetsByArtist,
   getTracksByArtist,
@@ -63,6 +67,13 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
   // no tendría a quién mostrarse.
   const faltantes = canEdit ? await loQueFalta(slug) : [];
 
+  // El género declarado, y el vocabulario SOLO si puede editarlo: los 719
+  // tags son para el selector, y un visitante no lo abre nunca.
+  const genero = await getProfileGenres("artist", slug);
+  const [branches, allTags] = canEdit
+    ? await Promise.all([getGenreBranches(), getGenreTags()])
+    : [[], []];
+
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
       {/* La franja de revisión, solo para el dueño y el admin. Un
@@ -90,6 +101,19 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
       </div>
 
       <EpkAbout artist={artist} canEdit={canEdit} />
+
+      {/* GÉNERO, justo después de SOBRE MÍ. Es la regla en la EDICIÓN:
+          los perfiles anteriores a la taxonomía no tienen género y nunca
+          pasaron por el formulario de alta, así que este es el único
+          lugar donde lo pueden completar. */}
+      <GeneroEditable
+        owner="artist"
+        slug={slug}
+        genero={genero}
+        branches={branches}
+        tags={allTags}
+        canEdit={canEdit}
+      />
 
       {/* DJ SETS and TRACKS are two separate sections, never tabs. */}
       <EpkSets sets={sets} canEdit={canEdit} artistSlug={slug} />

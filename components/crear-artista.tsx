@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Disc3, Search, X } from "lucide-react";
+import { Disc3 } from "lucide-react";
 import type { BranchOption, TagOption } from "@/lib/db";
-import { normalize } from "@/components/listing-filters";
+import { GenrePicker, MIN_TAGS, type SeleccionGenero } from "@/components/genre-picker";
 
 /**
  * CREAR MI PERFIL DE DJ (ALTA-DJ paso 3).
@@ -38,33 +38,14 @@ export function CrearArtista({
   const [slug, setSlug] = useState("");
   const [codeLibre, setCodeLibre] = useState<boolean | null>(null);
 
-  // paso 2
-  const [primary, setPrimary] = useState("");
-  const [secundarios, setSecundarios] = useState<string[]>([]);
-  const [elegidos, setElegidos] = useState<TagOption[]>([]);
+  // paso 2. El selector vive en GenrePicker, compartido con la edición y
+  // con el alta de colectivo: tres usos, una sola copia de la regla.
+  const [genero, setGenero] = useState<SeleccionGenero>({
+    primary: "",
+    secundarios: [],
+    tags: [],
+  });
   const [buscar, setBuscar] = useState("");
-
-  const nombreDeRama = useMemo(
-    () => Object.fromEntries(branches.map((b) => [b.code, b.name])),
-    [branches]
-  );
-
-  /**
-   * Los tags que se ofrecen.
-   *
-   * Sin búsqueda, los de la rama elegida, que es el caso normal. Con
-   * búsqueda, LOS 719, porque un tag transversal vive en varias ramas y
-   * encerrar el buscador en la propia sería justamente impedir el caso
-   * que la clave compuesta existe para permitir.
-   */
-  const sugeridos = useMemo(() => {
-    const q = normalize(buscar);
-    const base = q
-      ? tags.filter((t) => normalize(t.name).includes(q) || normalize(t.slug).includes(q))
-      : tags.filter((t) => t.branchCode === primary);
-    const ya = new Set(elegidos.map((t) => t.slug));
-    return base.filter((t) => !ya.has(t.slug)).slice(0, 60);
-  }, [buscar, tags, primary, elegidos]);
 
   async function consultar(nombre: string, code: string) {
     const p = new URLSearchParams();
@@ -94,30 +75,10 @@ export function CrearArtista({
     setPaso(2);
   }
 
-  function toggleTag(t: TagOption) {
-    setElegidos((prev) =>
-      prev.some((x) => x.slug === t.slug)
-        ? prev.filter((x) => x.slug !== t.slug)
-        : prev.length >= 8
-          ? prev
-          : [...prev, t]
-    );
-  }
-
-  function toggleSecundario(code: string) {
-    setSecundarios((prev) =>
-      prev.includes(code)
-        ? prev.filter((c) => c !== code)
-        : prev.length >= 3
-          ? prev
-          : [...prev, code]
-    );
-  }
-
   async function crear() {
     setError(null);
-    if (!primary) return setError("Elegí tu género principal.");
-    if (elegidos.length < 3) return setError("Elegí al menos 3 tags.");
+    if (!genero.primary) return setError("Elegí tu género principal.");
+    if (genero.tags.length < MIN_TAGS) return setError(`Elegí al menos ${MIN_TAGS} tags.`);
     setBusy(true);
     try {
       const res = await fetch("/api/artists", {
@@ -128,9 +89,9 @@ export function CrearArtista({
           djCode,
           city,
           origin,
-          primaryBranch: primary,
-          secondaryBranches: secundarios,
-          tags: elegidos.map((t) => ({ slug: t.slug, branchCode: t.branchCode })),
+          primaryBranch: genero.primary,
+          secondaryBranches: genero.secundarios,
+          tags: genero.tags.map((t) => ({ slug: t.slug, branchCode: t.branchCode })),
         }),
       });
       const d = await res.json().catch(() => ({}));
@@ -230,120 +191,16 @@ export function CrearArtista({
           />
         </div>
       ) : (
-        <div className="mt-5 flex flex-col gap-5">
-          <div>
-            <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-              TU GÉNERO PRINCIPAL
-            </span>
-            <select
-              value={primary}
-              onChange={(e) => setPrimary(e.target.value)}
-              disabled={busy}
-              className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none"
-            >
-              <option value="">Elegí uno</option>
-              {branches.map((b) => (
-                <option key={b.code} value={b.code}>
-                  {b.name} · {b.category}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {primary && (
-            <div>
-              <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-                SECUNDARIOS (HASTA 3, OPCIONAL)
-              </span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {branches
-                  .filter((b) => b.code !== primary)
-                  .map((b) => {
-                    const on = secundarios.includes(b.code);
-                    return (
-                      <button
-                        key={b.code}
-                        type="button"
-                        onClick={() => toggleSecundario(b.code)}
-                        disabled={busy || (!on && secundarios.length >= 3)}
-                        className={`border px-2 py-1 font-mono text-[10px] tracking-widest disabled:opacity-30 ${
-                          on ? "border-primary text-primary" : "border-border hover:border-primary"
-                        }`}
-                      >
-                        {b.name}
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {primary && (
-            <div>
-              <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-                TUS TAGS ({elegidos.length} DE 3 A 8)
-              </span>
-              <p className="mt-1 font-mono text-[10px] leading-relaxed text-muted-foreground">
-                Los tres primeros son los principales. Buscá para encontrar tags de
-                cualquier rama, no solo de la tuya: muchos viven en varias.
-              </p>
-
-              {elegidos.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {elegidos.map((t, i) => (
-                    <button
-                      key={t.slug}
-                      type="button"
-                      onClick={() => toggleTag(t)}
-                      disabled={busy}
-                      className="inline-flex items-center gap-1.5 border border-primary px-2 py-1 font-mono text-[10px] tracking-widest text-primary"
-                    >
-                      {i < 3 && <span className="text-[8px]">★</span>}
-                      {t.name}
-                      {t.branchCode !== primary && (
-                        <span className="text-muted-foreground">·{t.branchCode}</span>
-                      )}
-                      <X className="h-3 w-3" />
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="relative mt-3">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="search"
-                  value={buscar}
-                  onChange={(e) => setBuscar(e.target.value)}
-                  placeholder="Buscar en los 719 tags..."
-                  disabled={busy}
-                  className="w-full border border-border bg-background py-2 pl-9 pr-3 font-mono text-xs focus:border-primary focus:outline-none"
-                />
-              </div>
-
-              <div className="mt-3 flex max-h-64 flex-wrap gap-2 overflow-y-auto">
-                {sugeridos.map((t) => (
-                  <button
-                    key={`${t.slug}-${t.branchCode}`}
-                    type="button"
-                    onClick={() => toggleTag(t)}
-                    disabled={busy || elegidos.length >= 8}
-                    className="border border-border px-2 py-1 font-mono text-[10px] tracking-widest hover:border-primary hover:text-primary disabled:opacity-30"
-                  >
-                    {t.name}
-                    {t.branchCode !== primary && (
-                      <span className="ml-1 text-muted-foreground">·{nombreDeRama[t.branchCode]}</span>
-                    )}
-                  </button>
-                ))}
-                {sugeridos.length === 0 && (
-                  <p className="font-mono text-[10px] text-muted-foreground">
-                    {buscar ? "Nada coincide." : "Elegí un género principal."}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+        <div className="mt-5">
+          <GenrePicker
+            branches={branches}
+            tags={tags}
+            valor={genero}
+            onChange={setGenero}
+            buscar={buscar}
+            onBuscar={setBuscar}
+            disabled={busy}
+          />
         </div>
       )}
 

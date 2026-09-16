@@ -93,12 +93,19 @@ export default async function PerfilPage() {
   // esto el dueño no vería su propio press kit en su propio perfil.
   const myArtist = myArtistSlug ? await getArtistBySlug(myArtistSlug, email) : undefined;
 
-  // El vocabulario de géneros solo hace falta si la cuenta TODAVÍA no es
-  // DJ, que es cuando se le ofrece crear el perfil. Pedirlo siempre serían
-  // 719 filas en cada carga del perfil de alguien que ya tiene el suyo.
-  const [genreBranches, genreTags] = isDJ
-    ? [[], []]
-    : await Promise.all([getGenreBranches(), getGenreTags()]);
+  /**
+   * El vocabulario solo se pide cuando esta página va a ofrecer un
+   * selector: crear el perfil de DJ, o crear un colectivo. Son dos casos
+   * distintos y hay que mirar los dos —el de colectivo aparece
+   * justamente cuando SÍ sos DJ—, así que condicionarlo solo a !isDJ
+   * dejaba el selector del colectivo sin opciones.
+   *
+   * Crear un venue no lo necesita: un venue no declara género.
+   */
+  const necesitaVocabulario = !isDJ || owned.length === 0;
+  const [genreBranches, genreTags] = necesitaVocabulario
+    ? await Promise.all([getGenreBranches(), getGenreTags()])
+    : [[], []];
 
   // Los dos rosters van por separado: getCollectiveMembers filtra por
   // tipo, así que pedirlo una sola vez dejaría sin miembros a uno de los
@@ -189,7 +196,7 @@ export default async function PerfilPage() {
       {/* Crear colectivo (§4.1) y crear venue (§5): uno de cada por
           cuenta, y sólo desde una cuenta de DJ. El que ya existe no
           vuelve a ofrecerse, y tener uno nunca bloquea al otro. */}
-      {isDJ && owned.length === 0 && <CreateCollectiveButton />}
+      {isDJ && owned.length === 0 && <CreateCollectiveButton branches={genreBranches} tags={genreTags} />}
       {isDJ && ownedVenues.length === 0 && <CreateCollectiveButton entityKind="venue" />}
 
       {/* Colectivo: el panel del dueño (§4.2, §5.2). Miembros, solicitudes

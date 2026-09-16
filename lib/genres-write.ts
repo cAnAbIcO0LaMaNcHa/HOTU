@@ -31,6 +31,48 @@ const sql = neon(process.env.DATABASE_URL!);
 /** Las dos entidades que declaran género. Usuario y venue no (§2.3). */
 export type GenreOwner = "artist" | "collective";
 
+/**
+ * Quién puede escribirle género a este perfil.
+ *
+ * UN VENUE NO DECLARA GÉNERO. El género lo tiene la fiesta, no el lugar.
+ *
+ * Y no alcanza con canEditCollective: un venue vive en la MISMA tabla
+ * `collectives` y solo se distingue por entity_kind, que ese permiso no
+ * mira. Es exactamente la forma del bug de la casa-en-venue —el índice
+ * único tampoco ve entity_kind—, así que la guarda tiene que estar acá,
+ * en el camino de escritura, y no confiarse del permiso.
+ *
+ * El alta ya lo saltea para un venue, pero la API es pública y la app
+ * móvil va a usar estos mismos endpoints: que la web no ofrezca el botón
+ * no es lo mismo que que el endpoint lo rechace.
+ */
+async function puedeEscribirGenero(
+  owner: GenreOwner,
+  slug: string,
+  email?: string | null
+): Promise<WriteResult<true>> {
+  if (owner === "artist") {
+    return (await canEditArtist(slug, email))
+      ? { ok: true, value: true }
+      : { ok: false, status: 403, error: "No podés editar este perfil" };
+  }
+
+  const filas = await sql`SELECT entity_kind FROM collectives WHERE slug = ${slug}`;
+  if (filas.length === 0) {
+    return { ok: false, status: 404, error: "No existe ese colectivo" };
+  }
+  if ((filas[0].entity_kind as string) === "venue") {
+    return {
+      ok: false,
+      status: 400,
+      error: "Un venue no declara género: el género lo tiene la fiesta, no el lugar",
+    };
+  }
+  return (await canEditCollective(slug, email))
+    ? { ok: true, value: true }
+    : { ok: false, status: 403, error: "No podés editar este perfil" };
+}
+
 export type GenreSelection = {
   /** Obligatorio. El branch principal del perfil. */
   primaryBranch: string;
@@ -154,13 +196,8 @@ export async function setGenres(
   selection: GenreSelection,
   email?: string | null
 ): Promise<WriteResult<{ primaryBranch: string; secondaryBranches: string[]; tags: number }>> {
-  const permitido =
-    owner === "artist"
-      ? await canEditArtist(slug, email)
-      : await canEditCollective(slug, email);
-  if (!permitido) {
-    return { ok: false, status: 403, error: "No podés editar este perfil" };
-  }
+  const permitido = await puedeEscribirGenero(owner, slug, email);
+  if (!permitido.ok) return permitido;
 
   const v = await validateGenreSelection(selection);
   if (!v.ok) return v;
@@ -215,13 +252,8 @@ export async function clearGenres(
   slug: string,
   email?: string | null
 ): Promise<WriteResult<{ cleared: true }>> {
-  const permitido =
-    owner === "artist"
-      ? await canEditArtist(slug, email)
-      : await canEditCollective(slug, email);
-  if (!permitido) {
-    return { ok: false, status: 403, error: "No podés editar este perfil" };
-  }
+  const permitido = await puedeEscribirGenero(owner, slug, email);
+  if (!permitido.ok) return permitido;
 
   const col = owner === "artist" ? "artist_slug" : "collective_slug";
   const tablaBranches = owner === "artist" ? "artist_genres" : "collective_genres";

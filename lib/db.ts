@@ -832,6 +832,67 @@ export async function getArtistsInReview(): Promise<EnRevision[]> {
   }));
 }
 
+export type GenreOfProfile = {
+  /** null cuando el perfil todavía no declaró género. */
+  primary: { code: string; name: string } | null;
+  secondary: { code: string; name: string }[];
+  tags: { slug: string; name: string; branchCode: string }[];
+};
+
+/**
+ * El género declarado por un perfil, artista o colectivo.
+ *
+ * Devuelve `primary: null` cuando no hay ninguno, que es el estado de
+ * los 12 artistas y 6 colectivos que existían antes de la taxonomía. Ese
+ * estado no es un error: nadie les inventó un género, y el perfil le
+ * pide al dueño que lo complete, igual que con cualquier otra sección
+ * vacía.
+ */
+export async function getProfileGenres(
+  owner: "artist" | "collective",
+  slug: string
+): Promise<GenreOfProfile> {
+  const esArtista = owner === "artist";
+  const ramas = esArtista
+    ? await sql`
+        SELECT ag.branch_code, ag.is_primary, b.name
+        FROM artist_genres ag JOIN genre_branches b ON b.code = ag.branch_code
+        WHERE ag.artist_slug = ${slug} ORDER BY ag.sort_order
+      `
+    : await sql`
+        SELECT cg.branch_code, cg.is_primary, b.name
+        FROM collective_genres cg JOIN genre_branches b ON b.code = cg.branch_code
+        WHERE cg.collective_slug = ${slug} ORDER BY cg.sort_order
+      `;
+
+  const tags = esArtista
+    ? await sql`
+        SELECT agt.tag_slug, agt.branch_code, t.name
+        FROM artist_genre_tags agt
+        JOIN genre_tags t ON t.slug = agt.tag_slug AND t.branch_code = agt.branch_code
+        WHERE agt.artist_slug = ${slug} ORDER BY agt.sort_order
+      `
+    : await sql`
+        SELECT cgt.tag_slug, cgt.branch_code, t.name
+        FROM collective_genre_tags cgt
+        JOIN genre_tags t ON t.slug = cgt.tag_slug AND t.branch_code = cgt.branch_code
+        WHERE cgt.collective_slug = ${slug} ORDER BY cgt.sort_order
+      `;
+
+  const prim = ramas.find((r) => r.is_primary);
+  return {
+    primary: prim ? { code: prim.branch_code as string, name: prim.name as string } : null,
+    secondary: ramas
+      .filter((r) => !r.is_primary)
+      .map((r) => ({ code: r.branch_code as string, name: r.name as string })),
+    tags: tags.map((r) => ({
+      slug: r.tag_slug as string,
+      name: r.name as string,
+      branchCode: r.branch_code as string,
+    })),
+  };
+}
+
 export type BranchOption = { code: string; name: string; category: string };
 export type TagOption = { slug: string; name: string; branchCode: string };
 

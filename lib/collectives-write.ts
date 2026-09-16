@@ -24,6 +24,7 @@ import { isSuperAdmin } from "./roles-check";
 // Solo el tipo: import type se borra al compilar, así que no arrastra la
 // conexión de lib/db.ts a ningún lado.
 import type { EntityKind } from "./db";
+import { validateGenreSelection, type GenreSelectionOk } from "./genres-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -234,7 +235,13 @@ export async function createCollective(
    * el fundador entra como casa si no tiene otra; en un VENUE entra
    * siempre como residente, porque un venue no es la casa de nadie.
    */
-  entityKind: EntityKind = "collective"
+  entityKind: EntityKind = "collective",
+  /** El género, obligatorio para un colectivo e ignorado para un venue. */
+  selection?: {
+    primaryBranch?: unknown;
+    secondaryBranches?: unknown;
+    tags?: unknown;
+  }
 ): Promise<
   WriteResult<{ slug: string; kind: MembershipKind; casaTaken: { slug: string; name: string } | null }>
 > {
@@ -275,6 +282,32 @@ export async function createCollective(
     return { ok: false, status: 409, error: `Ya tenés un ${etiqueta}. Es uno por cuenta.` };
   }
 
+  /**
+   * El género es OBLIGATORIO para un colectivo, igual que para un
+   * artista (§2.3). No para un venue: un lugar no tiene género propio,
+   * lo tiene la fiesta que pasa adentro.
+   *
+   * Se valida con validateGenreSelection, la misma función que usan el
+   * alta de artista y la edición de los dos. Tres caminos, una regla.
+   */
+  let genero: GenreSelectionOk | null = null;
+  if (entityKind === "collective") {
+    const v = await validateGenreSelection({
+      primaryBranch: String(selection?.primaryBranch ?? ""),
+      secondaryBranches: Array.isArray(selection?.secondaryBranches)
+        ? (selection.secondaryBranches as unknown[]).map(String)
+        : [],
+      tags: Array.isArray(selection?.tags)
+        ? (selection.tags as Array<Record<string, unknown>>).map((t) => ({
+            slug: String(t?.slug ?? ""),
+            branchCode: String(t?.branchCode ?? ""),
+          }))
+        : [],
+    });
+    if (!v.ok) return v;
+    genero = v.value;
+  }
+
   const slug = await freeSlug(clean);
 
   // The founder's own district and city seed the collective's, since a
@@ -284,6 +317,27 @@ export async function createCollective(
     VALUES (${slug}, ${clean}, 'LOCAL', ${artist.city ?? "Bogotá"}, '',
             ${artist.district ?? "D00"}, ${email}, 'published', ${entityKind})
   `;
+
+  if (genero) {
+    await sql.transaction([
+      sql`
+        INSERT INTO collective_genres (collective_slug, branch_code, is_primary, sort_order)
+        VALUES (${slug}, ${genero.primary}, true, 0)
+      `,
+      ...genero.secundarios.map(
+        (c, i) => sql`
+          INSERT INTO collective_genres (collective_slug, branch_code, is_primary, sort_order)
+          VALUES (${slug}, ${c}, false, ${i + 1})
+        `
+      ),
+      ...genero.tagsUnicos.map(
+        (t, i) => sql`
+          INSERT INTO collective_genre_tags (collective_slug, tag_slug, branch_code, sort_order)
+          VALUES (${slug}, ${t.slug}, ${t.branchCode}, ${i})
+        `
+      ),
+    ]);
+  }
 
   // Does the founder already have a home elsewhere? The partial unique
   // index would refuse a second active casa, so ask before, not after.
