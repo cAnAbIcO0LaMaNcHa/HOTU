@@ -89,7 +89,7 @@ function EventCard({ event: e, past = false }: { event: EventItem; past?: boolea
           className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
       ) : (
-        <div data-district={e.district} className="sheen border-chrome aspect-[3/4] w-full" />
+        <div className="sheen border-chrome aspect-[3/4] w-full" />
       )}
       <div className="flex flex-1 flex-col p-4">
         <div

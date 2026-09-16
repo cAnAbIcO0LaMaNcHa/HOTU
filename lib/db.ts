@@ -1045,6 +1045,48 @@ export async function getFilterOptions(
   };
 }
 
+/**
+ * Las ramas que TIENEN artistas, con cuántos, de más a menos.
+ *
+ * Es lo que reemplaza a la grilla de los diez distritos en la home. La
+ * diferencia no es cosmética: los distritos eran diez fijos y siempre
+ * estaban los diez, tuvieran algo detrás o no. Acá una rama aparece
+ * solo si alguien la declaró, y el orden lo decide la cantidad.
+ *
+ * SI NO HAY NINGUNA, DEVUELVE UNA LISTA VACÍA Y EL BLOQUE NO SE
+ * RENDERIZA. Misma regla que el resto del sitio —las secciones vacías no
+ * se muestran— y es el estado real de producción hoy: la taxonomía está
+ * sembrada pero ningún artista declaró género todavía, así que la home
+ * va a quedar sin ese bloque hasta que el primero lo haga.
+ *
+ * Cuenta primarias Y secundarias, igual que el filtro: si el listado te
+ * va a mostrar a quien declaró ACID de secundaria, la home tiene que
+ * contarlo, o el número de la baldosa no coincide con lo que se ve al
+ * entrar. DISTINCT sobre el artista para que declarar la misma rama dos
+ * veces no lo cuente dos veces.
+ *
+ * Solo artistas publicados: un borrador no es contenido que el visitante
+ * pueda ver, y una baldosa que promete 3 y muestra 1 es peor que no
+ * estar.
+ */
+export async function getBranchesWithContent(): Promise<
+  { code: string; name: string; count: number }[]
+> {
+  const rows = await sql`
+    SELECT b.code, b.name, COUNT(DISTINCT g.artist_slug)::int AS n
+    FROM artist_genres g
+    JOIN genre_branches b ON b.code = g.branch_code
+    JOIN artists a ON a.slug = g.artist_slug AND a.status = 'published'
+    GROUP BY b.code, b.name
+    ORDER BY n DESC, b.name
+  `;
+  return rows.map((r) => ({
+    code: r.code as string,
+    name: r.name as string,
+    count: r.n as number,
+  }));
+}
+
 export type BranchOption = { code: string; name: string; category: string };
 export type TagOption = { slug: string; name: string; branchCode: string };
 

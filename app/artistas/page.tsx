@@ -10,16 +10,28 @@ export const metadata: Metadata = {
   description: "DJs y productores residentes de la escena techno y electrónica de Bogotá.",
 };
 
-export default async function ArtistasPage() {
+export default async function ArtistasPage({
+  searchParams,
+}: {
+  /** ?g=TEC, el link de la grilla de la home. En Next 15 es una Promise. */
+  searchParams: Promise<{ g?: string }>;
+}) {
+  const { g } = await searchParams;
   const [artists, todos] = await Promise.all([getAllArtists(), getGenreIndex("artist")]);
   // Recortado a los artistas que de verdad se ven: el índice trae también
   // los borradores, que esta página no lista.
   const genreIndex = pickGenreIndex(todos, artists.map((a) => a.slug));
   const { branches, tags } = await getFilterOptions(genreIndex);
 
+  // Un ?g= que no corresponda a ninguna rama presente se ignora: el
+  // <select> quedaría en un valor que no está entre sus <option>, y el
+  // navegador mostraría el primero mientras el filtro esconde todo.
+  const initialBranch = branches.some((b) => b.code === g) ? g : undefined;
+
   return (
     <ListingLayout
       title="ARTISTAS"
+      initialBranch={initialBranch}
       description="Tocá una burbuja para ver la biografía, sets y tracks de cada artista."
       branches={branches}
       tagOptions={tags}

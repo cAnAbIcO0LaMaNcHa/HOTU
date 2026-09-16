@@ -45,9 +45,29 @@ type Ctx = {
 
 const ListingFilterContext = createContext<Ctx | null>(null);
 
-export function ListingFilterProvider({ children }: { children: ReactNode }) {
+/**
+ * `initialBranch` viene del servidor, no de useSearchParams.
+ *
+ * La home linkea a /artistas?g=TEC, y la página lee ese searchParam en
+ * el server component y lo baja como prop. Leerlo con un hook en el
+ * cliente costaría un Suspense y, si se leyera en el inicializador del
+ * useState, un mismatch de hidratación: el servidor renderizaría el
+ * filtro vacío y el cliente con valor. Bajarlo como prop no tiene
+ * ninguna de las dos cosas.
+ *
+ * Es el valor INICIAL, no controlado: quien llega con ?g=TEC puede
+ * cambiar el desplegable y el filtro lo obedece, sin que la URL le
+ * discuta.
+ */
+export function ListingFilterProvider({
+  children,
+  initialBranch = "",
+}: {
+  children: ReactNode;
+  initialBranch?: string;
+}) {
   const [query, setQuery] = useState("");
-  const [branch, setBranch] = useState("");
+  const [branch, setBranch] = useState(initialBranch);
   const [tag, setTag] = useState("");
   const [secondary, setSecondary] = useState("");
 

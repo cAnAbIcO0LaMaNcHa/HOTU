@@ -6,7 +6,6 @@ import { LanguageProvider } from "@/lib/i18n";
 import { AuthSessionProvider } from "@/components/session-provider";
 import { CartProvider } from "@/components/cart-context";
 import { CartDrawer } from "@/components/cart-drawer";
-import { DistrictFilterProvider } from "@/components/district-filter-context";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hotu.com.co"), // TODO: cambiar por tu dominio real
@@ -64,12 +63,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthSessionProvider>
           <LanguageProvider>
             <CartProvider>
-              <DistrictFilterProvider>
-                <SiteHeader />
-                {children}
-                <SiteFooter />
-                <CartDrawer />
-              </DistrictFilterProvider>
+              <SiteHeader />
+              {children}
+              <SiteFooter />
+              <CartDrawer />
             </CartProvider>
           </LanguageProvider>
         </AuthSessionProvider>

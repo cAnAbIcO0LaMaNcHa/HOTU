@@ -34,6 +34,7 @@ export function ListingLayout({
   secondaryOptions = [],
   branches = [],
   tagOptions = [],
+  initialBranch,
   children,
 }: {
   title: string;
@@ -60,10 +61,12 @@ export function ListingLayout({
   branches?: BranchOption[];
   /** Los tags presentes en esta página, para el filtro 2. */
   tagOptions?: { slug: string; name: string }[];
+  /** Rama con la que arrancar, para llegar filtrado desde otra página. */
+  initialBranch?: string;
   children: ReactNode;
 }) {
   return (
-    <ListingFilterProvider>
+    <ListingFilterProvider initialBranch={initialBranch}>
       <section className="mx-auto max-w-7xl px-4 pb-16 pt-16 md:pt-24">
         <div className="flex gap-8">
           <div className="min-w-0 flex-1">

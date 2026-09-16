@@ -17,7 +17,6 @@ function TicketCard({ t, isMemory }: { t: TicketInstance; isMemory: boolean }) {
   return (
     <Link
       href={`/perfil/tiquetes/${t.ticketCode}`}
-      data-district={t.district}
       className={`sheen border-chrome relative flex flex-col justify-between overflow-hidden p-6 transition-transform hover:-translate-y-0.5 ${
         isMemory ? "opacity-70 grayscale" : ""
       }`}

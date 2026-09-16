@@ -53,67 +53,15 @@
   --dur-slow: 600ms;
 }
 
-/* ---------- District themes (color = aesthetic only) ---------- */
-[data-district="D00"] {
-  --accent-base: oklch(0.78 0.005 260);
-  --accent-sheen: oklch(0.97 0.003 260);
-  --accent-shadow: oklch(0.42 0.006 260);
-  --accent-contrast: oklch(0.09 0 0);
-}
-[data-district="D01"] {
-  --accent-base: oklch(0.62 0.16 250);
-  --accent-sheen: oklch(0.87 0.08 240);
-  --accent-shadow: oklch(0.32 0.1 258);
-  --accent-contrast: oklch(0.98 0 0);
-}
-[data-district="D02"] {
-  --accent-base: oklch(0.94 0 0);
-  --accent-sheen: oklch(1 0 0);
-  --accent-shadow: oklch(0.6 0 0);
-  --accent-contrast: oklch(0.07 0 0);
-}
-[data-district="D03"] {
-  --accent-base: oklch(0.66 0.09 62);
-  --accent-sheen: oklch(0.88 0.07 78);
-  --accent-shadow: oklch(0.38 0.06 52);
-  --accent-contrast: oklch(0.08 0 0);
-}
-[data-district="D04"] {
-  --accent-base: oklch(0.72 0.16 152);
-  --accent-sheen: oklch(0.92 0.11 155);
-  --accent-shadow: oklch(0.38 0.1 155);
-  --accent-contrast: oklch(0.08 0 0);
-}
-[data-district="D05"] {
-  --accent-base: oklch(0.74 0.16 350);
-  --accent-sheen: oklch(0.92 0.08 348);
-  --accent-shadow: oklch(0.42 0.14 352);
-  --accent-contrast: oklch(0.08 0 0);
-}
-[data-district="D06"] {
-  --accent-base: oklch(0.62 0.19 300);
-  --accent-sheen: oklch(0.86 0.1 300);
-  --accent-shadow: oklch(0.34 0.14 300);
-  --accent-contrast: oklch(0.98 0 0);
-}
-[data-district="D07"] {
-  --accent-base: oklch(0.62 0.24 27);
-  --accent-sheen: oklch(0.83 0.13 32);
-  --accent-shadow: oklch(0.34 0.16 27);
-  --accent-contrast: oklch(0.98 0 0);
-}
-[data-district="D08"] {
-  --accent-base: oklch(0.81 0.14 88);
-  --accent-sheen: oklch(0.96 0.09 96);
-  --accent-shadow: oklch(0.5 0.1 78);
-  --accent-contrast: oklch(0.08 0 0);
-}
-[data-district="D09"] {
-  --accent-base: oklch(0.66 0.005 260);
-  --accent-sheen: oklch(0.86 0.004 260);
-  --accent-shadow: oklch(0.2 0.004 260);
-  --accent-contrast: oklch(0.06 0 0);
-}
+/* Acá vivían los diez temas de color por distrito (tanda 4 §3).
+   Cada [data-district="D0x"] redefinía --accent-base/sheen/shadow/
+   contrast, y de ahí salían --primary y los gradientes "chrome".
+
+   Se fueron con los distritos. Los valores de :root son los mismos que
+   tenía D00, así que todo lo que antes caía en el distrito por defecto
+   se ve exactamente igual; lo que cambia es que ya no hay diez paletas.
+   El género no trae color propio: son 34 ramas, y 34 paletas no son un
+   sistema, son ruido. */
 
 /* ---------- Light theme (toggle) ---------- */
 [data-theme="light"] {

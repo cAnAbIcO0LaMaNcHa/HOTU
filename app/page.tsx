@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { Ticket, Play, ChevronRight, MapPin } from "lucide-react";
-import { DistrictGrid } from "@/components/district-grid";
+import { BranchGrid } from "@/components/branch-grid";
 import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
-import { getAllArtists, getAllTracks, getAllEvents, getAllNews, formatShortDate, eventHasEnded } from "@/lib/db";
+import { getAllArtists, getAllTracks, getAllEvents, getAllNews, getBranchesWithContent, formatShortDate, eventHasEnded } from "@/lib/db";
 
 export const revalidate = 0;
 
 export default async function Home() {
-  const [artists, tracks, allEvents, allNews] = await Promise.all([getAllArtists(), getAllTracks(), getAllEvents(), getAllNews()]);
+  const [artists, tracks, allEvents, allNews, branches] = await Promise.all([getAllArtists(), getAllTracks(), getAllEvents(), getAllNews(), getBranchesWithContent()]);
   // Live-synced with the events table: past events (checked the same way
   // /eventos does) drop out automatically, and since getAllEvents already
   // orders by date ascending, the first 3 remaining are always the
@@ -37,7 +37,10 @@ export default async function Home() {
       </section>
 
       <div className="mx-auto max-w-7xl divide-y divide-border px-4 py-16">
-        <DistrictGrid />
+        {/* Si ninguna rama tiene artistas, esto no renderiza NADA — ni el
+            título ni una grilla vacía. Es el estado de producción hoy:
+            la taxonomía está sembrada y nadie declaró género todavía. */}
+        <BranchGrid branches={branches} />
 
           <section className="py-16">
             <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
@@ -52,7 +55,7 @@ export default async function Home() {
                       className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : (
-                    <div data-district={e.district} className="sheen border-chrome aspect-[3/4] w-full" />
+                    <div className="sheen border-chrome aspect-[3/4] w-full" />
                   )}
                   <div className="flex flex-1 flex-col p-5">
                     <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>

@@ -126,7 +126,6 @@ export function EpkHeader({ artist, canEdit }: { artist: Artist; canEdit: boolea
 
         <div className="flex flex-col items-center gap-6 text-center md:flex-row md:items-start md:text-left">
           <div
-            data-district={artist.district}
             className="sheen border-chrome flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-full"
           >
             {artist.photo ? (

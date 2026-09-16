@@ -25,7 +25,7 @@ export function SetsList({
   return (
     <div className="mt-10 grid gap-4 md:grid-cols-2">
       {sets.map((s) => (
-        <div key={s.slug} data-district={s.district} className="sheen border-chrome flex items-center gap-4 p-4">
+        <div key={s.slug} className="sheen border-chrome flex items-center gap-4 p-4">
           <a
             href={s.url}
             aria-label={`Reproducir ${s.title}`}

@@ -313,7 +313,6 @@ export default async function PerfilPage() {
               <Link
                 key={t.id}
                 href={`/perfil/tiquetes/${t.ticketCode}`}
-                data-district={t.district}
                 className="sheen border-chrome flex flex-col justify-between p-5"
               >
                 <TicketIcon className="h-6 w-6 text-chrome" />

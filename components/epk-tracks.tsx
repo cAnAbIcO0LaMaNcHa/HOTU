@@ -43,7 +43,6 @@ export function EpkTracks({
           <div key={t.slug} className="w-44 shrink-0">
             <a href={t.url} className="group block">
               <span
-                data-district={t.district}
                 className="sheen border-chrome flex aspect-square w-full items-center justify-center overflow-hidden transition-colors group-hover:border-primary"
               >
                 {t.coverUrl ? (

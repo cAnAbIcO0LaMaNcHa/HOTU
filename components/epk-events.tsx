@@ -41,7 +41,6 @@ export function EpkEvents({
           const card = (
             <>
               <span
-                data-district={gig.district ?? "D00"}
                 className="sheen border-chrome flex aspect-[3/4] w-full items-center justify-center overflow-hidden transition-colors group-hover:border-primary"
               >
                 {gig.flyerUrl ? (

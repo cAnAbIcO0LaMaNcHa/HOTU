@@ -11,7 +11,7 @@ export function ArtistBubble({ artist, size = "md" }: { artist: Artist; size?: "
   const ring = `sheen border-chrome relative flex ${dims} shrink-0 items-center justify-center overflow-hidden rounded-full transition-transform group-hover:scale-105`;
   return (
     <Link href={`/artistas/${artist.slug}`} className="group flex flex-col items-center gap-3 text-center">
-      <div data-district={artist.district} className={ring}>
+      <div className={ring}>
         {artist.photo ? (
           <img src={artist.photo} alt={artist.name} className="h-full w-full object-cover" />
         ) : (

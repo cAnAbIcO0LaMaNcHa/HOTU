@@ -37,9 +37,6 @@ export const DISTRICTS: readonly District[] = [
 
 export const DEFAULT_DISTRICT: DistrictId = "D00";
 
-export function getDistrict(id: DistrictId | string | undefined): District {
-  return DISTRICTS.find((d) => d.id === id) ?? DISTRICTS[0];
-}
 
 export function isDistrictId(value: unknown): value is DistrictId {
   return typeof value === "string" && DISTRICTS.some((d) => d.id === value);

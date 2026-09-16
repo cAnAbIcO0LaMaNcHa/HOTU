@@ -91,7 +91,6 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
           info bar. Normal document flow, not absolute layers — the flyer
           gets its own clean space exactly like a real printed ticket. */}
       <div
-        data-district={ticket.district}
         className="sheen mx-auto mt-6 flex w-full max-w-[400px] flex-col overflow-hidden rounded-lg border-chrome"
       >
         {/* Top bar: brand + tier/status */}
@@ -118,7 +117,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ c
         {ticket.flyerUrl ? (
           <img src={ticket.flyerUrl} alt="" className="block w-full h-auto" />
         ) : (
-          <div data-district={ticket.district} className="aspect-[9/16] w-full" />
+          <div className="aspect-[9/16] w-full" />
         )}
 
         {/* Bottom bar: event + attendee info + QR, its own independent space */}
