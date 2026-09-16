@@ -2,17 +2,24 @@
 
 import Link from "next/link";
 import { Play } from "lucide-react";
-import type { DjSet } from "@/lib/db";
+import type { DjSet, GenreIndexEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
 
-export function SetsList({ sets: allSets }: { sets: DjSet[] }) {
+export function SetsList({
+  sets: allSets,
+  genreIndex,
+}: {
+  sets: DjSet[];
+  /** Género POR SLUG DE ARTISTA, no de set: el set lo hereda. */
+  genreIndex: Record<string, GenreIndexEntry>;
+}) {
   const { active } = useListingFilters();
   const sets = useFilteredList(allSets, {
     // Title and artist. Somebody hunting a set knows one or the other.
     search: (s) => [s.title, s.artistName],
-    secondaryOf: (s) => s.artistName,
+    genreOf: (s) => (s.artistSlug ? genreIndex[s.artistSlug] : undefined),
   });
 
   return (

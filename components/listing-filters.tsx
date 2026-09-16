@@ -1,29 +1,45 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { DistrictId } from "@/lib/districts";
-import { useDistrictFilter, sortByDistrict } from "@/components/district-filter-context";
+import type { GenreIndexEntry } from "@/lib/db";
 
 /**
- * The search box and the secondary filter of a listing page.
+ * Los filtros de una página de listado.
  *
- * Kept in context rather than passed down because the controls live in the
- * page's filter bar while the filtering happens inside the grid component,
- * and those two are siblings. The district/genre filter is deliberately
- * NOT here — it is global and already has its own provider, since that
- * choice follows the user from page to page and these two do not.
+ * Tres controles: rama (filtro 1), tag (filtro 2) y buscador. Los tres
+ * viven en contexto porque los controles están en la barra de filtros y
+ * el filtrado ocurre dentro de la grilla, que son hermanos.
  *
- * Scoped per page on purpose: "el buscador busca sobre el contenido de la
- * sección donde está", so landing on a new listing starts clean rather
- * than carrying somebody's old search across.
+ * Scoped por página a propósito: "el buscador busca sobre el contenido de
+ * la sección donde está", así que entrar a otro listado arranca limpio.
+ *
+ * ============================================================
+ * EL FILTRO 1 AHORA FILTRA. ANTES ORDENABA.
+ * ============================================================
+ *
+ * Hasta la tanda 4 el filtro 1 era el de distritos y hacía push-to-top:
+ * empujaba las coincidencias arriba y NUNCA escondía nada. Eso tenía
+ * sentido con diez distritos que eran un universo creativo, donde la
+ * gracia era destacar sin excluir.
+ *
+ * Con 34 ramas y 719 tags, empujar arriba deja de significar algo: elegir
+ * HOUSE y seguir viendo las otras 33 abajo no es un filtro, es un orden.
+ * Ahora los tres controles ACHICAN la lista, que es lo que alguien espera
+ * al elegir un género.
  */
 type Ctx = {
   query: string;
   setQuery: (q: string) => void;
-  /** The chosen value of the page's secondary filter, or "" for all. */
+  /** Código de rama, o "" para todas. */
+  branch: string;
+  setBranch: (b: string) => void;
+  /** Slug de tag, o "" para todos. */
+  tag: string;
+  setTag: (t: string) => void;
+  /** El filtro 2 de las páginas SIN género (etiqueta, ciudad...). */
   secondary: string;
   setSecondary: (v: string) => void;
-  /** True when either control is narrowing the list. */
+  /** True cuando algo está achicando la lista. */
   active: boolean;
 };
 
@@ -31,17 +47,23 @@ const ListingFilterContext = createContext<Ctx | null>(null);
 
 export function ListingFilterProvider({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState("");
+  const [branch, setBranch] = useState("");
+  const [tag, setTag] = useState("");
   const [secondary, setSecondary] = useState("");
 
   const value = useMemo(
     () => ({
       query,
       setQuery,
+      branch,
+      setBranch,
+      tag,
+      setTag,
       secondary,
       setSecondary,
-      active: query.trim() !== "" || secondary !== "",
+      active: query.trim() !== "" || branch !== "" || tag !== "" || secondary !== "",
     }),
-    [query, secondary]
+    [query, branch, tag, secondary]
   );
 
   return (
@@ -51,12 +73,16 @@ export function ListingFilterProvider({ children }: { children: ReactNode }) {
 
 export function useListingFilters(): Ctx {
   const ctx = useContext(ListingFilterContext);
-  // A list rendered outside a listing page still has to work, so this
-  // degrades to "nothing is filtering" instead of throwing.
+  // Un listado renderizado fuera de una página de listado tiene que
+  // seguir andando, así que esto degrada a "nada está filtrando".
   return (
     ctx ?? {
       query: "",
       setQuery: () => {},
+      branch: "",
+      setBranch: () => {},
+      tag: "",
+      setTag: () => {},
       secondary: "",
       setSecondary: () => {},
       active: false,
@@ -65,13 +91,12 @@ export function useListingFilters(): Ctx {
 }
 
 /**
- * Folds accents and case so "bogota" finds "Bogotá" and "chia" finds
- * "Chía". Without this the search is unusable in Spanish: nobody types
- * the accent, and the content is full of them.
+ * Pliega acentos y mayúsculas para que "bogota" encuentre "Bogotá" y
+ * "chia" encuentre "Chía". Sin esto el buscador es inusable en español:
+ * nadie escribe el acento y el contenido está lleno.
  *
- * NFD splits an accented letter into its base plus a combining mark, and
- * the range below is exactly the combining-marks block, which is then
- * dropped.
+ * NFD separa la letra acentuada en base más marca combinante, y el rango
+ * de abajo es exactamente el bloque de marcas combinantes, que se tira.
  */
 const COMBINING = new RegExp(
   "[" + String.fromCharCode(0x300) + "-" + String.fromCharCode(0x36f) + "]",
@@ -83,14 +108,17 @@ export function normalize(text: string): string {
 }
 
 /**
- * Applies the search box to a list. Each item contributes the strings the
- * caller says are searchable, joined into one haystack.
+ * Aplica el buscador. Cada fila aporta los textos que el llamador diga.
  *
- * Every word in the query has to appear somewhere, in any order, so
- * "camila techno" matches an artist named Camila filed under techno. An
- * empty query returns the list untouched rather than an empty result.
+ * Todas las palabras de la búsqueda tienen que aparecer, en cualquier
+ * orden, así que "camila techno" encuentra a una Camila de techno. Una
+ * búsqueda vacía devuelve la lista intacta y no una lista vacía.
  */
-export function applySearch<T>(items: T[], query: string, fields: (item: T) => (string | null | undefined)[]): T[] {
+export function applySearch<T>(
+  items: T[],
+  query: string,
+  fields: (item: T) => (string | null | undefined)[]
+): T[] {
   const words = normalize(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return items;
   return items.filter((item) => {
@@ -100,37 +128,44 @@ export function applySearch<T>(items: T[], query: string, fields: (item: T) => (
 }
 
 /**
- * Everything a listing grid needs, in one call: the secondary filter, then
- * the search, then the shared genre ordering.
+ * Todo lo que una grilla necesita, en una llamada: rama, tag, filtro 2 y
+ * buscador. Los cuatro ACHICAN; ya no queda nada que solo reordene.
  *
- * The order matters. The first two NARROW the list — the user asked for a
- * subset and gets it. The genre filter only REORDERS, pushing matches to
- * the top without hiding anything, which is the rule the district system
- * has always followed. Sorting first and filtering after would throw away
- * that ordering work.
+ * `genreOf` devuelve el género de una fila. En /artistas y /colectivos es
+ * el propio; en /sets y /discografia es el del artista asociado, porque
+ * un track no declara género: lo hereda de quien lo hizo. Las páginas
+ * que no tienen género —/noticias y /eventos— simplemente no lo pasan, y
+ * ahí los filtros de rama y tag no se renderizan.
  */
-export function useFilteredList<T extends { district: DistrictId }>(
+export function useFilteredList<T>(
   items: T[],
   opts: {
-    /** The strings the search box looks at for each item. */
+    /** Los strings que el buscador mira en cada fila. */
     search: (item: T) => (string | null | undefined)[];
-    /** The value the page's second filter compares against. */
+    /** El género de la fila, cuando la página tiene. */
+    genreOf?: (item: T) => GenreIndexEntry | undefined;
+    /** El filtro 2 de las páginas sin género. */
     secondaryOf?: (item: T) => string | null | undefined;
   }
 ): T[] {
-  const { query, secondary } = useListingFilters();
-  const { selected } = useDistrictFilter();
+  const { query, branch, tag, secondary } = useListingFilters();
 
   return useMemo(() => {
     let out = items;
+
+    if (branch && opts.genreOf) {
+      out = out.filter((i) => opts.genreOf!(i)?.branch === branch);
+    }
+    if (tag && opts.genreOf) {
+      out = out.filter((i) => opts.genreOf!(i)?.tags.includes(tag));
+    }
     if (secondary && opts.secondaryOf) {
       const want = normalize(secondary);
       out = out.filter((i) => normalize(String(opts.secondaryOf!(i) ?? "")) === want);
     }
-    out = applySearch(out, query, opts.search);
-    return sortByDistrict(out, selected);
-    // opts is rebuilt inline by every caller, so depending on it would
-    // recompute on each render and defeat the memo.
+    return applySearch(out, query, opts.search);
+    // opts se reconstruye en cada render del llamador, así que depender
+    // de él recalcularía siempre y anularía el memo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, query, secondary, selected]);
+  }, [items, query, branch, tag, secondary]);
 }

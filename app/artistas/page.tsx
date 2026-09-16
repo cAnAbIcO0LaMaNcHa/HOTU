@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { ListingLayout } from "@/components/listing-layout";
 import { ArtistasList } from "@/components/artistas-list";
-import { getAllArtists } from "@/lib/db";
-import { uniqueSorted } from "@/lib/listing-options";
+import { getAllArtists, getFilterOptions, getGenreIndex, pickGenreIndex } from "@/lib/db";
 
 export const revalidate = 0;
 
@@ -12,16 +11,20 @@ export const metadata: Metadata = {
 };
 
 export default async function ArtistasPage() {
-  const artists = await getAllArtists();
+  const [artists, todos] = await Promise.all([getAllArtists(), getGenreIndex("artist")]);
+  // Recortado a los artistas que de verdad se ven: el índice trae también
+  // los borradores, que esta página no lista.
+  const genreIndex = pickGenreIndex(todos, artists.map((a) => a.slug));
+  const { branches, tags } = await getFilterOptions(genreIndex);
 
   return (
     <ListingLayout
       title="ARTISTAS"
       description="Tocá una burbuja para ver la biografía, sets y tracks de cada artista."
-      secondaryLabel="GÉNERO"
-      secondaryOptions={uniqueSorted(artists.map((a) => a.genre))}
+      branches={branches}
+      tagOptions={tags}
     >
-      <ArtistasList artists={artists} />
+      <ArtistasList artists={artists} genreIndex={genreIndex} />
     </ListingLayout>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { MapPin } from "lucide-react";
-import type { Collective, CollectiveMember } from "@/lib/db";
+import type { Collective, CollectiveMember, GenreIndexEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
@@ -21,14 +21,16 @@ import { EmptyResult } from "@/components/listing-empty";
 export function ColectivosList({
   collectives: all,
   members,
+  genreIndex,
 }: {
   collectives: Collective[];
   members: Record<string, CollectiveMember[]>;
+  genreIndex: Record<string, GenreIndexEntry>;
 }) {
   const { active } = useListingFilters();
-  // One flat grid, ordered by the district filter's push-to-top. Grouping
-  // by sector was dropped in tanda 3 (§1.4): sector is a city label inside
-  // a card now, not a heading that splits the page into sections.
+  // Una sola grilla plana. Agrupar por sector se cayó en la tanda 3
+  // (§1.4): sector es una etiqueta de ciudad dentro de la tarjeta, no un
+  // encabezado que parta la página en secciones.
   const sorted = useFilteredList(all, {
     // The roster is searchable too: people look for a collective by a DJ
     // they know plays there at least as often as by its own name.
@@ -38,6 +40,9 @@ export function ColectivosList({
       c.bio,
       ...(members[c.slug] ?? []).map((m) => m.artistName),
     ],
+    genreOf: (c) => genreIndex[c.slug],
+    // El suplente del tag. El layout renderiza uno de los dos, nunca los
+    // dos, así que acá pueden convivir sin pisarse.
     secondaryOf: (c) => c.sector,
   });
 

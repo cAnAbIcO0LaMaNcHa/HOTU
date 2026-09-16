@@ -3,7 +3,7 @@
 import { Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { AutoTranslate } from "@/components/auto-translate";
-import { DistrictFilterButton } from "@/components/district-filter-button";
+import type { BranchOption } from "@/lib/db";
 import { ListingFilterProvider, useListingFilters } from "@/components/listing-filters";
 
 /**
@@ -15,11 +15,13 @@ import { ListingFilterProvider, useListingFilters } from "@/components/listing-f
  * content. Right column: an advertising rail running the height of the
  * page. Six pages had this shape copied six times; now there is one.
  *
- * The two genre filters keep TODAY's taxonomy on purpose. Filter 1 is the
- * existing district/genre selector. Filter 2 is built from values that
- * actually occur in each page's own data, so it filters something real
- * instead of an invented vocabulary. Both slots become Main/Branch and Tag
- * in tanda 4, which is where the new taxonomy lands.
+ * Filtro 1 es Main/Branch y filtro 2 es Tag, los dos de la taxonomía real
+ * (tanda 4 §3). Los dos ACHICAN la lista: hasta acá el filtro 1 era el de
+ * distritos y solo empujaba arriba sin esconder nada, que con diez
+ * distritos tenía sentido y con 34 ramas deja de tenerlo.
+ *
+ * Las opciones de los dos salen de lo que de verdad aparece en cada
+ * página, así que un filtro nunca ofrece algo que no devuelva nada.
  *
  * A client component because the filter bar is interactive, but it takes
  * `children` — so each page's grid is still rendered by the server
@@ -30,14 +32,34 @@ export function ListingLayout({
   description,
   secondaryLabel,
   secondaryOptions = [],
+  branches = [],
+  tagOptions = [],
   children,
 }: {
   title: string;
   description: string;
-  /** Heading of the second filter, e.g. "GÉNERO". Omit to hide it. */
+  /**
+   * El filtro 2 VIEJO (etiqueta, ciudad, sector...).
+   *
+   * Es el suplente del tag, no su rival: si la página tiene tags que
+   * ofrecer, gana el tag y este no se renderiza. Existe para las páginas
+   * que todavía no tienen género —/noticias, /eventos, /venues— y como
+   * red para las que sí lo tienen pero hoy no lo declaró nadie, que es
+   * el caso de /colectivos. Sin la red, esa página se quedaba sin un
+   * solo filtro y perdía uno que funcionaba.
+   */
   secondaryLabel?: string;
-  /** Its options, taken from the page's own rows. */
   secondaryOptions?: string[];
+  /**
+   * Las ramas presentes en esta página. Vacío = la página no tiene
+   * género y no se renderiza el filtro 1. Es el caso de /noticias y
+   * /eventos: darles género propio es modelo nuevo, y para eventos la
+   * respuesta sale sola cuando exista la relación evento-lineup, porque
+   * el género de una fiesta es el de quienes tocan.
+   */
+  branches?: BranchOption[];
+  /** Los tags presentes en esta página, para el filtro 2. */
+  tagOptions?: { slug: string; name: string }[];
   children: ReactNode;
 }) {
   return (
@@ -53,7 +75,12 @@ export function ListingLayout({
               <AutoTranslate text={description} />
             </p>
 
-            <FilterBar label={secondaryLabel} options={secondaryOptions} />
+            <FilterBar
+              label={secondaryLabel}
+              options={secondaryOptions}
+              branches={branches}
+              tagOptions={tagOptions}
+            />
 
             {children}
           </div>
@@ -71,14 +98,60 @@ export function ListingLayout({
  * It wraps instead of scrolling sideways on a narrow screen, and the
  * search keeps a sensible minimum so it never collapses to an icon.
  */
-function FilterBar({ label, options }: { label?: string; options: string[] }) {
-  const { query, setQuery, secondary, setSecondary } = useListingFilters();
+function FilterBar({
+  label,
+  options,
+  branches,
+  tagOptions,
+}: {
+  label?: string;
+  options: string[];
+  branches: BranchOption[];
+  tagOptions: { slug: string; name: string }[];
+}) {
+  const { query, setQuery, branch, setBranch, tag, setTag, secondary, setSecondary } =
+    useListingFilters();
 
   return (
     <div className="mt-6 flex flex-wrap items-center gap-2">
-      <DistrictFilterButton />
+      {/* Filtro 1: la rama. Solo las que aparecen en esta página: un
+          desplegable de 34 donde 30 no traen nada es peor que no tenerlo. */}
+      {branches.length > 0 && (
+        <select
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+          aria-label="GÉNERO"
+          className="shrink-0 border border-border bg-background px-3 py-2 font-mono text-[10px] tracking-widest hover:border-primary focus:border-primary focus:outline-none"
+        >
+          <option value="">GÉNERO: TODOS</option>
+          {branches.map((b) => (
+            <option key={b.code} value={b.code}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      )}
 
-      {label && options.length > 0 && (
+      {/* Filtro 2: el tag. Mismo criterio. */}
+      {tagOptions.length > 0 && (
+        <select
+          value={tag}
+          onChange={(e) => setTag(e.target.value)}
+          aria-label="TAG"
+          className="shrink-0 border border-border bg-background px-3 py-2 font-mono text-[10px] tracking-widest hover:border-primary focus:border-primary focus:outline-none"
+        >
+          <option value="">TAG: TODOS</option>
+          {tagOptions.map((t) => (
+            <option key={t.slug} value={t.slug}>
+              {t.name.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* El filtro 2 viejo, solo mientras no haya tags que ofrecer.
+          El tag manda: son dos candidatos al mismo slot, nunca los dos. */}
+      {tagOptions.length === 0 && label && options.length > 0 && (
         <select
           value={secondary}
           onChange={(e) => setSecondary(e.target.value)}

@@ -2,18 +2,26 @@
 
 import Link from "next/link";
 import { Play } from "lucide-react";
-import type { Track } from "@/lib/db";
+import type { GenreIndexEntry, Track } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { formatShortDate } from "@/lib/date-utils";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
 
-export function DiscografiaList({ tracks: allTracks }: { tracks: Track[] }) {
+export function DiscografiaList({
+  tracks: allTracks,
+  genreIndex,
+}: {
+  tracks: Track[];
+  /** Género POR SLUG DE ARTISTA, no de track: el track lo hereda. */
+  genreIndex: Record<string, GenreIndexEntry>;
+}) {
   const { active } = useListingFilters();
   const tracks = useFilteredList(allTracks, {
     // Title, artist and imprint: the three things printed on a release.
+    // El sello sigue siendo buscable aunque ya no sea el filtro 2.
     search: (t) => [t.title, t.artistName, t.label],
-    secondaryOf: (t) => t.label,
+    genreOf: (t) => (t.artistSlug ? genreIndex[t.artistSlug] : undefined),
   });
 
   return (

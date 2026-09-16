@@ -893,6 +893,138 @@ export async function getProfileGenres(
   };
 }
 
+/** Lo que un listado necesita saber del género de cada fila: su rama
+ *  PRIMARIA y sus tags, por slug. Nada más. */
+export type GenreIndexEntry = { branch: string | null; tags: string[] };
+
+/**
+ * El género de TODOS los perfiles de un tipo, indexado por slug.
+ *
+ * SOLO LA RAMA PRIMARIA. Un perfil declara una primaria y hasta tres
+ * secundarias, y el press kit muestra las cuatro, pero el filtro de
+ * listado mira únicamente la primaria: quien declaró TECHNO primaria y
+ * ACID secundaria sale al filtrar TECHNO y no sale al filtrar ACID,
+ * aunque su propio perfil diga ACID.
+ *
+ * PENDIENTE DE DECISIÓN: si el filtro tiene que alcanzar también a las
+ * secundarias. No se asume que sí porque cambia lo que significa elegir
+ * una rama —con tres secundarias por perfil, un perfil pasaría a vivir
+ * en cuatro— y eso es una decisión de producto, no una de código.
+ *
+ * Los listados filtran en el cliente —el buscador ya funciona así— y
+ * para eso necesitan el género de cada fila junto con la fila. Dos
+ * consultas para toda la página, no una por artista.
+ *
+ * Un perfil sin género queda con branch null y tags vacíos, y el filtro
+ * lo deja afuera en cuanto alguien elige una rama. Es correcto: no
+ * declaró género, así que no pertenece a ninguno.
+ */
+export async function getGenreIndex(
+  owner: "artist" | "collective"
+): Promise<Record<string, GenreIndexEntry>> {
+  const ramas =
+    owner === "artist"
+      ? await sql`SELECT artist_slug AS slug, branch_code FROM artist_genres WHERE is_primary`
+      : await sql`SELECT collective_slug AS slug, branch_code FROM collective_genres WHERE is_primary`;
+  const tags =
+    owner === "artist"
+      ? await sql`SELECT artist_slug AS slug, tag_slug FROM artist_genre_tags`
+      : await sql`SELECT collective_slug AS slug, tag_slug FROM collective_genre_tags`;
+
+  const out: Record<string, GenreIndexEntry> = {};
+  for (const r of ramas) {
+    out[r.slug as string] = { branch: r.branch_code as string, tags: [] };
+  }
+  for (const t of tags) {
+    const slug = t.slug as string;
+    if (!out[slug]) out[slug] = { branch: null, tags: [] };
+    out[slug].tags.push(t.tag_slug as string);
+  }
+  return out;
+}
+
+/**
+ * El mismo índice, recortado a los slugs que de verdad salen en una
+ * página.
+ *
+ * Hace falta porque el índice trae TODOS los perfiles y una página
+ * muestra menos: /artistas esconde los borradores, y /sets y
+ * /discografia se cuelgan del género del artista asociado, que es un
+ * puñado de los que existen. Sin recortar, getFilterOptions ofrecería
+ * ramas que no devuelven ninguna fila.
+ *
+ * Los slugs nulos —un set cuyo artista se borró— se ignoran: la fila
+ * sigue saliendo bajo el nombre del artista, pero sin género, así que
+ * no aporta opciones ni sobrevive a elegir una rama.
+ */
+export function pickGenreIndex(
+  indice: Record<string, GenreIndexEntry>,
+  slugs: (string | null | undefined)[]
+): Record<string, GenreIndexEntry> {
+  const out: Record<string, GenreIndexEntry> = {};
+  for (const s of slugs) {
+    if (!s) continue;
+    const g = indice[s];
+    if (g) out[s] = g;
+  }
+  return out;
+}
+
+/**
+ * Las opciones de los dos filtros de una página, armadas con lo que de
+ * verdad aparece en ella.
+ *
+ * Misma regla que el filtro 2 desde el HOTFIX: un filtro no puede
+ * ofrecer una opción que no devuelva nada. Con 34 ramas y 719 tags eso
+ * importa más que antes — un desplegable de 719 entradas donde 700 no
+ * matchean nada es peor que no tener filtro.
+ */
+export async function getFilterOptions(
+  indice: Record<string, GenreIndexEntry>
+): Promise<{ branches: BranchOption[]; tags: { slug: string; name: string }[] }> {
+  const usadas = [...new Set(Object.values(indice).map((g) => g.branch).filter(Boolean))] as string[];
+  const usadosTags = [...new Set(Object.values(indice).flatMap((g) => g.tags))];
+  if (usadas.length === 0 && usadosTags.length === 0) return { branches: [], tags: [] };
+
+  const branches = usadas.length
+    ? await sql`
+        SELECT code, name, category FROM genre_branches
+        WHERE code = ANY(${usadas}::text[]) ORDER BY sort_order, code
+      `
+    : [];
+  // Una fila POR SLUG, no por par (slug, name). Acá el tag es una
+  // etiqueta y no un par: filtrar por "acid-techno" tiene que traer a
+  // quien lo tomó desde ACID y a quien lo tomó desde TEC, así que el
+  // desplegable lo lista una sola vez.
+  //
+  // DISTINCT a secas no alcanzaba: deduplica el par, y hay slugs cuyo
+  // nombre cambia según la rama —afro-funk es "Afro Funk" en una y
+  // "Afro-Funk" en otra, dance-pop es "Dance / Pop" y "Dance Pop"—, así
+  // que salían dos <option> con la misma key de React y dos entradas
+  // distintas en pantalla que filtraban exactamente lo mismo.
+  //
+  // DISTINCT ON exige que el ORDER BY empiece por su misma expresión,
+  // por eso ordena por (slug, name) y el alfabético para la pantalla se
+  // aplica después, ya con una fila por slug.
+  const tags = usadosTags.length
+    ? await sql`
+        SELECT DISTINCT ON (slug) slug, name FROM genre_tags
+        WHERE slug = ANY(${usadosTags}::text[]) ORDER BY slug, name
+      `
+    : [];
+
+  return {
+    branches: branches.map((r) => ({
+      code: r.code as string,
+      name: r.name as string,
+      category: r.category as string,
+    })),
+    tags: tags
+      .map((r) => ({ slug: r.slug as string, name: r.name as string }))
+      .sort((x, y) => x.name.localeCompare(y.name, "es")),
+  };
+}
+
 export type BranchOption = { code: string; name: string; category: string };
 export type TagOption = { slug: string; name: string; branchCode: string };
 
