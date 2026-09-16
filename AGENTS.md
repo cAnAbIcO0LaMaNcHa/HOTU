@@ -139,6 +139,10 @@ TODO SWAP DE CONSTRAINT VA EN UNA TRANSACCIÓN. Si una migración borra un const
 
 Todo el contenido es district-aware.
 
+CONFIRMÁ QUE EL LOG CRECE ANTES DE LEERLO COMO EVIDENCIA. Un "cero errores de hidratación" leído de un archivo congelado es peor que no haber verificado: parece verificación y no lo es. El server que responde en el puerto no es necesariamente el que escribe el log que estás mirando — puede haber quedado uno de antes, o haberlo levantado otro. Antes de usar el log como prueba: anotá su tamaño, pedí una página, esperá un segundo y volvé a medirlo. Si no creció, ese log no es del server que contestó y hay que levantar uno propio. Pasó de verdad: varias piezas se dieron por verificadas contra un archivo de un día antes.
+
+LOS AGENTES DE .claude/agents/ SE INVOCAN PASANDO EL .md COMO ESPECIFICACIÓN. En este entorno no se registran por nombre: `tester` y `migration-reviewer` no aparecen como subagent_type disponible, aunque los archivos estén commiteados, con finales de línea LF y frontmatter válido. Está verificado y descartado como problema de formato; es del runtime. Lo que SÍ funciona: lanzar un agente general y decirle en el prompt que lea `.claude/agents/<nombre>.md` y siga esos criterios y ese formato al pie de la letra. No gastar tiempo peleando con el registro por nombre.
+
 UN SOLO dev server a la vez. Dos procesos next dev sobre el mismo .next se pisan los vendor-chunks y el server compila bien pero después tira "Cannot find module './vendor-chunks/next.js'" en cada request. El síntoma no dice nada sobre la causa y ya costó tiempo tres veces. Antes de levantar el server hay que comprobar que no haya otro: `npm run dev:check` lo hace y aborta con un mensaje claro si el puerto está tomado. Cuando pasa igual: matar TODOS los node de HOTU, borrar .next, y recién ahí arrancar uno. Ojo con matar el proceso padre y creer que alcanza — deja hijos vivos que siguen escribiendo el mismo .next.
 Sistema de distritos
 
