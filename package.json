@@ -4,9 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/dev-check.mjs && next dev",
+    "dev": "node scripts/dev-start.mjs",
     "dev:check": "node scripts/dev-check.mjs",
-    "dev:force": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

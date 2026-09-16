@@ -139,11 +139,30 @@ TODO SWAP DE CONSTRAINT VA EN UNA TRANSACCIÓN. Si una migración borra un const
 
 Todo el contenido es district-aware.
 
-CONFIRMÁ QUE EL LOG CRECE ANTES DE LEERLO COMO EVIDENCIA. Un "cero errores de hidratación" leído de un archivo congelado es peor que no haber verificado: parece verificación y no lo es. El server que responde en el puerto no es necesariamente el que escribe el log que estás mirando — puede haber quedado uno de antes, o haberlo levantado otro. Antes de usar el log como prueba: anotá su tamaño, pedí una página, esperá un segundo y volvé a medirlo. Si no creció, ese log no es del server que contestó y hay que levantar uno propio. Pasó de verdad: varias piezas se dieron por verificadas contra un archivo de un día antes.
+EL DEV SERVER SE LEVANTA SIEMPRE CON `npm run dev`, Y CON NADA MÁS. No `next dev`, no `npx next dev`, no un nohup con un redirect a mano. Ese único camino es `scripts/dev-start.mjs`, y hace cuatro cosas que ninguna invocación a mano hace:
+
+1. Chequea que no haya otro server ANTES de tocar nada.
+2. Crea el log y ABORTA si no puede. No existe el camino en el que el server queda vivo y el log no.
+3. Escribe SIEMPRE el mismo archivo, `dev.log`, truncado en cada arranque y con fecha y PID en la primera línea. Nada de dev3, dev4, dev5: la numeración fue justamente lo que dejó archivos viejos dando vueltas para que alguien leyera el equivocado.
+4. Espera a que el server esté listo y CONFIRMA que el archivo tiene bytes. Si no, baja el server y sale con código distinto de cero.
+
+CONFIRMÁ QUE EL LOG CRECE ANTES DE LEERLO COMO EVIDENCIA. Un "cero errores de hidratación" leído de un archivo congelado es peor que no haber verificado: parece verificación y no lo es. El server que responde en el puerto no es necesariamente el que escribe el log que estás mirando. Antes de usar el log como prueba: anotá su tamaño, pedí una página, y volvé a medirlo. Si no creció, ese log no es del server que contestó.
+
+POR QUÉ HAY UNA HERRAMIENTA Y NO SOLO ESTA ADVERTENCIA: pasó dos veces, con la misma forma y dos causas distintas. La primera, un log de un día antes que nadie notó que estaba congelado. La segunda, un comando en segundo plano que tenía que crear el archivo y murió con EXIT 127 — comando no encontrado —, nadie miró el código de salida, y el server terminó levantado por otra vía sin escribir a ningún lado. El archivo tenía 0 bytes y se leyó igual. Un exit 127 silencioso invalidó varias verificaciones. La advertencia sola no alcanzó: si el camino correcto es más incómodo que el atajo, se toma el atajo.
+
+Y mirá el código de salida de todo comando en segundo plano. 127 no es "no pasó nada", es "el comando no existe".
 
 LOS AGENTES DE .claude/agents/ SE INVOCAN PASANDO EL .md COMO ESPECIFICACIÓN. En este entorno no se registran por nombre: `tester` y `migration-reviewer` no aparecen como subagent_type disponible, aunque los archivos estén commiteados, con finales de línea LF y frontmatter válido. Está verificado y descartado como problema de formato; es del runtime. Lo que SÍ funciona: lanzar un agente general y decirle en el prompt que lea `.claude/agents/<nombre>.md` y siga esos criterios y ese formato al pie de la letra. No gastar tiempo peleando con el registro por nombre.
 
-UN SOLO dev server a la vez. Dos procesos next dev sobre el mismo .next se pisan los vendor-chunks y el server compila bien pero después tira "Cannot find module './vendor-chunks/next.js'" en cada request. El síntoma no dice nada sobre la causa y ya costó tiempo tres veces. Antes de levantar el server hay que comprobar que no haya otro: `npm run dev:check` lo hace y aborta con un mensaje claro si el puerto está tomado. Cuando pasa igual: matar TODOS los node de HOTU, borrar .next, y recién ahí arrancar uno. Ojo con matar el proceso padre y creer que alcanza — deja hijos vivos que siguen escribiendo el mismo .next.
+LA TRANSICIÓN NUNCA DEJA UNA PÁGINA PEOR QUE ANTES. Cuando algo se reemplaza por etapas —un filtro por otro, una columna por otra, un vocabulario por otro—, el estado intermedio tiene que ser al menos tan bueno como el de partida. No alcanza con que el destino sea mejor: entre medio hay gente usando el sitio.
+
+El caso que la originó: el filtro de distritos pasó a ser el de géneros, y /colectivos quedó con CERO filtros, porque el filtro nuevo se apoya en datos que todavía nadie cargó y el viejo ya se había sacado. El destino es mejor y el camino era peor. La forma de resolverlo NO es apurar el destino: es que lo viejo quede de SUPLENTE de lo nuevo, y se retire solo cuando lo nuevo tenga con qué. Ahí el filtro 2 viejo se renderiza únicamente si no hay tags que ofrecer.
+
+Es la misma familia que "primero dejar de escribir la columna, después borrarla" y que "nunca borrar una columna en la misma migración que deja de usarla". La diferencia es que aquellas protegen los datos y esta protege lo que el usuario puede hacer, que se rompe más callado: no hay error en ningún log cuando una página pierde un filtro.
+
+Corolario para revisar: cuando termines una pieza de UI, no preguntes solo "¿anda lo nuevo?". Preguntá "¿qué se podía hacer ayer que hoy no se puede?".
+
+UN SOLO dev server a la vez. Dos procesos next dev sobre el mismo .next se pisan los vendor-chunks y el server compila bien pero después tira "Cannot find module './vendor-chunks/next.js'" en cada request. El síntoma no dice nada sobre la causa y ya costó tiempo tres veces. Antes de levantar el server hay que comprobar que no haya otro: `npm run dev` ya lo hace solo y aborta con un mensaje claro si el puerto está tomado (`npm run dev:check` corre solo ese chequeo). Cuando pasa igual: matar TODOS los node de HOTU, borrar .next, y recién ahí arrancar uno. Ojo con matar el proceso padre y creer que alcanza — deja hijos vivos que siguen escribiendo el mismo .next.
 Sistema de distritos
 
 Diez distritos, cada uno con persona, color y tema visual completo:
@@ -162,7 +181,9 @@ Diez distritos, cada uno con persona, color y tema visual completo:
 
 Estética: hangar abandonado tomado por la naturaleza. El cable y la enredadera son el mismo elemento. En las vides SVG el color del tallo es constante; solo cambian forma y color de la flor por distrito. El distrito verde (03 MUSE) lleva hojas de hiedra, sin flor. — PENDIENTE DE CONFIRMAR: esta regla estaba atada al personaje HIEDRA, que era el 04 cuando era verde.
 
-Filtros: push-to-top, nunca ocultar.
+Filtros: ACHICAN la lista. Hasta la tanda 4 el filtro 1 era el de distritos y hacía push-to-top —empujaba las coincidencias arriba y nunca escondía nada—, que con diez distritos era destacar sin excluir. Con 34 ramas y 719 tags eso deja de significar algo: elegir HOUSE y seguir viendo las otras 33 abajo no es un filtro, es un orden. Desde la tanda 4 §3 los tres controles esconden lo que no coincide.
+
+Lo que sí quedó de ordenar: elegida una rama, primero salen los perfiles que la declararon PRIMARIA y después los que la tienen de secundaria. Pero eso es un orden ADENTRO de lo que ya se filtró, no en lugar de filtrar.
 
 MODELO DE PERFILES
 Tres roles sobre una cuenta

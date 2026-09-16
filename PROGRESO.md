@@ -200,6 +200,27 @@ eso lee las tablas de género y `review_status`.
 
 ---
 
+## DATO SUCIO EN MAIN — ARREGLAR DESDE EL ADMIN
+
+**`events.id = 4` tiene una dirección en la columna `city`:**
+`"Calle 80 # 14 - 11"`.
+
+El filtro CIUDAD de `/eventos` arma sus opciones con lo que hay en los
+datos (`uniqueSorted(all.map((e) => e.city))`), así que esa dirección
+aparece como si fuera una ciudad en el desplegable. No es un bug de
+código y no se arregla tocando código: la página está haciendo lo
+correcto con un dato equivocado.
+
+Va a mano desde el admin, no por migración: es UNA fila, y una migración
+que "limpia ciudades" tendría que adivinar cuál es la ciudad de esa
+dirección. La Calle 80 con Carrera 14 es Bogotá, pero eso lo afirma
+alguien que conoce el evento, no un script.
+
+Encontrado por el tester durante la pieza B. Es preexistente, ninguna de
+las piezas de esta sesión lo tocó.
+
+---
+
 ## LO QUE SIGUE BLOQUEADO
 
 **Tanda 4 pieza 3 — sacar los distritos.** Está definida como un
