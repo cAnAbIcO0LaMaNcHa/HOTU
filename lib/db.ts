@@ -893,23 +893,33 @@ export async function getProfileGenres(
   };
 }
 
-/** Lo que un listado necesita saber del género de cada fila: su rama
- *  PRIMARIA y sus tags, por slug. Nada más. */
-export type GenreIndexEntry = { branch: string | null; tags: string[] };
+/** Lo que un listado necesita saber del género de cada fila: sus ramas
+ *  —la primaria aparte de las secundarias— y sus tags, por slug. */
+export type GenreIndexEntry = {
+  /** La rama primaria, o null si el perfil no declaró género. */
+  branch: string | null;
+  /** Las secundarias, hasta tres. Sin la primaria adentro. */
+  secondary: string[];
+  tags: string[];
+};
 
 /**
  * El género de TODOS los perfiles de un tipo, indexado por slug.
  *
- * SOLO LA RAMA PRIMARIA. Un perfil declara una primaria y hasta tres
- * secundarias, y el press kit muestra las cuatro, pero el filtro de
- * listado mira únicamente la primaria: quien declaró TECHNO primaria y
- * ACID secundaria sale al filtrar TECHNO y no sale al filtrar ACID,
- * aunque su propio perfil diga ACID.
+ * LAS SECUNDARIAS CUENTAN PARA EL FILTRO, y se devuelven aparte de la
+ * primaria porque el orden las distingue.
  *
- * PENDIENTE DE DECISIÓN: si el filtro tiene que alcanzar también a las
- * secundarias. No se asume que sí porque cambia lo que significa elegir
- * una rama —con tres secundarias por perfil, un perfil pasaría a vivir
- * en cuatro— y eso es una decisión de producto, no una de código.
+ * Un perfil que declara TECHNO primaria y ACID secundaria IMPRIME las
+ * dos en su press kit, así que tiene que aparecer al filtrar por las
+ * dos: mostrar ACID y no salir en ACID es mentirle a quien buscó. Que un
+ * perfil viva en hasta cuatro ramas es ambiguo, pero es lo que el
+ * documento de géneros describe — un DJ de techno que toca acid existe
+ * en las dos—, y la ambigüedad es más barata que la mentira.
+ *
+ * Lo que sostiene que elegir una rama siga significando algo es el
+ * ORDEN, no la exclusión: el listado pone primero a los que la tienen
+ * como primaria. Eso lo hace useFilteredList, y por eso necesita las dos
+ * listas separadas y no una sola con las cuatro mezcladas.
  *
  * Los listados filtran en el cliente —el buscador ya funciona así— y
  * para eso necesitan el género de cada fila junto con la fila. Dos
@@ -922,22 +932,28 @@ export type GenreIndexEntry = { branch: string | null; tags: string[] };
 export async function getGenreIndex(
   owner: "artist" | "collective"
 ): Promise<Record<string, GenreIndexEntry>> {
+  // Sin WHERE is_primary: hacen falta las cuatro. is_primary viene en la
+  // fila para poder separarlas, que es lo que el orden del listado usa.
   const ramas =
     owner === "artist"
-      ? await sql`SELECT artist_slug AS slug, branch_code FROM artist_genres WHERE is_primary`
-      : await sql`SELECT collective_slug AS slug, branch_code FROM collective_genres WHERE is_primary`;
+      ? await sql`SELECT artist_slug AS slug, branch_code, is_primary FROM artist_genres`
+      : await sql`SELECT collective_slug AS slug, branch_code, is_primary FROM collective_genres`;
   const tags =
     owner === "artist"
       ? await sql`SELECT artist_slug AS slug, tag_slug FROM artist_genre_tags`
       : await sql`SELECT collective_slug AS slug, tag_slug FROM collective_genre_tags`;
 
   const out: Record<string, GenreIndexEntry> = {};
+  const vacio = (): GenreIndexEntry => ({ branch: null, secondary: [], tags: [] });
   for (const r of ramas) {
-    out[r.slug as string] = { branch: r.branch_code as string, tags: [] };
+    const slug = r.slug as string;
+    if (!out[slug]) out[slug] = vacio();
+    if (r.is_primary) out[slug].branch = r.branch_code as string;
+    else out[slug].secondary.push(r.branch_code as string);
   }
   for (const t of tags) {
     const slug = t.slug as string;
-    if (!out[slug]) out[slug] = { branch: null, tags: [] };
+    if (!out[slug]) out[slug] = vacio();
     out[slug].tags.push(t.tag_slug as string);
   }
   return out;
@@ -982,7 +998,11 @@ export function pickGenreIndex(
 export async function getFilterOptions(
   indice: Record<string, GenreIndexEntry>
 ): Promise<{ branches: BranchOption[]; tags: { slug: string; name: string }[] }> {
-  const usadas = [...new Set(Object.values(indice).map((g) => g.branch).filter(Boolean))] as string[];
+  // Las secundarias también se ofrecen: ahora devuelven filas, así que
+  // esconderlas del desplegable dejaría un género inalcanzable.
+  const usadas = [
+    ...new Set(Object.values(indice).flatMap((g) => [g.branch, ...g.secondary]).filter(Boolean)),
+  ] as string[];
   const usadosTags = [...new Set(Object.values(indice).flatMap((g) => g.tags))];
   if (usadas.length === 0 && usadosTags.length === 0) return { branches: [], tags: [] };
 

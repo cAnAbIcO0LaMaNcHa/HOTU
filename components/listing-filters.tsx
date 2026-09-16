@@ -129,7 +129,9 @@ export function applySearch<T>(
 
 /**
  * Todo lo que una grilla necesita, en una llamada: rama, tag, filtro 2 y
- * buscador. Los cuatro ACHICAN; ya no queda nada que solo reordene.
+ * buscador. Los cuatro ACHICAN. El de rama, además, ordena adentro de lo
+ * que quedó — que no es lo mismo que el push-to-top viejo, donde ordenar
+ * era TODO lo que hacía y no se escondía nada.
  *
  * `genreOf` devuelve el género de una fila. En /artistas y /colectivos es
  * el propio; en /sets y /discografia es el del artista asociado, porque
@@ -154,7 +156,24 @@ export function useFilteredList<T>(
     let out = items;
 
     if (branch && opts.genreOf) {
-      out = out.filter((i) => opts.genreOf!(i)?.branch === branch);
+      // La rama elegida cuenta como primaria o como secundaria: un perfil
+      // que IMPRIME ACID en su press kit tiene que salir al filtrar ACID,
+      // aunque su primaria sea TECHNO. No salir sería mentirle a quien
+      // buscó justo lo que el perfil dice que hace.
+      out = out.filter((i) => {
+        const g = opts.genreOf!(i);
+        return !!g && (g.branch === branch || g.secondary.includes(branch));
+      });
+      // Y adentro del resultado, primero los que la tienen de primaria.
+      // Eso es lo que hace que elegir una rama siga significando algo:
+      // arriba está quien SE DEFINE por ella, abajo quien la toca. El
+      // sort de JS es estable, así que dentro de cada grupo se conserva
+      // el orden que traía la página.
+      out = [...out].sort(
+        (a, b) =>
+          (opts.genreOf!(a)?.branch === branch ? 0 : 1) -
+          (opts.genreOf!(b)?.branch === branch ? 0 : 1)
+      );
     }
     if (tag && opts.genreOf) {
       out = out.filter((i) => opts.genreOf!(i)?.tags.includes(tag));
