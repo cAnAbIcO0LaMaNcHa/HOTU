@@ -1,4 +1,3 @@
-import type { DistrictId } from "./districts";
 
 export type ArtistSet = {
   title: string;
@@ -15,7 +14,6 @@ export type Artist = {
   slug: string;
   name: string;
   genre: string;
-  district: DistrictId;
   city: string;
   photo?: string;
   bio: string;
@@ -37,7 +35,6 @@ export const ARTISTS: Artist[] = [
     slug: "nina-acid",
     name: "Nina Acid",
     genre: "Hard Tech",
-    district: "D07",
     city: "Bogotá",
     bio: "Productora y DJ bogotana referente del sonido acid techno en la sabana. Residente de HOTU desde sus inicios, su sonido cruza líneas ácidas del 303 con groove industrial.",
     joinedAt: "2026-05-28",
@@ -54,7 +51,6 @@ export const ARTISTS: Artist[] = [
     slug: "bloq-klok",
     name: "Bloq Klok",
     genre: "Hard Groove",
-    district: "D06",
     city: "Chía",
     bio: "Dúo de Chía especializado en hard groove con influencias de percusión latinoamericana. HOTU Resident desde 2025.",
     joinedAt: "2026-05-30",
@@ -68,7 +64,6 @@ export const ARTISTS: Artist[] = [
     slug: "spf-bog",
     name: "SPF/BOG",
     genre: "Hard Tech",
-    district: "D07",
     city: "Bogotá",
     bio: "Uno de los actos más contundentes de la escena hard techno bogotana. Sets crudos, rápidos y sin concesiones.",
     joinedAt: "2026-06-01",
@@ -82,7 +77,6 @@ export const ARTISTS: Artist[] = [
     slug: "monte-negro",
     name: "Monte Negro",
     genre: "Hard Trance",
-    district: "D05",
     city: "La Calera",
     bio: "Proyecto de La Calera que fusiona hard trance con paisajes sonoros de montaña. Habitual en el Ritual Open Air.",
     joinedAt: "2026-06-03",
@@ -93,7 +87,6 @@ export const ARTISTS: Artist[] = [
     slug: "subsuelo-x",
     name: "Subsuelo X",
     genre: "House",
-    district: "D01",
     city: "Bogotá",
     bio: "Ala house de Subsuelo DJs. Groove profundo para las horas tempranas de la fiesta.",
     joinedAt: "2026-06-05",
@@ -104,7 +97,6 @@ export const ARTISTS: Artist[] = [
     slug: "paramo-selecta",
     name: "Páramo Selecta",
     genre: "Guaracha",
-    district: "D04",
     city: "La Calera",
     bio: "Selección de Páramo Club dedicada a la guaracha bogotana, con sets pensados para el amanecer en altura.",
     joinedAt: "2026-06-07",
@@ -115,7 +107,6 @@ export const ARTISTS: Artist[] = [
     slug: "rapido-138",
     name: "Rápido 138",
     genre: "T/RAP",
-    district: "D00",
     city: "Bogotá",
     bio: "Proyecto abierto de HOTU sin frontera de género, siempre a 138 BPM. La puerta de entrada al universo HOTU.",
     joinedAt: "2026-06-09",
@@ -126,7 +117,6 @@ export const ARTISTS: Artist[] = [
     slug: "melodic-flux",
     name: "Melodic Flux",
     genre: "Melodic",
-    district: "D02",
     city: "Medellín",
     bio: "Productor paisa de melodic techno, conocido por sets emotivos al atardecer.",
     joinedAt: "2026-06-11",
@@ -137,7 +127,6 @@ export const ARTISTS: Artist[] = [
     slug: "tech-house-crew",
     name: "Tech House Crew",
     genre: "Tech House",
-    district: "D03",
     city: "Cali",
     bio: "Trío caleño especializado en tech house groovy para pistas llenas.",
     joinedAt: "2026-06-13",
@@ -148,7 +137,6 @@ export const ARTISTS: Artist[] = [
     slug: "psy-sabana",
     name: "Psy Sabana",
     genre: "Psy Trance",
-    district: "D08",
     city: "La Calera",
     bio: "Psicodelia y trance de alta montaña. Referente de los amaneceres del Ritual Open Air.",
     joinedAt: "2026-06-15",
@@ -159,7 +147,6 @@ export const ARTISTS: Artist[] = [
     slug: "hardcore-bog",
     name: "Hardcore BOG",
     genre: "Hard Core",
-    district: "D09",
     city: "Bogotá",
     bio: "El extremo más oscuro de HOTU. Hardcore crudo para el cierre de las fiestas más intensas.",
     joinedAt: "2026-06-17",
@@ -170,7 +157,6 @@ export const ARTISTS: Artist[] = [
     slug: "groove-norte",
     name: "Groove Norte",
     genre: "Hard Groove",
-    district: "D06",
     city: "Chía",
     bio: "Segunda generación del hard groove de la sabana norte, heredero directo de HOTU 138.",
     joinedAt: "2026-06-19",

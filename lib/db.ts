@@ -1,5 +1,4 @@
 import { neon } from "@neondatabase/serverless";
-import type { DistrictId } from "./districts";
 // roles-check y no roles.ts: el primero no importa @/auth, así que no
 // arrastra nada de next-auth acá.
 import { isSuperAdmin } from "./roles-check";
@@ -47,7 +46,6 @@ export type Artist = ContentMeta & {
   slug: string;
   name: string;
   genre: string;
-  district: DistrictId;
   city: string;
   photo?: string;
   bio: string;
@@ -83,7 +81,6 @@ export type Track = ContentMeta & {
   title: string;
   artistName: string;
   artistSlug?: string;
-  district: DistrictId;
   releasedAt: string;
   url: string;
   /** Tanda 2: cover art, imprint, and a manual position. */
@@ -98,7 +95,6 @@ export type DjSet = ContentMeta & {
   title: string;
   artistName: string;
   artistSlug?: string;
-  district: DistrictId;
   duration: string;
   recordedAt: string;
   url: string;
@@ -124,7 +120,6 @@ export type Collective = ContentMeta & {
   type: "HOTU" | "LOCAL";
   sector: string;
   bio: string;
-  district: DistrictId;
   entityKind: EntityKind;
   /** Solo venues. Un colectivo no tiene dirección propia. */
   address?: string;
@@ -150,7 +145,6 @@ export type EventItem = ContentMeta & {
   venue: string;
   title: string;
   lineup: string;
-  district: DistrictId;
 };
 
 export type NewsItem = ContentMeta & {
@@ -159,7 +153,6 @@ export type NewsItem = ContentMeta & {
   date: string;
   title: string;
   excerpt: string;
-  district: DistrictId;
 };
 
 /** Options accepted by every list-read function below. */
@@ -195,7 +188,6 @@ function mapArtist(r: Record<string, unknown>): Artist {
     slug: r.slug as string,
     name: r.name as string,
     genre: r.genre as string,
-    district: r.district as DistrictId,
     city: r.city as string,
     photo: (r.photo as string) ?? undefined,
     bio: r.bio as string,
@@ -274,7 +266,6 @@ function mapTrack(r: Record<string, unknown>): Track {
     title: r.title as string,
     artistName: r.artist_name as string,
     artistSlug: (r.artist_slug as string) ?? undefined,
-    district: r.district as DistrictId,
     releasedAt: toISODate(r.released_at as string),
     url: r.url as string,
     coverUrl: (r.cover_url as string) ?? undefined,
@@ -290,7 +281,6 @@ function mapDjSet(r: Record<string, unknown>): DjSet {
     title: r.title as string,
     artistName: r.artist_name as string,
     artistSlug: (r.artist_slug as string) ?? undefined,
-    district: r.district as DistrictId,
     duration: r.duration as string,
     recordedAt: toISODate(r.recorded_at as string),
     url: r.url as string,
@@ -328,7 +318,6 @@ export type ArtistGig = {
   venue: string | null;
   city: string | null;
   gigDate: string;
-  district: DistrictId | null;
   role: string | null;
   b2bWith: string | null;
   durationMinutes: number | null;
@@ -388,7 +377,6 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
     venue: r.venue ?? r.event_venue ?? null,
     city: r.city ?? r.event_city ?? null,
     gigDate: toISODate(r.gig_date),
-    district: (r.district as DistrictId) ?? null,
     role: r.role ?? null,
     b2bWith: r.b2b_with ?? null,
     durationMinutes: r.duration_minutes ?? null,
@@ -406,7 +394,6 @@ function mapCollective(r: Record<string, unknown>): Collective {
     type: r.type as "HOTU" | "LOCAL",
     sector: r.sector as string,
     bio: r.bio as string,
-    district: r.district as DistrictId,
     entityKind: (r.entity_kind as EntityKind) ?? "collective",
     address: (r.address as string) ?? undefined,
     capacity: r.capacity === null || r.capacity === undefined ? undefined : Number(r.capacity),
@@ -1140,7 +1127,6 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
     venue: r.venue,
     title: r.title,
     lineup: r.lineup,
-    district: r.district as DistrictId,
   }));
 }
 
@@ -1155,6 +1141,5 @@ export async function getAllNews(opts: ReadOptions = {}): Promise<NewsItem[]> {
     date: toISODate(r.news_date),
     title: r.title,
     excerpt: r.excerpt,
-    district: r.district as DistrictId,
   }));
 }

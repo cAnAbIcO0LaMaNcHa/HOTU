@@ -1,7 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import type { MerchItem, OrderRecord, PurchasedTicket, UserProfile } from "./commerce-types";
-import type { DistrictId } from "./districts";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -57,7 +56,7 @@ export async function getMyTickets(): Promise<PurchasedTicket[]> {
 
   const rows = await sql`
     SELECT oi.id AS order_item_id, oi.ticket_tier, oi.quantity, o.paid_at, o.created_at,
-           e.id AS event_id, e.title, e.event_date, e.venue, e.city, e.district
+           e.id AS event_id, e.title, e.event_date, e.venue, e.city
     FROM order_items oi
     JOIN orders o ON o.id = oi.order_id
     JOIN events e ON e.id = oi.event_id
@@ -71,7 +70,6 @@ export async function getMyTickets(): Promise<PurchasedTicket[]> {
     eventDate: String(r.event_date),
     venue: r.venue,
     city: r.city,
-    district: r.district as DistrictId,
     tier: r.ticket_tier,
     quantity: r.quantity,
     purchasedAt: r.paid_at ?? r.created_at,

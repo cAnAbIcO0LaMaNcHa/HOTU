@@ -14,8 +14,10 @@ const VISIBLE = 5;
  *
  * Cover art, label and release date, which is what the sketch asked for
  * and the schema could not carry until tanda 2 added the columns. A track
- * with no cover falls back to a district-tinted placeholder rather than a
- * broken image, because the profile grows with the artist.
+ * with no cover falls back to a plain chrome placeholder rather than a
+ * broken image, because the profile grows with the artist. El tinte por
+ * distrito se fue con el sistema de color (tanda 4 §3): el placeholder
+ * queda con la paleta única de :root.
  *
  * Separate from DJ SETS on purpose: two sections, never tabs.
  */

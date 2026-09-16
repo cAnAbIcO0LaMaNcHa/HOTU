@@ -1,7 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import { toISODate } from "./db";
-import type { DistrictId } from "./districts";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -17,7 +16,6 @@ export type TicketInstance = {
   eventEndAt: string | null;
   venue: string;
   city: string;
-  district: DistrictId;
   tier: "normal" | "vip";
   status: TicketStatus;
   checkedInAt: string | null;
@@ -36,7 +34,7 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
 
   const rows = await sql`
     SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
-           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city, e.district
+           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city
     FROM tickets t
     JOIN events e ON e.id = t.event_id
     WHERE t.user_email = ${email} AND t.status != 'cancelled'
@@ -52,7 +50,6 @@ export async function getMyTicketInstances(): Promise<TicketInstance[]> {
     eventEndAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
     venue: r.venue,
     city: r.city,
-    district: r.district as DistrictId,
     tier: r.tier,
     status: r.status,
     checkedInAt: r.checked_in_at,
@@ -81,7 +78,7 @@ export async function getMyTicketByCode(code: string): Promise<TicketDetail | nu
 
   const rows = await sql`
     SELECT t.id, t.ticket_code, t.display_code, t.tier, t.status, t.checked_in_at, t.created_at,
-           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city, e.district, e.flyer_url
+           e.id AS event_id, e.title, e.event_date, e.end_at, e.venue, e.city, e.flyer_url
     FROM tickets t
     JOIN events e ON e.id = t.event_id
     WHERE t.ticket_code = ${code} AND t.user_email = ${email}
@@ -98,7 +95,6 @@ export async function getMyTicketByCode(code: string): Promise<TicketDetail | nu
     eventEndAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
     venue: r.venue,
     city: r.city,
-    district: r.district as DistrictId,
     tier: r.tier,
     status: r.status,
     checkedInAt: r.checked_in_at,

@@ -12,8 +12,9 @@ import { EpkEditableSection, Field, TextAreaField } from "./epk-editable-section
  *
  * The slug is not offered. It is the primary key and the address everybody
  * has already shared; renaming it is a deliberate operation, not something
- * to slip into a bio edit. District is left out too, since the district
- * system is being removed (HOTFIX punto 1).
+ * to slip into a bio edit. El distrito ya no existe como concepto
+ * editable: se retiró entero en la tanda 4 §3 y la columna quedó
+ * congelada hasta que se borre.
  */
 export function CollectiveInfoEditor({
   slug,

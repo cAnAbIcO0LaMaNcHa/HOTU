@@ -102,23 +102,48 @@ async function uniqueSlug(
   return null;
 }
 
-/** Loads the artist's name and district, which new rows inherit. */
+/**
+ * El nombre del artista, que las filas nuevas heredan.
+ *
+ * YA NO TRAE EL DISTRITO (tanda 4 §3). Cada set, track y toque que un DJ
+ * cargaba se llevaba una copia del distrito de su perfil, y como todo DJ
+ * nuevo nace con el 'D00' del DEFAULT, eso venía sembrando D00 por todo
+ * el contenido. Cortar la copia acá es lo que detiene esa propagación.
+ *
+ * artist_name sí se sigue copiando, y eso es distinto: es la red que
+ * hace que borrar un artista no le borre la discografía al sitio, porque
+ * artist_slug va ON DELETE SET NULL y la fila sobrevive con el nombre.
+ */
 async function loadArtist(slug: string) {
-  const rows = await sql`SELECT slug, name, district FROM artists WHERE slug = ${slug}`;
-  return rows[0] as { slug: string; name: string; district: string } | undefined;
+  const rows = await sql`SELECT slug, name FROM artists WHERE slug = ${slug}`;
+  return rows[0] as { slug: string; name: string } | undefined;
 }
 
 async function authorize(
   artistSlug: string,
   actorEmail?: string | null
-): Promise<WriteResult<{ name: string; district: string }>> {
+): Promise<WriteResult<{ name: string }>> {
   const artist = await loadArtist(artistSlug);
   if (!artist) return { ok: false, status: 404, error: "Artist not found" };
   if (!(await canEditArtist(artistSlug, actorEmail))) {
     return { ok: false, status: 403, error: "Not allowed to edit this profile" };
   }
-  return { ok: true, value: { name: artist.name, district: artist.district } };
+  return { ok: true, value: { name: artist.name } };
 }
+
+/**
+ * El distrito congelado que llevan las filas nuevas.
+ *
+ * dj_sets.district y tracks.district son NOT NULL y NO tienen DEFAULT,
+ * así que omitirlos del INSERT revienta. Ponerles el default a mano es
+ * una migración, y la columna se borra entera más adelante: agregar un
+ * DEFAULT a algo que se va es trabajo que hay que deshacer.
+ *
+ * Así que la columna queda con un literal. Ya no es un dato, es relleno
+ * de una columna congelada — que es exactamente lo que el resto del
+ * código ya asume al no leerla en ningún lado.
+ */
+const DISTRITO_CONGELADO = "D00";
 
 // -----------------------------------------------------------------
 // DJ SETS
@@ -159,7 +184,7 @@ export async function createSet(
     INSERT INTO dj_sets
       (slug, title, artist_name, artist_slug, district, duration, recorded_at, url, status)
     VALUES
-      (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${auth.value.district},
+      (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${DISTRITO_CONGELADO},
        ${duration}, ${recordedAt}::date, ${url ?? "#"}, 'published')
   `;
   return { ok: true, value: { slug } };
@@ -364,7 +389,7 @@ export async function createTrack(
     INSERT INTO tracks
       (slug, title, artist_name, artist_slug, district, released_at, url, status)
     VALUES
-      (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${auth.value.district},
+      (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${DISTRITO_CONGELADO},
        ${releasedAt}::date, ${url ?? "#"}, 'published')
   `;
   return { ok: true, value: { slug } };
@@ -444,11 +469,11 @@ export async function createDeclaredGig(
   const rows = await sql`
     INSERT INTO artist_gigs
       (artist_slug, event_id, external_name, flyer_url, venue, city,
-       gig_date, district, role, b2b_with, duration_minutes, source)
+       gig_date, role, b2b_with, duration_minutes, source)
     VALUES
       (${artistSlug}, NULL, ${externalName}, ${flyerUrl},
        ${optionalText(input.venue, MAX_SHORT)}, ${optionalText(input.city, MAX_SHORT)},
-       ${gigDate}::date, ${auth.value.district},
+       ${gigDate}::date,
        ${optionalText(input.role, MAX_SHORT)}, ${optionalText(input.b2bWith, MAX_SHORT)},
        ${durationMinutes}, 'declarado')
     RETURNING id

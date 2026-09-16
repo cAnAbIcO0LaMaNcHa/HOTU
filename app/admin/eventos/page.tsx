@@ -1,5 +1,4 @@
 import { getAllEvents } from "@/lib/db";
-import { DISTRICTS } from "@/lib/districts";
 import { COUNTRY_CODES } from "@/lib/roles";
 import { createEvent, updateEvent, deleteEvent } from "@/lib/db-write";
 
@@ -71,7 +70,6 @@ export default async function AdminEventos() {
           </label>
           <label className="block"><span className={labelCls}>CIUDAD</span><input type="text" name="city" required placeholder="BOGOTÁ" className={inputCls} /></label>
           <label className="block"><span className={labelCls}>LUGAR</span><input type="text" name="venue" required placeholder="Bodega 38" className={inputCls} /></label>
-          <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
           <label className="block">
             <span className={labelCls}>FLYER (imagen)</span>
             <input type="file" name="flyer" accept="image/*" className={`${inputCls} file:mr-3 file:border-0 file:bg-primary file:px-3 file:py-1 file:font-mono file:text-xs`} />
@@ -111,7 +109,6 @@ export default async function AdminEventos() {
                 </label>
                 <label className="block"><span className={labelCls}>CIUDAD</span><input type="text" name="city" defaultValue={e.city} required className={inputCls} /></label>
                 <label className="block"><span className={labelCls}>LUGAR</span><input type="text" name="venue" defaultValue={e.venue} required className={inputCls} /></label>
-                <label className="block"><span className={labelCls}>DISTRITO</span><select name="district" defaultValue={e.district} required className={inputCls}>{DISTRICTS.map((d) => (<option key={d.id} value={d.id}>{d.title} · {d.genre}</option>))}</select></label>
                 <label className="block">
                   <span className={labelCls}>{e.flyerUrl ? "REEMPLAZAR FLYER" : "FLYER (imagen)"}</span>
                   <input type="file" name="flyer" accept="image/*" className={`${inputCls} file:mr-3 file:border-0 file:bg-primary file:px-3 file:py-1 file:font-mono file:text-xs`} />

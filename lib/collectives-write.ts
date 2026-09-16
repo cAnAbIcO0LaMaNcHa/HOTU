@@ -253,7 +253,7 @@ export async function createCollective(
   // Only a DJ can found one: the collective has to have a first member,
   // and that member is the founder's artist profile.
   const [artist] = await sql`
-    SELECT slug, name, district, city FROM artists
+    SELECT slug, name, city FROM artists
     WHERE lower(owner_email) = lower(${email}) AND status = 'published'
     ORDER BY slug LIMIT 1
   `;
@@ -310,12 +310,16 @@ export async function createCollective(
 
   const slug = await freeSlug(clean);
 
-  // The founder's own district and city seed the collective's, since a
-  // crew starts out where its founder is. Both are editable afterwards.
+  // La ciudad del fundador siembra la del colectivo: el crew arranca
+  // donde está quien lo funda, y después se edita.
+  //
+  // El distrito NO se nombra (tanda 4 §3). Sale del DEFAULT 'D00' de la
+  // columna, que queda congelada hasta que se borre. Copiarlo del
+  // fundador era además propagar el D00 que todo DJ nuevo hereda.
   await sql`
-    INSERT INTO collectives (slug, name, type, sector, bio, district, owner_email, status, entity_kind)
+    INSERT INTO collectives (slug, name, type, sector, bio, owner_email, status, entity_kind)
     VALUES (${slug}, ${clean}, 'LOCAL', ${artist.city ?? "Bogotá"}, '',
-            ${artist.district ?? "D00"}, ${email}, 'published', ${entityKind})
+            ${email}, 'published', ${entityKind})
   `;
 
   if (genero) {

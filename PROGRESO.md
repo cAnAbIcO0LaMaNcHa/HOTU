@@ -197,6 +197,27 @@ eso lee las tablas de género y `review_status`.
    de género es solo para artistas y colectivos. Eso lo cubría `district`.
 4. **`/mi-perfil` vs `/perfil`.** Sigue sin respuesta. Trabajé sobre
    `/perfil`, que es lo que existe.
+5. **El número de distrito en el código de boleta.** `lib/tickets-write.ts`
+   arma el `display_code` como `HOTU-07-AD0002`, donde el `07` es el
+   distrito del evento. Es el ÚNICO lugar donde el distrito no era
+   decorado: se imprime en la boleta y se lee en la puerta.
+
+   Por eso quedó sin tocar en la pieza B, aunque todo el resto del
+   distrito se retiró. Sacarlo cambia el formato de un identificador que
+   ya está impreso en boletas vendidas, y eso no es una decisión de
+   código. Las tres salidas:
+
+   - **Dejarlo como está.** El código sigue leyendo una columna
+     congelada. Funciona, pero bloquea borrar `events.district`.
+   - **Congelarlo en `00`.** Las boletas nuevas quedan `HOTU-00-…` y
+     conviven con las viejas. Desbloquea el borrado de la columna.
+   - **Reemplazar el `07` por la rama de género.** Es lo que el
+     distrito quería decir —"el género visible sin buscar"— pero el
+     género de un evento no existe todavía: sale del lineup, y esa
+     relación es modelo nuevo.
+
+   Hasta que se decida, `events.district` NO se puede borrar. Las otras
+   seis columnas `district` ya no las lee nadie.
 
 ---
 

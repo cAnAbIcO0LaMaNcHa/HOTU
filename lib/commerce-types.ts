@@ -1,4 +1,3 @@
-import type { DistrictId } from "./districts";
 
 export type MerchCategory = "camiseta" | "saco" | "pasamontanas" | "buckethat" | "abanico" | "earplugs" | "arte";
 
@@ -61,7 +60,6 @@ export type PurchasedTicket = {
   eventDate: string;
   venue: string;
   city: string;
-  district: DistrictId;
   tier: TicketTier;
   quantity: number;
   purchasedAt: string;
