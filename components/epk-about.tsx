@@ -97,7 +97,12 @@ export function EpkAbout({
         )}
       >
         <div>
-          {(artist.origin || hasBpm || artist.genre) && (
+          {/* generoViejo, no artist.genre: un artista CON taxonomía y con
+              genre cargado pero sin origen ni BPM abría un <dl> sin una
+              sola fila adentro. Los 12 de producción están a un paso de
+              ese estado — todos tienen genre y ninguno tiene origen ni
+              BPM—, así que lo disparaba el primero que declarara género. */}
+          {(artist.origin || hasBpm || generoViejo) && (
             <dl className="flex flex-wrap gap-x-8 gap-y-3 font-mono text-xs tracking-widest text-muted-foreground">
               {artist.origin && (
                 <div>
@@ -111,9 +116,17 @@ export function EpkAbout({
                   <dd className="mt-1 text-foreground/80">{bpmLabel}</dd>
                 </div>
               )}
+              {/* "SIN CLASIFICAR" y no "GÉNERO" a secas: al dueño de un
+                  perfil sin taxonomía esto le queda justo encima de la
+                  sección GÉNERO diciéndole que todavía no declaró ninguno,
+                  y dos rótulos iguales que se contradicen se leen como un
+                  bug. Con el paréntesis las dos frases dicen lo mismo: hay
+                  un género viejo de texto libre y falta clasificarlo. */}
               {generoViejo && (
                 <div>
-                  <dt className="text-[10px] tracking-[0.3em] text-primary">GÉNERO</dt>
+                  <dt className="text-[10px] tracking-[0.3em] text-primary">
+                    GÉNERO (SIN CLASIFICAR)
+                  </dt>
                   <dd className="mt-1 text-foreground/80">{generoViejo}</dd>
                 </div>
               )}
