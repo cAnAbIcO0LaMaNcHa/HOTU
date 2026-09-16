@@ -197,27 +197,31 @@ eso lee las tablas de género y `review_status`.
    de género es solo para artistas y colectivos. Eso lo cubría `district`.
 4. **`/mi-perfil` vs `/perfil`.** Sigue sin respuesta. Trabajé sobre
    `/perfil`, que es lo que existe.
-5. **El número de distrito en el código de boleta.** `lib/tickets-write.ts`
-   arma el `display_code` como `HOTU-07-AD0002`, donde el `07` es el
-   distrito del evento. Es el ÚNICO lugar donde el distrito no era
-   decorado: se imprime en la boleta y se lee en la puerta.
 
-   Por eso quedó sin tocar en la pieza B, aunque todo el resto del
-   distrito se retiró. Sacarlo cambia el formato de un identificador que
-   ya está impreso en boletas vendidas, y eso no es una decisión de
-   código. Las tres salidas:
+---
 
-   - **Dejarlo como está.** El código sigue leyendo una columna
-     congelada. Funciona, pero bloquea borrar `events.district`.
-   - **Congelarlo en `00`.** Las boletas nuevas quedan `HOTU-00-…` y
-     conviven con las viejas. Desbloquea el borrado de la columna.
-   - **Reemplazar el `07` por la rama de género.** Es lo que el
-     distrito quería decir —"el género visible sin buscar"— pero el
-     género de un evento no existe todavía: sale del lineup, y esa
-     relación es modelo nuevo.
+## CONGELADO POR DEPENDENCIA DE BOLETERÍA — NO ES UN PENDIENTE
 
-   Hasta que se decida, `events.district` NO se puede borrar. Las otras
-   seis columnas `district` ya no las lee nadie.
+**`events.district` no se borra, y el `display_code` no se toca.**
+DECIDIDO, no abierto.
+
+`lib/tickets-write.ts` arma el código visible de cada boleta como
+`HOTU-07-AD0002`, donde el `07` es el distrito del evento. Es el único
+lugar del sistema donde el distrito nunca fue decorado: se imprime en la
+boleta y se lee en la puerta.
+
+Hay boletas vendidas con ese formato. Cambiar el formato de un código
+impreso no se decide porque el código quedó raro, se decide cuando hay
+una razón, y hoy no la hay. Así que `lib/tickets-write.ts` sigue leyendo
+`events.district` a propósito, y la columna se queda.
+
+Consecuencia aceptada: la migración que borre las columnas `district`
+puede llevarse las otras seis (`artists`, `collectives`, `news`,
+`dj_sets`, `tracks`, `artist_gigs`), pero NO `events`. Ese es el costo
+correcto de no romper un identificador que alguien tiene en la mano.
+
+Por eso `lib/districts.ts` también se conserva: es lo único que explica
+qué significaba cada código.
 
 ---
 

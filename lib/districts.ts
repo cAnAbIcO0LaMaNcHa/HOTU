@@ -1,3 +1,32 @@
+/**
+ * Los diez distritos: id, personaje, género y color.
+ *
+ * NADIE IMPORTA ESTE ARCHIVO. Se retiró entero en la tanda 4 §3, cuando
+ * el sistema de distritos fue reemplazado por la taxonomía de géneros:
+ * los filtros pasaron a ser rama y tag, las diez reglas de color se
+ * borraron de globals.css, y ningún camino de escritura copia ya el
+ * distrito a ninguna fila.
+ *
+ * Se conserva igual, por las mismas razones que lib/crypto.ts:
+ *
+ * 1. LAS COLUMNAS SIGUEN EN LA BASE. Siete tablas tienen district con
+ *    sus valores intactos, congelados. La migración que algún día las
+ *    borre va a querer saber qué significaba cada código antes de
+ *    tirarlos, y "D07" sin esta tabla no significa nada.
+ * 2. events.district NO SE PUEDE BORRAR, y no es un pendiente: lo
+ *    congela boletería. El display_code de cada boleta se arma como
+ *    HOTU-07-AD0002, con el número del distrito adelante, y hay boletas
+ *    vendidas con ese formato que se leen en la puerta. Está en
+ *    PROGRESO.md.
+ * 3. ES LA REFERENCIA DEL UNIVERSO VISUAL. Los personajes —ID, MINIMAL,
+ *    PERSONA, MUSE, MANIAC, DISCREET, INDISCREET, NAIVE, MAGNET, MASK—
+ *    y sus colores son material de marca, no configuración. Que el sitio
+ *    ya no los use para filtrar no los borra de la estética.
+ *
+ * Quedar sin importadores es el estado deliberado, no un descuido.
+ * Borrar el archivo es una decisión aparte, y va después de que las
+ * columnas se hayan ido.
+ */
 export type DistrictId =
   | "D00"
   | "D01"
