@@ -200,6 +200,65 @@ eso lee las tablas de género y `review_status`.
 
 ---
 
+## REQUISITOS DEL WRITE PATH DE §6 — NO SON IDEAS, SON CONDICIONES
+
+La migración `/api/setup-republication` crea el schema de la
+republicación, pero hay cuatro estados que el schema PERMITE y las
+reglas PROHÍBEN. Ninguno se puede expresar como CHECK: todos miran filas
+de otra tabla. Los tiene que hacer cumplir el código, igual que la
+casa-en-venue. Los encontró el migration-reviewer antes de que la
+migración corriera en ningún lado.
+
+**1. Una pieza `is_fixed=true` sin ningún placement es INVISIBLE en
+todas partes.** No entra por el camino vivo —la excluye `is_fixed`— ni
+por el fijo —no tiene filas—. Queda publicada, editable por su dueño, y
+sin existir para nadie más.
+
+Publicar una colaboración son tres statements, y cada `sql` del driver
+HTTP de Neon es su propio request: si el tercero falla por un timeout,
+la pieza queda así para siempre, sin un error en ningún log. El usuario
+ve un 500, reintenta, y `uniqueSlug` le da un slug nuevo: queda la
+pieza huérfana invisible MÁS la buena.
+
+→ El publicar va ENTERO en `sql.transaction([...])`, con la misma
+justificación que los swaps de constraint.
+→ El admin necesita esta consulta, porque sin ella el estado es
+indetectable por construcción:
+
+```sql
+SELECT slug FROM tracks t WHERE t.is_fixed
+  AND NOT EXISTS (SELECT 1 FROM content_placements p WHERE p.track_slug = t.slug)
+-- y su gemela para dj_sets
+```
+
+**2. `deleteCollective()` fabrica ese huérfano con un click.** Ya existe
+y es un botón de admin. `content_placements.collective_slug` va ON
+DELETE CASCADE, así que borrar el colectivo se lleva el placement y deja
+la pieza fija sin destino. CASCADE es defendible —el destino dejó de
+existir— pero la consecuencia tiene que estar escrita y detectable. La
+consulta de arriba cubre este caso también.
+
+**3. El INSERT de placement al aceptar necesita `ON CONFLICT DO
+NOTHING`.** Si el colaborador comparte casa con el autor, el índice
+único choca y la aceptación devuelve 500 DESPUÉS de que la persona ya
+dijo que sí. Ana publica con casa en Reisen, Beto también tiene casa en
+Reisen, Beto acepta, revienta.
+
+Consecuencia que se acepta explícitamente: **un placement no es
+atribuible.** La fila `(T, 'reisen')` no dice si la puso Ana o Beto.
+Como los placements no se borran nunca, no rompe nada — pero significa
+que sacar a un colaborador jamás va a poder limpiar placements.
+
+**4. Tres guardas más, de la misma familia:**
+- `is_fixed=false` CON placements sacaría la pieza dos veces, una por
+  cada rama del UNION.
+- Nada impide que el autor se invite a sí mismo como colaborador.
+- Nada impide que el destino sea un VENUE. §6.1 dice "artistas o
+  colectivos" y los venues comparten la tabla `collectives`. Hay que
+  decidirlo y escribirlo, no dejarlo caer.
+
+---
+
 ## CONGELADO POR DEPENDENCIA DE BOLETERÍA — NO ES UN PENDIENTE
 
 **`events.district` no se borra, y el `display_code` no se toca.**
