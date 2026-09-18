@@ -11,6 +11,9 @@ const PAGE_SIZE = 6;
 const ROTATE_MS = 20_000;
 
 export function RecentArtists({ artists }: { artists: Artist[] }) {
+  // La guarda vive acá y no en quien lo monta: un carrusel vacío con su
+  // encabezado es la misma sección vacía, la monte quien la monte.
+  const vacio = artists.length === 0;
   const pageCount = Math.max(1, Math.ceil(artists.length / PAGE_SIZE));
   const [page, setPage] = useState(0);
   const { t } = useLanguage();
@@ -25,6 +28,11 @@ export function RecentArtists({ artists }: { artists: Artist[] }) {
 
   const start = page * PAGE_SIZE;
   const visible = artists.slice(start, start + PAGE_SIZE);
+
+  // Vacío no se renderiza: ni encabezado, ni flechas, ni una fila
+  // en blanco. Es la regla del proyecto, la misma que siguen el press
+  // kit y la grilla de géneros.
+  if (vacio) return null;
 
   return (
     <section className="py-16">

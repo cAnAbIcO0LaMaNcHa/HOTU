@@ -45,6 +45,15 @@ export default async function Home() {
             la taxonomía está sembrada y nadie declaró género todavía. */}
         <BranchGrid branches={branches} />
 
+          {/* SIN PRÓXIMOS, LA SECCIÓN NO EXISTE. Un título con una
+              grilla vacía debajo es exactamente lo que la regla de las
+              secciones vacías prohíbe, y no era hipotético: hoy los tres
+              eventos publicados —en dev Y en main— ya pasaron, así que la
+              home mostraba "PRÓXIMOS EVENTOS" seguido de nada.
+
+              Los pasados NO suben acá: la home muestra lo que viene, y
+              /eventos ya tiene el archivo completo. */}
+          {events.length > 0 && (
           <section className="py-16">
             <SectionHeading number="01" title="PRÓXIMOS EVENTOS" sub="AGENDA" href="/eventos" />
             <div className="mt-10 grid gap-6 md:grid-cols-3">
@@ -78,7 +87,11 @@ export default async function Home() {
               ))}
             </div>
           </section>
+          )}
 
+          {/* Misma regla. Hoy hay noticias, pero el día que no haya el
+              encabezado se quedaba igual de solo. */}
+          {news.length > 0 && (
           <section className="py-16">
             <SectionHeading number="02" title="ÚLTIMAS NOTICIAS" sub="ESTA SEMANA" href="/noticias" />
             <div className="mt-10 grid gap-8 md:grid-cols-3">
@@ -93,6 +106,7 @@ export default async function Home() {
               ))}
             </div>
           </section>
+          )}
 
           <RecentArtists artists={artists} />
 
