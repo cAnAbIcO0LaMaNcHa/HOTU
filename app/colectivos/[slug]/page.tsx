@@ -6,11 +6,14 @@ import { auth } from "@/auth";
 import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
 import { GeneroEditable } from "@/components/genero-editable";
+import { CollectiveContent } from "@/components/collective-content";
 import { LikeButton } from "@/components/like-button";
 import { canEditCollective } from "@/lib/collectives-write";
 import {
   countCollectiveLikes,
   getCollectiveBySlug,
+  getCollectiveSets,
+  getCollectiveTracks,
   getGenreBranches,
   getGenreTags,
   getProfileGenres,
@@ -70,9 +73,11 @@ export default async function CollectivePage({
 
   // Las dos en paralelo: son independientes y cada sql del driver HTTP
   // es su propio round-trip.
-  const [likeCount, liked] = await Promise.all([
+  const [likeCount, liked, sets, tracks] = await Promise.all([
     countCollectiveLikes(slug),
     email ? hasLikedCollective(email, slug) : Promise.resolve(false),
+    getCollectiveSets(slug),
+    getCollectiveTracks(slug),
   ]);
 
   const roster = membersByCollective.get(slug) ?? [];
@@ -151,6 +156,13 @@ export default async function CollectivePage({
 
       <Roster title="ARTISTAS DE LA CASA" members={casa} />
       <Roster title="ARTISTAS RESIDENTES" members={residentes} />
+
+      {/* SETS y TRACKS (§6). Van DESPUÉS de los rosters a propósito:
+          primero quién es el colectivo, después qué suena. Lo que se ve
+          acá sale de dos orígenes —la casa actual de cada autor y los
+          placements congelados— y la consulta los une, así que esta
+          sección no sabe ni tiene por qué saber de cuál vino cada pieza. */}
+      <CollectiveContent sets={sets} tracks={tracks} collectiveName={collective.name} />
 
       <CollectiveJoinButton
         collectiveSlug={collective.slug}

@@ -351,6 +351,85 @@ export async function getTracksByArtist(slug: string): Promise<Track[]> {
 }
 
 /**
+ * El contenido que se ve en el perfil de un colectivo (§6).
+ *
+ * DOS ORÍGENES EN UNA SOLA CONSULTA:
+ *
+ *   VIVO   — la pieza no es fija y la casa ACTUAL de su autor es este
+ *            colectivo. No hay ninguna fila guardada que diga eso: se
+ *            deriva de artist_collectives cada vez. Por eso cambiar de
+ *            casa migra el contenido sin mover una sola fila.
+ *   FIJO   — la pieza tiene un placement acá, escrito al publicar o al
+ *            aceptar una invitación, y congelado desde entonces.
+ *
+ * Es un OR de dos EXISTS y no un UNION de dos SELECT, que es lo que
+ * decía el plan. Sale mejor por tres razones: una sola pasada sobre la
+ * tabla en vez de dos, el ORDER BY no necesita envolver la consulta en
+ * una subconsulta, y —la que importa— NO PUEDE DUPLICAR. Un UNION de
+ * dos ramas que se solapan deduplica solo si es UNION y no UNION ALL, y
+ * ahí la deduplicación depende de acordarse; acá es una propiedad de la
+ * forma. Justo el estado prohibido de is_fixed=false CON placement, que
+ * el schema no puede impedir, con UNION ALL habría sacado la pieza dos
+ * veces y así sale una.
+ *
+ * La rama viva exige accepted_at IS NOT NULL: una membresía pendiente no
+ * es una membresía, y sin eso el contenido de alguien aparecería en un
+ * colectivo antes de que el vínculo estuviera aceptado.
+ *
+ * Una pieza con artist_slug NULL —su artista se borró— no entra por la
+ * rama viva, porque no hay a quién preguntarle la casa. Si tenía
+ * placement, sigue entrando por la fija.
+ *
+ * Sirve igual para un venue, y ahí la rama viva nunca matchea: un venue
+ * no es la casa de nadie. Solo vería lo fijo, si alguna vez se lo invita
+ * como colaborador. Esa decisión está abierta y anotada en PROGRESO.md.
+ */
+export async function getCollectiveSets(collectiveSlug: string): Promise<DjSet[]> {
+  const rows = await sql`
+    SELECT * FROM dj_sets s
+    WHERE s.status = 'published' AND (
+      (NOT s.is_fixed AND EXISTS (
+        SELECT 1 FROM artist_collectives ac
+        WHERE ac.artist_slug = s.artist_slug
+          AND ac.collective_slug = ${collectiveSlug}
+          AND ac.kind = 'casa'
+          AND ac.to_date IS NULL
+          AND ac.accepted_at IS NOT NULL
+      ))
+      OR EXISTS (
+        SELECT 1 FROM content_placements p
+        WHERE p.set_slug = s.slug AND p.collective_slug = ${collectiveSlug}
+      )
+    )
+    ORDER BY s.sort_order ASC NULLS LAST, s.recorded_at DESC
+  `;
+  return rows.map(mapDjSet);
+}
+
+/** Lo mismo para tracks. Misma forma, misma razón. */
+export async function getCollectiveTracks(collectiveSlug: string): Promise<Track[]> {
+  const rows = await sql`
+    SELECT * FROM tracks t
+    WHERE t.status = 'published' AND (
+      (NOT t.is_fixed AND EXISTS (
+        SELECT 1 FROM artist_collectives ac
+        WHERE ac.artist_slug = t.artist_slug
+          AND ac.collective_slug = ${collectiveSlug}
+          AND ac.kind = 'casa'
+          AND ac.to_date IS NULL
+          AND ac.accepted_at IS NOT NULL
+      ))
+      OR EXISTS (
+        SELECT 1 FROM content_placements p
+        WHERE p.track_slug = t.slug AND p.collective_slug = ${collectiveSlug}
+      )
+    )
+    ORDER BY t.sort_order ASC NULLS LAST, t.released_at DESC
+  `;
+  return rows.map(mapTrack);
+}
+
+/**
  * The EPK's EVENTS carousel. A HOTU gig falls back to the event's own
  * flyer, title, venue and city when the gig row leaves them blank, so a
  * lineup import only has to store the link.
