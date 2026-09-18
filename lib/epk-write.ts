@@ -11,6 +11,11 @@
 
 import { neon } from "@neondatabase/serverless";
 import { canEditArtist } from "./artists-write";
+import {
+  casaActual,
+  sentenciasDeColaboracion,
+  validarColaboradores,
+} from "./collaborators-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -154,13 +159,15 @@ export type NewSetInput = {
   duration?: unknown;
   recordedAt?: unknown;
   url?: unknown;
+  /** §6.1. Tener aunque sea uno marca la pieza como FIJA, para siempre. */
+  collaborators?: unknown;
 };
 
 export async function createSet(
   artistSlug: string,
   input: NewSetInput,
   actorEmail?: string | null
-): Promise<WriteResult<{ slug: string }>> {
+): Promise<WriteResult<{ slug: string; sinCasa?: boolean }>> {
   const auth = await authorize(artistSlug, actorEmail);
   if (!auth.ok) return auth;
 
@@ -176,18 +183,41 @@ export async function createSet(
   const url = cleanUrl(input.url);
   if (url === undefined) return { ok: false, status: 400, error: "url must be an http(s) URL" };
 
+  const colaboradores = await validarColaboradores(artistSlug, input.collaborators);
+  if (!colaboradores.ok) return colaboradores;
+
   const slug = await uniqueSlug("dj_sets", artistSlug, title);
   if (!slug) return { ok: false, status: 409, error: "Could not allocate a slug for this title" };
 
   // duration is NOT NULL; an empty box stores "" rather than failing.
-  await sql`
+  const insertar = sql`
     INSERT INTO dj_sets
       (slug, title, artist_name, artist_slug, district, duration, recorded_at, url, status)
     VALUES
       (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${DISTRITO_CONGELADO},
        ${duration}, ${recordedAt}::date, ${url ?? "#"}, 'published')
   `;
-  return { ok: true, value: { slug } };
+
+  if (colaboradores.value.length === 0) {
+    await insertar;
+    return { ok: true, value: { slug } };
+  }
+
+  // CON COLABORADORES VA TODO EN UNA TRANSACCIÓN, y no es prolijidad.
+  // Son tres escrituras y cada sql del driver HTTP de Neon es su propio
+  // request: si falla la última, la pieza queda con is_fixed=true y cero
+  // placements, que es el estado INVISIBLE —no entra por el camino vivo
+  // porque is_fixed la excluye, ni por el fijo porque no tiene filas—.
+  // Publicada, editable por su dueño, y sin existir para nadie más, sin
+  // un error en ningún log. El usuario vería un 500, reintentaría, y
+  // uniqueSlug le daría un slug nuevo: quedaría la huérfana invisible MÁS
+  // la buena.
+  const casa = await casaActual(artistSlug);
+  await sql.transaction([
+    insertar,
+    ...sentenciasDeColaboracion("set", slug, colaboradores.value, casa),
+  ]);
+  return { ok: true, value: { slug, sinCasa: casa === null } };
 }
 
 /** Every field of an existing set the owner may change. */
@@ -361,13 +391,15 @@ export type NewTrackInput = {
   title?: unknown;
   releasedAt?: unknown;
   url?: unknown;
+  /** §6.1. Tener aunque sea uno marca la pieza como FIJA, para siempre. */
+  collaborators?: unknown;
 };
 
 export async function createTrack(
   artistSlug: string,
   input: NewTrackInput,
   actorEmail?: string | null
-): Promise<WriteResult<{ slug: string }>> {
+): Promise<WriteResult<{ slug: string; sinCasa?: boolean }>> {
   const auth = await authorize(artistSlug, actorEmail);
   if (!auth.ok) return auth;
 
@@ -382,17 +414,33 @@ export async function createTrack(
   const url = cleanUrl(input.url);
   if (url === undefined) return { ok: false, status: 400, error: "url must be an http(s) URL" };
 
+  const colaboradores = await validarColaboradores(artistSlug, input.collaborators);
+  if (!colaboradores.ok) return colaboradores;
+
   const slug = await uniqueSlug("tracks", artistSlug, title);
   if (!slug) return { ok: false, status: 409, error: "Could not allocate a slug for this title" };
 
-  await sql`
+  const insertar = sql`
     INSERT INTO tracks
       (slug, title, artist_name, artist_slug, district, released_at, url, status)
     VALUES
       (${slug}, ${title}, ${auth.value.name}, ${artistSlug}, ${DISTRITO_CONGELADO},
        ${releasedAt}::date, ${url ?? "#"}, 'published')
   `;
-  return { ok: true, value: { slug } };
+
+  if (colaboradores.value.length === 0) {
+    await insertar;
+    return { ok: true, value: { slug } };
+  }
+
+  // Misma razón que en createSet: todo junto o nada. Ver el comentario
+  // largo allá arriba.
+  const casa = await casaActual(artistSlug);
+  await sql.transaction([
+    insertar,
+    ...sentenciasDeColaboracion("track", slug, colaboradores.value, casa),
+  ]);
+  return { ok: true, value: { slug, sinCasa: casa === null } };
 }
 
 export async function deleteTrack(

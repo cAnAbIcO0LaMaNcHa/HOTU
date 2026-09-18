@@ -887,6 +887,66 @@ export async function countCollectiveLikes(collectiveSlug: string): Promise<numb
   return (rows[0]?.n as number) ?? 0;
 }
 
+export type InvitacionColab = {
+  id: number;
+  tipo: "set" | "track";
+  piezaSlug: string;
+  piezaTitulo: string;
+  autorNombre: string;
+  autorSlug: string | null;
+  invitadaEn: string;
+  /** Adónde va a quedar fija si acepta: su casa de HOY, o null. */
+  destino: string | null;
+};
+
+/**
+ * Las invitaciones a colaborar PENDIENTES de esta cuenta (§6.1).
+ *
+ * Pendiente = ni aceptada ni rechazada. Las rechazadas se conservan —el
+ * histórico es inmutable— pero no vuelven a la bandeja.
+ *
+ * Llegan por dos caminos: invitaron al artista de esta cuenta, o a uno
+ * de sus colectivos. Los dos se resuelven por owner_email, que es la
+ * cuenta que puede responder.
+ *
+ * El destino se calcula AL LEER y no al invitar, a propósito: es dónde
+ * va a quedar la pieza si acepta HOY, y la casa puede cambiar entre la
+ * invitación y la respuesta. Mostrar el de la invitación sería prometer
+ * un destino viejo.
+ */
+export async function getInvitacionesColab(email: string): Promise<InvitacionColab[]> {
+  const rows = await sql`
+    SELECT cc.id, cc.set_slug, cc.track_slug, cc.invited_at,
+           COALESCE(s.title, t.title) AS titulo,
+           COALESCE(s.artist_name, t.artist_name) AS autor_nombre,
+           COALESCE(s.artist_slug, t.artist_slug) AS autor_slug,
+           COALESCE(
+             (SELECT ac.collective_slug FROM artist_collectives ac
+              WHERE ac.artist_slug = cc.artist_slug AND ac.kind = 'casa'
+                AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL LIMIT 1),
+             cc.collective_slug
+           ) AS destino
+    FROM content_collaborators cc
+    LEFT JOIN artists a ON a.slug = cc.artist_slug
+    LEFT JOIN collectives c ON c.slug = cc.collective_slug
+    LEFT JOIN dj_sets s ON s.slug = cc.set_slug
+    LEFT JOIN tracks t ON t.slug = cc.track_slug
+    WHERE cc.accepted_at IS NULL AND cc.declined_at IS NULL
+      AND (lower(a.owner_email) = lower(${email}) OR lower(c.owner_email) = lower(${email}))
+    ORDER BY cc.invited_at DESC
+  `;
+  return rows.map((r) => ({
+    id: r.id as number,
+    tipo: r.set_slug ? ("set" as const) : ("track" as const),
+    piezaSlug: (r.set_slug ?? r.track_slug) as string,
+    piezaTitulo: (r.titulo as string) ?? "",
+    autorNombre: (r.autor_nombre as string) ?? "",
+    autorSlug: (r.autor_slug as string | null) ?? null,
+    invitadaEn: String(r.invited_at),
+    destino: (r.destino as string | null) ?? null,
+  }));
+}
+
 export type EnRevision = {
   slug: string;
   name: string;

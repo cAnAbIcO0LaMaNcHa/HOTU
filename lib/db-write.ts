@@ -221,11 +221,62 @@ export async function updateCollective(formData: FormData): Promise<void> {
  * se llevaría en cascada sus géneros y sus vínculos. Los venues se
  * borran desde su propio panel o no se borran.
  */
+/**
+ * Borra un colectivo, Y SE NIEGA SI TIENE CONTENIDO PUBLICADO.
+ *
+ * content_placements.collective_slug va ON DELETE CASCADE, así que sin
+ * esta guarda borrar el colectivo se llevaba los placements y dejaba
+ * cada pieza fija sin destino: invisible en todas partes —no entra por
+ * el camino vivo porque is_fixed la excluye, ni por el fijo porque ya no
+ * tiene filas—, sin error, para siempre. Un botón de admin que rompe
+ * datos con un click no es deuda futura.
+ *
+ * SE NIEGA, NO REASIGNA. Reasignar obligaría al código a elegir un
+ * destino que nadie pidió, y eso es inventar una decisión del DJ. Si un
+ * colectivo tiene contenido publicado, alguien tiene que decidir qué
+ * pasa con ese contenido ANTES de borrarlo.
+ *
+ * Y el mensaje dice CUÁLES, no solo cuántas. Un "no se puede, tiene 12
+ * piezas" manda al admin a buscarlas a mano, que es el trabajo que la
+ * guarda tendría que estar ahorrando.
+ *
+ * Solo cuenta lo FIJO. El contenido vivo no tiene filas en
+ * content_placements —vive en la casa actual de su autor y se deriva—,
+ * así que borrar el colectivo simplemente lo deja sin aparecer ahí, que
+ * es lo correcto: el colectivo dejó de existir. Lo que no puede pasar es
+ * que una pieza congelada pierda el único destino que tenía.
+ */
 export async function deleteCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
+  const slug = String(formData.get("slug"));
+
+  const piezas = await sql`
+    SELECT 'set' AS tipo, set_slug AS pieza FROM content_placements
+      WHERE collective_slug = ${slug} AND set_slug IS NOT NULL
+    UNION ALL
+    SELECT 'track', track_slug FROM content_placements
+      WHERE collective_slug = ${slug} AND track_slug IS NOT NULL
+    ORDER BY 1, 2
+  `;
+
+  if (piezas.length > 0) {
+    const sets = piezas.filter((r) => r.tipo === "set").map((r) => r.pieza as string);
+    const tracks = piezas.filter((r) => r.tipo === "track").map((r) => r.pieza as string);
+    const partes = [
+      sets.length > 0 ? `${sets.length} set(s): ${sets.join(", ")}` : null,
+      tracks.length > 0 ? `${tracks.length} track(s): ${tracks.join(", ")}` : null,
+    ].filter(Boolean);
+    throw new Error(
+      `No se puede borrar "${slug}": tiene contenido publicado que quedaría sin destino. ` +
+        partes.join(" · ") +
+        ". Cada pieza está fija acá porque se publicó con colaboradores, y lo fijo no migra: " +
+        "hay que decidir qué pasa con ese contenido antes de borrar el colectivo."
+    );
+  }
+
   await sql`
     DELETE FROM collectives
-    WHERE slug = ${String(formData.get("slug"))} AND entity_kind = 'collective'
+    WHERE slug = ${slug} AND entity_kind = 'collective'
   `;
   refreshAll();
 }

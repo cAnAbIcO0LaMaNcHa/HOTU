@@ -146,6 +146,12 @@ EL DEV SERVER SE LEVANTA SIEMPRE CON `npm run dev`, Y CON NADA MÁS. No `next de
 3. Escribe SIEMPRE el mismo archivo, `dev.log`, truncado en cada arranque y con fecha y PID en la primera línea. Nada de dev3, dev4, dev5: la numeración fue justamente lo que dejó archivos viejos dando vueltas para que alguien leyera el equivocado.
 4. Espera a que el server esté listo y CONFIRMA que el archivo tiene bytes. Si no, baja el server y sale con código distinto de cero.
 
+LA VERIFICACIÓN DE UN DEPLOY VA CONTRA ALGO QUE EXISTA EN MAIN, NUNCA CONTRA UN FIXTURE DE DEV. Las bases no tienen los mismos datos: dev está lleno de filas de prueba —test-camila, otu, bodega-prueba— que en main no existen. Esperar un deploy pidiendo /colectivos/otu da 404 para siempre, y ese 404 se lee como "todavía no subió" cuando en realidad subió hace diez minutos.
+
+Es el mismo modo de falla que el log congelado: la verificación miraba el lugar equivocado y devolvía algo con forma de respuesta. No falla ruidosamente, contesta mal.
+
+Antes de usar una URL como señal de que un deploy está arriba, comprobá que su contenido exista en main —listando /colectivos o /artistas en producción, por ejemplo— o mejor, verificá contra algo que no dependa de los datos: que una ruta de API nueva devuelva 401 en vez de 404 prueba que el código está desplegado sin preguntarle nada a la base.
+
 UN LOG QUE AFIRMA SIN VERIFICAR ES PEOR QUE NO LOGUEAR, Y LA VERIFICACIÓN DE FORMA CORRE EN LOS DOS CAMINOS, NO SOLO EN dryRun. Una migración que termina con `log.push("columna agregada (NOT NULL DEFAULT false)")` sin haber mirado si quedó así está mintiendo cada vez que el statement se salteó. Y se saltea seguido: CREATE TABLE IF NOT EXISTS, CREATE INDEX IF NOT EXISTS y ADD COLUMN IF NOT EXISTS comparan por NOMBRE. Si ya existe algo que se llama igual con otra forma, el statement no hace nada, no falla, y la migración devuelve ok:true.
 
 Entonces toda migración termina verificando la FORMA de lo que creó —no su existencia— y devuelve un `verificado: true|false` además del `ok`. `ok` significa "no tiró excepción"; `verificado` significa "quedó como dice que quedó". Verificar la forma es: nullability y DEFAULT de cada columna comparados contra el valor esperado (no contra "tiene alguno"), la DEFINICIÓN de cada CHECK y no su nombre, y la DEFINICIÓN de cada índice y no su nombre.
