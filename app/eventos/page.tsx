@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ListingLayout } from "@/components/listing-layout";
 import { EventosList } from "@/components/eventos-list";
-import { getAllEvents, eventHasEnded } from "@/lib/db";
+import { getAllEvents, getLineupsByEvent, eventHasEnded } from "@/lib/db";
 import { uniqueSorted } from "@/lib/listing-options";
 
 export const revalidate = 0;
@@ -24,6 +24,9 @@ export default async function EventosPage() {
    * leads, the past follows as an archive.
    */
   const all = await getAllEvents();
+  // Los lineups de TODOS los eventos en una sola consulta, no uno por
+  // tarjeta: cada sql del driver HTTP es su propio round-trip.
+  const lineups = await getLineupsByEvent(all.map((e) => e.id));
   const events = all.filter((e) => !eventHasEnded(e.date, e.endAt));
   const pastEvents = all
     .filter((e) => eventHasEnded(e.date, e.endAt))
@@ -36,7 +39,13 @@ export default async function EventosPage() {
       secondaryLabel="CIUDAD"
       secondaryOptions={uniqueSorted(all.map((e) => e.city))}
     >
-      <EventosList events={events} pastEvents={pastEvents} />
+      {/* Un Map no cruza la frontera servidor/cliente, así que va como
+          objeto plano. */}
+      <EventosList
+        events={events}
+        pastEvents={pastEvents}
+        lineups={Object.fromEntries(lineups)}
+      />
     </ListingLayout>
   );
 }

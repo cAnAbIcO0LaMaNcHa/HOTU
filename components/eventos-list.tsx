@@ -1,8 +1,9 @@
 "use client";
 
 import { MapPin } from "lucide-react";
-import type { EventItem } from "@/lib/db";
+import type { EventItem, LineupEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
+import { EventLineup } from "@/components/event-lineup";
 import { AddTicketButton } from "@/components/add-ticket-button";
 import { TICKET_PRICES } from "@/lib/commerce-types";
 import { formatShortDate } from "@/lib/date-utils";
@@ -28,10 +29,17 @@ const formatCOP = (n: number) =>
 export function EventosList({
   events,
   pastEvents = [],
+  lineups = {},
 }: {
   events: EventItem[];
   /** Already over, newest first. Shown as an archive, never as buyable. */
   pastEvents?: EventItem[];
+  /**
+   * El lineup relacionado de cada evento, por id (§7). Un evento que no
+   * está acá todavía no se importó, y EventLineup cae al texto
+   * congelado: entre la migración y el import, la página se ve igual.
+   */
+  lineups?: Record<number, LineupEntry[]>;
 }) {
   const { active } = useListingFilters();
   // Search and filters apply to both halves: looking for a party you went
@@ -44,7 +52,7 @@ export function EventosList({
     <>
       <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {sorted.map((e) => (
-          <EventCard key={e.id} event={e} />
+          <EventCard key={e.id} event={e} lineup={lineups[e.id]} />
         ))}
         {sorted.length === 0 && (
           <EmptyResult
@@ -65,7 +73,7 @@ export function EventosList({
           </h2>
           <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {past.map((e) => (
-              <EventCard key={e.id} event={e} past />
+              <EventCard key={e.id} event={e} past lineup={lineups[e.id]} />
             ))}
           </div>
         </div>
@@ -74,7 +82,16 @@ export function EventosList({
   );
 }
 
-function EventCard({ event: e, past = false }: { event: EventItem; past?: boolean }) {
+function EventCard({
+  event: e,
+  past = false,
+  lineup,
+}: {
+  event: EventItem;
+  past?: boolean;
+  /** Sin entradas —todavía no se importó— EventLineup cae al texto. */
+  lineup?: LineupEntry[];
+}) {
   return (
     <article
       className={`group flex flex-col overflow-hidden border border-border bg-card ${
@@ -105,9 +122,17 @@ function EventCard({ event: e, past = false }: { event: EventItem; past?: boolea
         <div className="mt-1 flex items-center gap-1 font-mono text-[9px] tracking-widest text-muted-foreground">
           <MapPin className="h-3 w-3 shrink-0" /> {e.city} · {e.venue}
         </div>
-        <p className="mt-2 line-clamp-2 font-mono text-[10px] text-muted-foreground">
-          <AutoTranslate text={e.lineup} />
-        </p>
+        {/* Los nombres que se resolvieron son links; los que no, texto
+            plano. Un link a un 404 es peor que no tener link. */}
+        <EventLineup
+          entries={lineup}
+          fallback={e.lineup}
+          // SIN "block": line-clamp-2 ya pone display:-webkit-box, y
+          // "block" lo pisa —gana por orden en el CSS compilado— dejando
+          // el recorte a dos líneas sin efecto. Con dos o tres nombres no
+          // se nota; con cinco, la tarjeta crece y rompe la grilla.
+          className="mt-2 line-clamp-2 font-mono text-[10px] text-muted-foreground"
+        />
 
         {past ? (
           // No price and no button: the party already happened.

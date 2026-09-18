@@ -147,6 +147,55 @@ export type EventItem = ContentMeta & {
   lineup: string;
 };
 
+/** Una entrada del lineup de un evento (§7). */
+export type LineupEntry = {
+  /** El texto como aparecía en el flyer. SIEMPRE está. */
+  rawName: string;
+  /** A quién se resolvió, si se resolvió. Los dos null = texto suelto. */
+  artistSlug: string | null;
+  collectiveSlug: string | null;
+};
+
+/**
+ * El lineup de varios eventos de una sola consulta, agrupado por evento.
+ *
+ * De a muchos y no uno por evento: la grilla de /eventos pinta hasta
+ * veinte tarjetas, y cada sql del driver HTTP de Neon es su propio
+ * round-trip. Veinte consultas para pintar una lista serían veinte
+ * viajes donde alcanza uno.
+ *
+ * Un evento SIN entradas no aparece en el Map, y eso es información, no
+ * un vacío: significa que su lineup todavía no se importó, y quien
+ * renderiza tiene que caer al texto congelado de events.lineup. Es la
+ * regla de la transición — entre que la migración corre y el import
+ * corre, el visitante tiene que seguir viendo el lineup igual que
+ * siempre.
+ */
+export async function getLineupsByEvent(
+  eventIds: number[]
+): Promise<Map<number, LineupEntry[]>> {
+  const porEvento = new Map<number, LineupEntry[]>();
+  if (eventIds.length === 0) return porEvento;
+
+  const rows = await sql`
+    SELECT event_id, raw_name, artist_slug, collective_slug
+    FROM event_lineup
+    WHERE event_id = ANY(${eventIds}::int[])
+    ORDER BY event_id, position, id
+  `;
+
+  for (const r of rows) {
+    const id = r.event_id as number;
+    if (!porEvento.has(id)) porEvento.set(id, []);
+    porEvento.get(id)!.push({
+      rawName: r.raw_name as string,
+      artistSlug: (r.artist_slug as string | null) ?? null,
+      collectiveSlug: (r.collective_slug as string | null) ?? null,
+    });
+  }
+  return porEvento;
+}
+
 export type NewsItem = ContentMeta & {
   id: number;
   tag: string;
@@ -434,6 +483,25 @@ export async function getCollectiveTracks(collectiveSlug: string): Promise<Track
  * flyer, title, venue and city when the gig row leaves them blank, so a
  * lineup import only has to store the link.
  */
+/**
+ * Los toques de un artista: los DECLARADOS y los de un evento de HOTU.
+ *
+ * LOS DOS ORÍGENES SON DISTINTOS A PROPÓSITO (§7):
+ *
+ *   declarados — artist_gigs. Tocó afuera, no hay evento en la base, y
+ *                el DJ lo cargó a mano. Esa tabla sigue siendo la fuente.
+ *   de HOTU    — event_lineup. El toque sale del lineup del evento, que
+ *                es la relación real. artist_gigs.source='hotu' DEJA DE
+ *                LEERSE acá: mismo patrón que los jsonb y district,
+ *                primero se deja de leer y la columna queda congelada.
+ *
+ * Por eso el WHERE de artist_gigs filtra source <> 'hotu'. Sin ese
+ * filtro, un toque cargado en las dos tablas saldría dos veces.
+ *
+ * Un toque de HOTU no tiene duración ni rol propios todavía: event_lineup
+ * guarda role y b2b_with, y lo demás sale del evento. Lo que no existe
+ * se devuelve null en vez de inventarse.
+ */
 export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
   const rows = await sql`
     SELECT g.*,
@@ -443,10 +511,19 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
            e.city      AS event_city
     FROM artist_gigs g
     LEFT JOIN events e ON e.id = g.event_id
-    WHERE g.artist_slug = ${slug}
+    WHERE g.artist_slug = ${slug} AND g.source <> 'hotu'
     ORDER BY g.gig_date DESC
   `;
-  return rows.map((r) => ({
+
+  const deLineup = await sql`
+    SELECT el.id, el.role, el.b2b_with,
+           e.id AS event_id, e.title, e.flyer_url, e.venue, e.city, e.event_date
+    FROM event_lineup el
+    JOIN events e ON e.id = el.event_id
+    WHERE el.artist_slug = ${slug} AND e.status = 'published'
+    ORDER BY e.event_date DESC
+  `;
+  const declarados: ArtistGig[] = rows.map((r) => ({
     id: r.id,
     artistSlug: r.artist_slug,
     eventId: r.event_id ?? null,
@@ -461,6 +538,27 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
     durationMinutes: r.duration_minutes ?? null,
     source: r.source as "hotu" | "declarado",
   }));
+
+  const hotu: ArtistGig[] = deLineup.map((r) => ({
+    // id negativo para no chocar con los de artist_gigs: las dos listas
+    // se juntan en una sola y React necesita keys únicas. Es un id de
+    // presentación, no de base — nadie lo usa para escribir.
+    id: -(r.id as number),
+    artistSlug: slug,
+    eventId: (r.event_id as number) ?? null,
+    eventTitle: (r.title as string) ?? null,
+    externalName: null,
+    flyerUrl: (r.flyer_url as string | null) ?? null,
+    venue: (r.venue as string | null) ?? null,
+    city: (r.city as string | null) ?? null,
+    gigDate: toISODate(r.event_date),
+    role: (r.role as string | null) ?? null,
+    b2bWith: (r.b2b_with as string | null) ?? null,
+    durationMinutes: null,
+    source: "hotu" as const,
+  }));
+
+  return [...declarados, ...hotu].sort((x, y) => y.gigDate.localeCompare(x.gigDate));
 }
 
 /** Una sola conversión de fila a Collective, para que los tres lectores

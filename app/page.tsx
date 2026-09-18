@@ -5,7 +5,8 @@ import { RecentArtists } from "@/components/recent-artists";
 import { RecentTracks } from "@/components/recent-tracks";
 import { AutoTranslate } from "@/components/auto-translate";
 import { HeroTitle } from "@/components/hero-title";
-import { getAllArtists, getAllTracks, getAllEvents, getAllNews, getBranchesWithContent, formatShortDate, eventHasEnded } from "@/lib/db";
+import { getAllArtists, getAllTracks, getAllEvents, getAllNews, getBranchesWithContent, getLineupsByEvent, formatShortDate, eventHasEnded } from "@/lib/db";
+import { EventLineup } from "@/components/event-lineup";
 
 export const revalidate = 0;
 
@@ -18,6 +19,8 @@ export default async function Home() {
   // curation needed; as one event passes, the next one in line just
   // rotates into view on its own.
   const events = allEvents.filter((e) => !eventHasEnded(e.date, e.endAt)).slice(0, 3);
+  // Solo los tres que se muestran, no los de toda la tabla.
+  const lineups = await getLineupsByEvent(events.map((e) => e.id));
   const news = allNews.slice(0, 3);
 
   return (
@@ -61,7 +64,14 @@ export default async function Home() {
                     <div className="font-mono text-xs tracking-widest text-primary">{formatShortDate(e.date)}</div>
                     <div className="mt-3 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground"><MapPin className="h-3 w-3" /> {e.city} · {e.venue}</div>
                     <h3 className="mt-3 text-xl font-bold"><AutoTranslate text={e.title} /></h3>
-                    <p className="mt-2 font-mono text-xs text-muted-foreground">{e.lineup}</p>
+                    {/* Mismos nombres, mismo orden, mismo separador que
+                        el texto que reemplaza — lo único que cambia es que
+                        algunos ahora se pueden tocar. */}
+                    <EventLineup
+                      entries={lineups.get(e.id)}
+                      fallback={e.lineup}
+                      className="mt-2 block font-mono text-xs text-muted-foreground"
+                    />
                     <Link href="/eventos" className="mt-5 inline-flex items-center gap-2 border-b border-primary pb-1 font-mono text-xs tracking-widest text-primary"><AutoTranslate text="COMPRAR ENTRADAS" /> <ChevronRight className="h-3 w-3" /></Link>
                   </div>
                 </article>
