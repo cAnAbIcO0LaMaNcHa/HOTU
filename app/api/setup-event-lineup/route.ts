@@ -102,6 +102,12 @@
 
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import {
+  armarVocabulario,
+  decidirLineup,
+  resumirDecisiones,
+  type DecisionLineup,
+} from "@/lib/lineup-import";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -273,8 +279,11 @@ export async function GET(request: Request) {
   }
 
   const dryRun = searchParams.get("dryRun") === "1";
+  const importar = searchParams.get("import") === "1";
   const sql = neon(process.env.DATABASE_URL!);
   const log: string[] = [];
+
+  if (importar) return await importarLineups(dryRun, log);
 
   const estado = async (): Promise<Estado> => {
     const t = await sql`
@@ -547,4 +556,130 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
+}
+
+// =====================================================================
+// PASO 2 — EL IMPORT DEL TEXTO LIBRE
+// =====================================================================
+
+/**
+ * Importa events.lineup a event_lineup. La lógica de partir y resolver
+ * vive en lib/lineup-import.ts, porque el admin necesita exactamente lo
+ * mismo para proponer sugerencias.
+ *
+ * SOLO TOCA EVENTOS QUE NO TIENEN NINGUNA ENTRADA. Así es idempotente
+ * sin borrar nada: la segunda corrida ve que el evento ya tiene lineup y
+ * lo saltea entero. Y —lo que más importa— NO PISA CORRECCIONES A MANO:
+ * el día que alguien arregle "HOTU Crew" desde el admin, volver a correr
+ * esto no se lo deshace.
+ */
+async function importarLineups(dryRun: boolean, log: string[]) {
+  // El cliente se crea acá y no se recibe por parámetro: ReturnType<typeof
+  // neon> es más ancho que lo que la llamada devuelve de verdad, y
+  // sql.transaction no acepta el tipo ancho.
+  const sql = neon(process.env.DATABASE_URL!);
+  const existe = await sql`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'event_lineup'
+  `;
+  if (existe.length === 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          'Falta event_lineup. Corré primero /api/setup-event-lineup?secret=... sin import=1.',
+      },
+      { status: 409 }
+    );
+  }
+
+  const eventos = await sql`SELECT id, title, lineup FROM events ORDER BY id`;
+  const artistas = await sql`SELECT slug, name FROM artists`;
+  // entity_kind = 'collective': UN VENUE NO TOCA, aunque su nombre esté
+  // en el flyer. events.venue es texto libre y los flyers nombran el
+  // lugar, así que sin este filtro el venue se llevaría un toque que
+  // nunca dio. Misma familia que la casa-en-venue: el schema no lo puede
+  // impedir, lo impide el camino de escritura.
+  const colectivos = await sql`
+    SELECT slug, name FROM collectives WHERE entity_kind = 'collective'
+  `;
+
+  const vocab = armarVocabulario(
+    artistas.map((r) => ({ slug: r.slug as string, name: r.name as string })),
+    colectivos.map((r) => ({ slug: r.slug as string, name: r.name as string }))
+  );
+
+  const yaTienen = await sql`SELECT DISTINCT event_id FROM event_lineup`;
+  const salteados = new Set(yaTienen.map((r) => r.event_id as number));
+
+  const decisiones: DecisionLineup[] = [];
+  for (const e of eventos) {
+    const eventId = e.id as number;
+    if (salteados.has(eventId)) {
+      log.push(`evento ${eventId} salteado: ya tiene lineup cargado. No se pisa.`);
+      continue;
+    }
+    decisiones.push(...decidirLineup(eventId, String(e.lineup ?? ''), vocab));
+  }
+
+  const aInsertar = decisiones.filter((d) => d.posicion >= 0);
+  const resumen = resumirDecisiones(decisiones);
+
+  if (dryRun) {
+    log.push(
+      `SIMULACIÓN: se insertarían ${aInsertar.length} entradas. ${resumen.artista} artistas, ${resumen.colectivo} colectivos, ${resumen.sinMatch} sin match, ${resumen.ambiguo} ambiguos, ${resumen.repetido} repetidos descartados.`
+    );
+    log.push('SIMULACIÓN: no se escribió nada. events.lineup no se toca nunca.');
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      importado: false,
+      resumen,
+      decisiones,
+      log,
+    });
+  }
+
+  // TODO EL IMPORT EN UNA TRANSACCIÓN. Son N inserts y cada sql del
+  // driver HTTP es su propio request: a mitad de camino quedaría un
+  // evento con medio lineup, y como el import saltea los eventos que YA
+  // tienen entradas, la segunda corrida no lo completaría — lo saltearía
+  // creyéndolo hecho. Medio lineup importado y marcado como listo es
+  // peor que ninguno.
+  if (aInsertar.length > 0) {
+    await sql.transaction(
+      aInsertar.map((r) =>
+        sql(
+          'INSERT INTO event_lineup (event_id, raw_name, artist_slug, collective_slug, position) VALUES ($1, $2, $3, $4, $5)',
+          [r.eventId, r.texto, r.artistSlug, r.collectiveSlug, r.posicion]
+        )
+      )
+    );
+  }
+
+  const [total] = await sql`SELECT COUNT(*)::int AS n FROM event_lineup`;
+  const [sinResolver] = await sql`
+    SELECT COUNT(*)::int AS n FROM event_lineup
+    WHERE artist_slug IS NULL AND collective_slug IS NULL
+  `;
+
+  log.push(
+    `Importadas ${aInsertar.length} entradas. ${resumen.artista} artistas, ${resumen.colectivo} colectivos, ${resumen.sinMatch} sin match, ${resumen.ambiguo} ambiguos, ${resumen.repetido} repetidos descartados.`
+  );
+  log.push(
+    `event_lineup tiene ahora ${total.n} entradas, ${sinResolver.n} sin resolver. Esas ${sinResolver.n} necesitan una persona: el import no adivina.`
+  );
+  log.push('NINGÚN evento quedó con organizador: eso no sale del texto y se asigna a mano.');
+  log.push('events.lineup NO se tocó.');
+
+  return NextResponse.json({
+    ok: true,
+    dryRun: false,
+    importado: true,
+    resumen,
+    decisiones,
+    entradas: total.n as number,
+    sinResolver: sinResolver.n as number,
+    log,
+  });
 }
