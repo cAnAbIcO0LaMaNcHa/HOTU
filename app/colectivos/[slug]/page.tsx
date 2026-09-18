@@ -6,8 +6,10 @@ import { auth } from "@/auth";
 import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
 import { GeneroEditable } from "@/components/genero-editable";
+import { LikeButton } from "@/components/like-button";
 import { canEditCollective } from "@/lib/collectives-write";
 import {
+  countCollectiveLikes,
   getCollectiveBySlug,
   getGenreBranches,
   getGenreTags,
@@ -15,6 +17,7 @@ import {
   getCollectiveMembers,
   getMyArtistSlug,
   getPendingForCollective,
+  hasLikedCollective,
 } from "@/lib/db";
 
 export const revalidate = 0;
@@ -65,6 +68,13 @@ export default async function CollectivePage({
     ? await Promise.all([getGenreBranches(), getGenreTags()])
     : [[], []];
 
+  // Las dos en paralelo: son independientes y cada sql del driver HTTP
+  // es su propio round-trip.
+  const [likeCount, liked] = await Promise.all([
+    countCollectiveLikes(slug),
+    email ? hasLikedCollective(email, slug) : Promise.resolve(false),
+  ]);
+
   const roster = membersByCollective.get(slug) ?? [];
   const casa = roster.filter((m) => m.kind === "casa");
   const residentes = roster.filter((m) => m.kind === "residente");
@@ -113,6 +123,19 @@ export default async function CollectivePage({
       <p className="mt-6 max-w-3xl font-mono text-sm leading-relaxed text-muted-foreground">
         <AutoTranslate text={collective.bio} />
       </p>
+
+      {/* SEGUIR (§11). Se muestra al visitante y también al dueño, que no
+          tiene por qué quedar escondido de su propio número de seguidores
+          — misma regla que el press kit del DJ. */}
+      <div className="mt-4">
+        <LikeButton
+          endpoint={`/api/likes/collectives/${slug}`}
+          returnTo={`/colectivos/${slug}`}
+          initialLiked={liked}
+          initialCount={likeCount}
+          signedIn={!!email}
+        />
+      </div>
 
       {/* GÉNERO. Mismo componente y misma regla que el artista: los seis
           colectivos anteriores a la taxonomía no tienen ninguno, y este

@@ -11,12 +11,26 @@ import type { LikedArtist } from "@/lib/db";
  *
  * Same horizontal carousel as the collective's roster, deliberately —
  * these are the same kind of card and should not look like two systems.
- * When likes reach collectives and venues this section takes them too,
- * which is why the layout is shared rather than copied.
+ *
+ * Y ahora sirve para las tres cosas (§11). Este comentario decía que
+ * cuando los likes llegaran a colectivos y venues esta sección los iba a
+ * tomar también, y que por eso el layout era compartido y no copiado.
+ * Llegaron: el componente toma título y ruta por prop, sin una sola
+ * condición de tipo adentro. Se piden por separado y se renderizan como
+ * tres secciones porque para el usuario son tres cosas distintas.
  *
  * A server component: it only reads, so there is no reason to ship it.
  */
-export function LikedArtists({ artists }: { artists: LikedArtist[] }) {
+export function LikedArtists({
+  artists,
+  title = "ARTISTAS QUE ME GUSTAN",
+  hrefBase = "/artistas",
+}: {
+  artists: LikedArtist[];
+  title?: string;
+  /** "/artistas", "/colectivos" o "/venues". */
+  hrefBase?: string;
+}) {
   if (artists.length === 0) return null;
 
   return (
@@ -24,7 +38,7 @@ export function LikedArtists({ artists }: { artists: LikedArtist[] }) {
       <div className="flex items-center gap-2 border-b border-border pb-4">
         <Heart className="h-4 w-4 text-primary" />
         <h2 className="font-mono text-[10px] tracking-[0.3em] text-primary">
-          ARTISTAS QUE ME GUSTAN
+          {title}
         </h2>
       </div>
 
@@ -32,7 +46,7 @@ export function LikedArtists({ artists }: { artists: LikedArtist[] }) {
         {artists.map((a) => (
           <Link
             key={a.slug}
-            href={`/artistas/${a.slug}`}
+            href={`${hrefBase}/${a.slug}`}
             className="group w-28 shrink-0 text-center sm:w-32"
           >
             {a.photo ? (

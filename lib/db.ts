@@ -745,6 +745,69 @@ export async function countArtistLikes(artistSlug: string): Promise<number> {
   return (rows[0]?.n as number) ?? 0;
 }
 
+/**
+ * Los colectivos —o los venues— que esta cuenta marcó, del más nuevo al
+ * más viejo (§11).
+ *
+ * Los venues salen gratis de compartir tabla con los colectivos: es la
+ * misma consulta con otro entity_kind. Se piden por separado a propósito
+ * y no en una sola lista mezclada, porque para el usuario son dos cosas
+ * distintas y §5 dice que eso no se negocia — /venues y /colectivos son
+ * secciones separadas, y en su perfil también.
+ *
+ * Solo publicados, por lo mismo que los artistas: el like es un marcador
+ * privado pero la tarjeta linkea a una página pública, y un colectivo
+ * archivado le daría al usuario un link muerto.
+ *
+ * collectives NO tiene columna de foto, así que photo sale null siempre
+ * y la tarjeta cae en el placeholder. Es correcto, no es un pendiente: el
+ * día que haya foto de colectivo, esta consulta la suma y la tarjeta ya
+ * sabe qué hacer con ella.
+ */
+export async function getLikedCollectives(
+  email: string,
+  kind: EntityKind = "collective"
+): Promise<LikedArtist[]> {
+  const rows = await sql`
+    SELECT c.slug, c.name, cl.created_at
+    FROM collective_likes cl
+    JOIN collectives c ON c.slug = cl.collective_slug
+    WHERE cl.user_email = ${email}
+      AND c.status = 'published'
+      AND c.entity_kind = ${kind}
+    ORDER BY cl.created_at DESC
+  `;
+  return rows.map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    photo: null,
+    likedAt: String(r.created_at),
+  }));
+}
+
+/**
+ * Si esta cuenta ya marcó este colectivo. Maneja el estado del botón.
+ *
+ * SIN filtrar por entity_kind, a propósito: la pregunta es sobre una fila
+ * concreta que el llamador ya tiene en la mano, y filtrar acá haría que
+ * el botón de un venue se dibujara siempre vacío aunque el like exista.
+ */
+export async function hasLikedCollective(email: string, collectiveSlug: string): Promise<boolean> {
+  const rows = await sql`
+    SELECT 1 FROM collective_likes
+    WHERE user_email = ${email} AND collective_slug = ${collectiveSlug}
+  `;
+  return rows.length > 0;
+}
+
+/** Cuánta gente sigue este colectivo o venue. Público, igual que el de artista. */
+export async function countCollectiveLikes(collectiveSlug: string): Promise<number> {
+  const rows = await sql`
+    SELECT COUNT(*)::int AS n FROM collective_likes WHERE collective_slug = ${collectiveSlug}
+  `;
+  return (rows[0]?.n as number) ?? 0;
+}
+
 export type EnRevision = {
   slug: string;
   name: string;

@@ -6,7 +6,7 @@ import { EpkAbout } from "@/components/epk-about";
 import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
-import { ArtistLikeButton } from "@/components/artist-like-button";
+import { LikeButton } from "@/components/like-button";
 import { FranjaRevision } from "@/components/franja-revision";
 import { GeneroEditable } from "@/components/genero-editable";
 import { canEditArtist, loQueFalta } from "@/lib/artists-write";
@@ -92,8 +92,9 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
       {/* Following is not editing: it shows for visitors, and for the owner
           too, who has no reason to be hidden from their own follower count. */}
       <div className="mt-4">
-        <ArtistLikeButton
-          artistSlug={slug}
+        <LikeButton
+          endpoint={`/api/likes/artists/${slug}`}
+          returnTo={`/artistas/${slug}`}
           initialLiked={liked}
           initialCount={likeCount}
           signedIn={!!email}

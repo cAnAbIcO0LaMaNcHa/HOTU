@@ -6,23 +6,38 @@ import Link from "next/link";
 import { Heart } from "lucide-react";
 
 /**
- * The follow button on a DJ's press kit.
+ * SEGUIR, en el press kit de un artista, un colectivo o un venue (§11).
  *
- * Optimistic: the heart fills on click and the count moves straight away,
- * because a follow is cheap and waiting for a round trip to acknowledge it
- * feels broken. If the request fails, both roll back to the server's last
- * known values rather than to a guess.
+ * Era ArtistLikeButton y se generalizó en vez de copiarse. No lleva una
+ * sola condición de entity_kind ni de tipo de entidad: lo único que
+ * cambia entre los tres casos es a qué endpoint pega y a dónde vuelve
+ * después de iniciar sesión, y las dos cosas son props. Un botón con un
+ * `if (esVenue)` adentro sería una copia disfrazada.
  *
- * Signed out, it is a link to sign in and not a dead button — the count is
- * still worth showing, since it is the DJ's audience and public either way.
+ * Optimista: el corazón se llena al click y el número se mueve en el
+ * acto, porque seguir a alguien es barato y esperar el round-trip se
+ * siente roto. Si el request falla, los dos vuelven al último valor que
+ * dio el servidor, no a uno adivinado.
+ *
+ * Sin sesión es un LINK para entrar, no un botón muerto: el número se
+ * muestra igual, porque es la audiencia de quien lo tiene y es pública
+ * de todos modos.
+ *
+ * Un like NO es un voto. No cambia ranking, orden ni exposición en
+ * ningún lado. Sirve para avisarle al usuario cuando esa persona toca, y
+ * para que vea cuánta gente sigue su trabajo.
  */
-export function ArtistLikeButton({
-  artistSlug,
+export function LikeButton({
+  endpoint,
+  returnTo,
   initialLiked,
   initialCount,
   signedIn,
 }: {
-  artistSlug: string;
+  /** La ruta de API, ya armada: /api/likes/artists/x o /api/likes/collectives/x */
+  endpoint: string;
+  /** A dónde volver después de iniciar sesión. */
+  returnTo: string;
   initialLiked: boolean;
   initialCount: number;
   signedIn: boolean;
@@ -37,7 +52,7 @@ export function ArtistLikeButton({
   if (!signedIn) {
     return (
       <Link
-        href={`/auth/signin?callbackUrl=${encodeURIComponent(`/artistas/${artistSlug}`)}`}
+        href={`/auth/signin?callbackUrl=${encodeURIComponent(returnTo)}`}
         className="inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary hover:text-primary"
       >
         <Heart className="h-3 w-3" /> SEGUIR
@@ -48,24 +63,22 @@ export function ArtistLikeButton({
 
   async function toggle() {
     const next = !liked;
-    // Move first, reconcile after.
+    // Se mueve primero y se reconcilia después.
     setLiked(next);
     setCount((c) => c + (next ? 1 : -1));
     setBusy(true);
     try {
-      const res = await fetch(`/api/likes/artists/${artistSlug}`, {
-        method: next ? "POST" : "DELETE",
-      });
+      const res = await fetch(endpoint, { method: next ? "POST" : "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setLiked(!next);
         setCount(initialCount);
         return;
       }
-      // The server's count is authoritative — somebody else may have
-      // followed while this click was in flight.
+      // El número del servidor manda: alguien más pudo seguir mientras
+      // este click estaba en vuelo.
       if (typeof data.count === "number") setCount(data.count);
-      // So the profile's "artistas que me gustan" reflects it immediately.
+      // Para que la sección "que me gustan" del perfil lo refleje ya.
       router.refresh();
     } catch {
       setLiked(!next);

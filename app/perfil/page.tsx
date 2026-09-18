@@ -8,7 +8,7 @@ import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
 import { MembershipInbox } from "@/components/membership-inbox";
-import { getArtistBySlug, getGenreBranches, getGenreTags, getLikedArtists, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { getArtistBySlug, getGenreBranches, getGenreTags, getLikedArtists, getLikedCollectives, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { LikedArtists } from "@/components/liked-artists";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
@@ -72,11 +72,13 @@ export default async function PerfilPage() {
   const isDJ = myArtistSlug !== null;
 
   // Everybody gets these three: orders, tickets, the artists they follow.
-  const [orders, tickets, profile, likedArtists] = await Promise.all([
+  const [orders, tickets, profile, likedArtists, likedColectivos, likedVenues] = await Promise.all([
     getMyOrders(),
     getMyTicketInstances(),
     getMyProfile(),
     getLikedArtists(email),
+    getLikedCollectives(email, "collective"),
+    getLikedCollectives(email, "venue"),
   ]);
 
   // DJ-only. A plain user has no memberships to have a conversation about,
@@ -335,7 +337,17 @@ export default async function PerfilPage() {
 
       {/* Artistas que me gustan — debajo de MIS TIQUETES. No se renderiza
           si la cuenta no sigue a nadie. */}
+      {/* Tres secciones y no una lista mezclada: para el usuario son
+          tres cosas distintas, igual que /artistas, /colectivos y
+          /venues son tres secciones. Cada una no se renderiza si está
+          vacía, que es la regla de siempre. */}
       <LikedArtists artists={likedArtists} />
+      <LikedArtists
+        artists={likedColectivos}
+        title="COLECTIVOS QUE ME GUSTAN"
+        hrefBase="/colectivos"
+      />
+      <LikedArtists artists={likedVenues} title="VENUES QUE ME GUSTAN" hrefBase="/venues" />
     </section>
   );
 }

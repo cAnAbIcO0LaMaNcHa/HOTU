@@ -74,3 +74,58 @@ export async function unlikeArtist(
   `;
   return { ok: true, value: { liked: false, count: n as number } };
 }
+
+/**
+ * Lo mismo sobre un colectivo o un venue (§11).
+ *
+ * UNA SOLA PAREJA DE FUNCIONES PARA LOS DOS, sin una sola condición de
+ * entity_kind: un like es un like, y lo único que cambia entre las dos
+ * entidades es la página desde la que se da. Es justamente el caso en el
+ * que compartir tabla sale gratis, así que no hay que pagarle nada.
+ *
+ * collective_likes es espejo exacto de artist_likes: PK compuesta
+ * (collective_slug, user_email), así que "un like por persona por
+ * colectivo" lo garantiza la tabla y no hace falta leer antes de
+ * escribir, que es lo que se correría con un doble click.
+ */
+export async function likeCollective(
+  collectiveSlug: string,
+  email: string
+): Promise<WriteResult<{ liked: true; count: number }>> {
+  // Publicado, sí; de un tipo en particular, no. Filtrar por entity_kind
+  // acá haría que el mismo endpoint aceptara un colectivo y rechazara un
+  // venue con un 404 que además mentiría, porque el venue existe.
+  const filas = await sql`
+    SELECT slug FROM collectives WHERE slug = ${collectiveSlug} AND status = 'published'
+  `;
+  if (filas.length === 0) {
+    return { ok: false, status: 404, error: "Eso no existe" };
+  }
+
+  await sql`
+    INSERT INTO collective_likes (collective_slug, user_email)
+    VALUES (${collectiveSlug}, ${email})
+    ON CONFLICT (collective_slug, user_email) DO NOTHING
+  `;
+
+  const [{ n }] = await sql`
+    SELECT COUNT(*)::int AS n FROM collective_likes WHERE collective_slug = ${collectiveSlug}
+  `;
+  return { ok: true, value: { liked: true, count: n as number } };
+}
+
+/** Saca el like. Idempotente y acotado al email de quien llama. */
+export async function unlikeCollective(
+  collectiveSlug: string,
+  email: string
+): Promise<WriteResult<{ liked: false; count: number }>> {
+  await sql`
+    DELETE FROM collective_likes
+    WHERE collective_slug = ${collectiveSlug} AND user_email = ${email}
+  `;
+
+  const [{ n }] = await sql`
+    SELECT COUNT(*)::int AS n FROM collective_likes WHERE collective_slug = ${collectiveSlug}
+  `;
+  return { ok: true, value: { liked: false, count: n as number } };
+}

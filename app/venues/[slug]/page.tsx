@@ -5,12 +5,15 @@ import { MapPin, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
+import { LikeButton } from "@/components/like-button";
 import { VenueContactButton } from "@/components/venue-contact-button";
 import {
+  countCollectiveLikes,
   getCollectiveMembers,
   getMyArtistSlug,
   getPendingForCollective,
   getVenueBySlug,
+  hasLikedCollective,
 } from "@/lib/db";
 
 export const revalidate = 0;
@@ -49,10 +52,12 @@ export default async function VenuePage({
   const session = await auth();
   const email = session?.user?.email ?? null;
 
-  const [membersByVenue, pending, myArtistSlug] = await Promise.all([
+  const [membersByVenue, pending, myArtistSlug, likeCount, liked] = await Promise.all([
     getCollectiveMembers("venue"),
     getPendingForCollective(slug),
     email ? getMyArtistSlug(email) : Promise.resolve(null),
+    countCollectiveLikes(slug),
+    email ? hasLikedCollective(email, slug) : Promise.resolve(false),
   ]);
 
   const roster = membersByVenue.get(slug) ?? [];
@@ -100,6 +105,19 @@ export default async function VenuePage({
           <AutoTranslate text={venue.bio} />
         </p>
       )}
+
+{/* SEGUIR (§11). Se muestra al visitante y también al dueño, que no
+          tiene por qué quedar escondido de su propio número de seguidores
+          — misma regla que el press kit del DJ. */}
+      <div className="mt-4">
+        <LikeButton
+          endpoint={`/api/likes/collectives/${slug}`}
+          returnTo={`/venues/${slug}`}
+          initialLiked={liked}
+          initialCount={likeCount}
+          signedIn={!!email}
+        />
+      </div>
 
       {/* §5.1: visible para cualquiera, con o sin sesión. Es el punto de
           entrada de quien quiere armar una fiesta acá. */}
