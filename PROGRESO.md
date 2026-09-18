@@ -231,12 +231,25 @@ SELECT slug FROM tracks t WHERE t.is_fixed
 -- y su gemela para dj_sets
 ```
 
-**2. `deleteCollective()` fabrica ese huérfano con un click.** Ya existe
-y es un botón de admin. `content_placements.collective_slug` va ON
-DELETE CASCADE, así que borrar el colectivo se lleva el placement y deja
-la pieza fija sin destino. CASCADE es defendible —el destino dejó de
-existir— pero la consecuencia tiene que estar escrita y detectable. La
-consulta de arriba cubre este caso también.
+**2. `deleteCollective()` fabrica ese huérfano con un click. SE ARREGLA
+EN D4, NO SE ANOTA.** Ya existe y es un botón de admin desplegado.
+`content_placements.collective_slug` va ON DELETE CASCADE, así que
+borrar el colectivo se lleva el placement y deja la pieza fija sin
+destino: invisible en todas partes, sin error, para siempre.
+
+Un botón que ya existe y que rompe datos no es deuda futura. En D4,
+`deleteCollective` tiene que hacer una de estas dos, y la decisión va
+escrita en el código con su razón:
+
+- **Negarse** si el colectivo tiene placements, diciendo cuántas piezas
+  quedarían huérfanas. Es más ruidoso y es honesto: el admin resuelve a
+  mano qué pasa con ese contenido.
+- **Reasignar o marcar** las piezas afectadas antes de borrar, en la
+  misma transacción.
+
+Lo que NO puede seguir pasando es que el CASCADE decida por omisión. La
+consulta de detección de arriba sigue haciendo falta igual, para las
+filas que ya hubieran quedado así.
 
 **3. El INSERT de placement al aceptar necesita `ON CONFLICT DO
 NOTHING`.** Si el colaborador comparte casa con el autor, el índice
