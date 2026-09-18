@@ -8,8 +8,9 @@ import { formatShortDate } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { ProfileHeader } from "@/components/profile-header";
 import { MembershipInbox } from "@/components/membership-inbox";
-import { getArtistBySlug, getGenreBranches, getGenreTags, getLikedArtists, getLikedCollectives, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
+import { getArtistBySlug, getGenreBranches, getGenreTags, getInvitacionesColab, getLikedArtists, getLikedCollectives, getMyArtistSlug, getPendingForArtist, getMyCurrentCasa, getMyMemberships, getCollectivesOwnedBy, getPendingForCollective, getCollectiveMembers, getRecentDepartures } from "@/lib/db";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { ColabInbox } from "@/components/colab-inbox";
 import { LikedArtists } from "@/components/liked-artists";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
 import { CrearArtista } from "@/components/crear-artista";
@@ -72,13 +73,14 @@ export default async function PerfilPage() {
   const isDJ = myArtistSlug !== null;
 
   // Everybody gets these three: orders, tickets, the artists they follow.
-  const [orders, tickets, profile, likedArtists, likedColectivos, likedVenues] = await Promise.all([
+  const [orders, tickets, profile, likedArtists, likedColectivos, likedVenues, invitaciones] = await Promise.all([
     getMyOrders(),
     getMyTicketInstances(),
     getMyProfile(),
     getLikedArtists(email),
     getLikedCollectives(email, "collective"),
     getLikedCollectives(email, "venue"),
+    getInvitacionesColab(email),
   ]);
 
   // DJ-only. A plain user has no memberships to have a conversation about,
@@ -337,6 +339,10 @@ export default async function PerfilPage() {
 
       {/* Artistas que me gustan — debajo de MIS TIQUETES. No se renderiza
           si la cuenta no sigue a nadie. */}
+      {/* Invitaciones a colaborar (§6.1). Va ANTES de los likes: es lo
+          único de esta página que espera una respuesta de quien la mira. */}
+      <ColabInbox invitaciones={invitaciones} />
+
       {/* Tres secciones y no una lista mezclada: para el usuario son
           tres cosas distintas, igual que /artistas, /colectivos y
           /venues son tres secciones. Cada una no se renderiza si está

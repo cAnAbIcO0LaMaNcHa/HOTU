@@ -887,6 +887,43 @@ export async function countCollectiveLikes(collectiveSlug: string): Promise<numb
   return (rows[0]?.n as number) ?? 0;
 }
 
+export type CandidatoColab = { slug: string; name: string; kind: "artist" | "collective" };
+
+/**
+ * A quién se puede invitar a colaborar (§6.1): artistas y colectivos
+ * publicados.
+ *
+ * SIN VENUES. Un venue no colabora en una pieza: la música es de quien
+ * la hace, no del lugar donde suena. El write path lo rechaza igual —es
+ * la frontera de verdad, porque la app móvil va a usar el mismo
+ * endpoint—, pero ofrecer en un selector algo que el servidor va a
+ * rechazar es hacerle perder el tiempo a la persona.
+ *
+ * Se cargan enteros y se filtran en el cliente: son decenas, no miles, y
+ * ir al servidor por cada letra tecleada sería peor por todos lados.
+ */
+export async function getCandidatosColab(): Promise<CandidatoColab[]> {
+  const artistas = await sql`
+    SELECT slug, name FROM artists WHERE status = 'published' ORDER BY name
+  `;
+  const colectivos = await sql`
+    SELECT slug, name FROM collectives
+    WHERE status = 'published' AND entity_kind = 'collective' ORDER BY name
+  `;
+  return [
+    ...artistas.map((r) => ({
+      slug: r.slug as string,
+      name: r.name as string,
+      kind: "artist" as const,
+    })),
+    ...colectivos.map((r) => ({
+      slug: r.slug as string,
+      name: r.name as string,
+      kind: "collective" as const,
+    })),
+  ];
+}
+
 export type InvitacionColab = {
   id: number;
   tipo: "set" | "track";

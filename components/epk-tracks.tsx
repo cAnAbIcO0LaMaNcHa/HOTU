@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { Disc3 } from "lucide-react";
+import { EpkNewRow } from "./epk-new-row";
 import { EpkSection, Field } from "./epk-editable-section";
 import { EpkRowEditor } from "./epk-row-editor";
 import { formatShortDate } from "@/lib/date-utils";
-import type { Track } from "@/lib/db";
+import type { CandidatoColab, Track } from "@/lib/db";
 
 const VISIBLE = 5;
 
@@ -25,10 +26,14 @@ export function EpkTracks({
   tracks,
   canEdit,
   artistSlug,
+  candidatos,
+  sinCasa,
 }: {
   tracks: Track[];
   canEdit: boolean;
   artistSlug: string;
+  candidatos: CandidatoColab[];
+  sinCasa: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? tracks : tracks.slice(0, VISIBLE);
@@ -38,6 +43,16 @@ export function EpkTracks({
       title="TRACKS"
       isEmpty={tracks.length === 0}
       canEdit={canEdit}
+      action={
+        canEdit ? (
+          <EpkNewRow
+            artistSlug={artistSlug}
+            collection="tracks"
+            candidatos={candidatos}
+            sinCasa={sinCasa}
+          />
+        ) : null
+      }
       hint="Todavía no hay tracks propios acá. Agregá tus producciones para que el perfil muestre qué hacés además de tocar."
     >
       <div className="mt-6 flex gap-4 overflow-x-auto pb-2">

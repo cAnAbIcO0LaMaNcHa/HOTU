@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
 import { EpkSection, Field } from "./epk-editable-section";
+import { EpkNewRow } from "./epk-new-row";
 import { EpkRowEditor } from "./epk-row-editor";
-import type { DjSet } from "@/lib/db";
+import type { CandidatoColab, DjSet } from "@/lib/db";
 
 const VISIBLE = 4;
 
@@ -35,10 +36,16 @@ export function EpkSets({
   sets,
   canEdit,
   artistSlug,
+  candidatos,
+  sinCasa,
 }: {
   sets: DjSet[];
   canEdit: boolean;
   artistSlug: string;
+  /** A quién se puede invitar a colaborar (§6.1). */
+  candidatos: CandidatoColab[];
+  /** Si el autor no tiene casa hoy: cambia lo que dice el aviso. */
+  sinCasa: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? sets : sets.slice(0, VISIBLE);
@@ -48,6 +55,16 @@ export function EpkSets({
       title="DJ SETS"
       isEmpty={sets.length === 0}
       canEdit={canEdit}
+      action={
+        canEdit ? (
+          <EpkNewRow
+            artistSlug={artistSlug}
+            collection="sets"
+            candidatos={candidatos}
+            sinCasa={sinCasa}
+          />
+        ) : null
+      }
       hint="Todavía no hay sets acá. Subí una grabación para que los organizadores escuchen cómo sonás antes de contratarte."
     >
       <div className="mt-6 space-y-3">

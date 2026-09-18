@@ -10,6 +10,7 @@ import { LikeButton } from "@/components/like-button";
 import { FranjaRevision } from "@/components/franja-revision";
 import { GeneroEditable } from "@/components/genero-editable";
 import { canEditArtist, loQueFalta } from "@/lib/artists-write";
+import { casaActual } from "@/lib/collaborators-write";
 import {
   countArtistLikes,
   getArtistBySlug,
@@ -20,6 +21,7 @@ import {
   getSetsByArtist,
   getTracksByArtist,
   hasLikedArtist,
+  getCandidatosColab,
 } from "@/lib/db";
 
 export const revalidate = 0;
@@ -66,6 +68,15 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
   // único que hace falta para la franja, y para un visitante ese cálculo
   // no tendría a quién mostrarse.
   const faltantes = canEdit ? await loQueFalta(slug) : [];
+
+  // Para publicar: a quién se puede invitar, y si el artista tiene casa
+  // hoy. Las dos SOLO si quien mira puede editar — un visitante no abre
+  // el formulario nunca, y pedirle a la base la lista entera de
+  // candidatos para no usarla sería trabajo puro.
+  const [candidatos, casa] = canEdit
+    ? await Promise.all([getCandidatosColab(), casaActual(slug)])
+    : [[], null];
+  const sinCasa = casa === null;
 
   // El género declarado, y el vocabulario SOLO si puede editarlo: los 719
   // tags son para el selector, y un visitante no lo abre nunca.
@@ -124,8 +135,22 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
       />
 
       {/* DJ SETS and TRACKS are two separate sections, never tabs. */}
-      <EpkSets sets={sets} canEdit={canEdit} artistSlug={slug} />
-      <EpkTracks tracks={tracks} canEdit={canEdit} artistSlug={slug} />
+      {/* candidatos y sinCasa solo hacen falta para publicar, así que
+          se cargan únicamente cuando quien mira puede editar. */}
+      <EpkSets
+        sets={sets}
+        canEdit={canEdit}
+        artistSlug={slug}
+        candidatos={candidatos}
+        sinCasa={sinCasa}
+      />
+      <EpkTracks
+        tracks={tracks}
+        canEdit={canEdit}
+        artistSlug={slug}
+        candidatos={candidatos}
+        sinCasa={sinCasa}
+      />
       <EpkEvents gigs={gigs} canEdit={canEdit} currentYear={new Date().getFullYear()} />
     </section>
   );
