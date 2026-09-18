@@ -70,14 +70,28 @@ function readMeta(formData: FormData) {
   return { scope, countryCode, language, status, featured, priorityAt };
 }
 
+/**
+ * El organizador del evento (§7). Vacío significa NULL, no "".
+ *
+ * organizer_slug es un FK contra collectives(slug): una cadena vacía no
+ * corresponde a ninguna fila y reventaría con foreign_key_violation. Un
+ * evento sin organizador es un estado legítimo —hoy lo son todos— y se
+ * representa con NULL.
+ */
+function readOrganizer(formData: FormData): string | null {
+  const v = formData.get("organizerSlug");
+  const s = typeof v === "string" ? v.trim() : "";
+  return s === "" ? null : s;
+}
+
 export async function createEvent(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
   const endAt = readEndAt(formData);
   const flyerUrl = (await uploadFlyerIfPresent(formData)) ?? null;
   await sql`
-    INSERT INTO events (event_date, end_at, flyer_url, city, venue, title, lineup, district, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("date"))}, ${endAt}, ${flyerUrl}, ${String(formData.get("city"))}, ${String(formData.get("venue"))}, ${String(formData.get("title"))}, ${String(formData.get("lineup"))}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO events (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug, district, scope, country_code, language, status, featured, priority_at)
+    VALUES (${String(formData.get("date"))}, ${endAt}, ${flyerUrl}, ${String(formData.get("city"))}, ${String(formData.get("venue"))}, ${String(formData.get("title"))}, ${String(formData.get("lineup"))}, ${readOrganizer(formData)}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
   `;
   refreshAll();
 }
@@ -99,6 +113,7 @@ export async function updateEvent(formData: FormData): Promise<void> {
         venue = ${String(formData.get("venue"))},
         title = ${String(formData.get("title"))},
         lineup = ${String(formData.get("lineup"))},
+        organizer_slug = ${readOrganizer(formData)},
         scope = ${m.scope},
         country_code = ${m.countryCode},
         language = ${m.language},
@@ -116,6 +131,7 @@ export async function updateEvent(formData: FormData): Promise<void> {
         venue = ${String(formData.get("venue"))},
         title = ${String(formData.get("title"))},
         lineup = ${String(formData.get("lineup"))},
+        organizer_slug = ${readOrganizer(formData)},
         scope = ${m.scope},
         country_code = ${m.countryCode},
         language = ${m.language},
@@ -250,6 +266,15 @@ export async function deleteCollective(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const slug = String(formData.get("slug"));
 
+  // Los eventos que organiza. VAN EN LA MISMA NEGATIVA, y tienen que ir
+  // ahora y no después: events.organizer_slug es ON DELETE RESTRICT, así
+  // que sin esta guarda Postgres devuelve un foreign_key_violation crudo
+  // desde un Server Action — en producción eso es una pantalla rota con
+  // un digest, sin decirle al admin que el motivo es "organiza eventos".
+  const eventos = await sql`
+    SELECT id, title FROM events WHERE organizer_slug = ${slug} ORDER BY event_date DESC
+  `;
+
   const piezas = await sql`
     SELECT 'set' AS tipo, set_slug AS pieza FROM content_placements
       WHERE collective_slug = ${slug} AND set_slug IS NOT NULL
@@ -258,6 +283,15 @@ export async function deleteCollective(formData: FormData): Promise<void> {
       WHERE collective_slug = ${slug} AND track_slug IS NOT NULL
     ORDER BY 1, 2
   `;
+
+  if (eventos.length > 0) {
+    throw new Error(
+      `No se puede borrar "${slug}": organiza ${eventos.length} evento(s) — ` +
+        eventos.map((e) => `#${e.id} ${e.title}`).join(", ") +
+        ". Reasignales otro organizador antes de borrarlo. No se hace solo: " +
+        "elegir a quién pasan esos eventos es una decisión, no un default."
+    );
+  }
 
   if (piezas.length > 0) {
     const sets = piezas.filter((r) => r.tipo === "set").map((r) => r.pieza as string);

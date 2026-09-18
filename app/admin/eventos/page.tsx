@@ -1,4 +1,5 @@
-import { getAllEvents } from "@/lib/db";
+import { getAllArtists, getAllCollectives, getAllEvents, getLineupsByEvent, getAllVenues } from "@/lib/db";
+import { EventLineupEditor } from "@/components/event-lineup-editor";
 import { COUNTRY_CODES } from "@/lib/roles";
 import { createEvent, updateEvent, deleteEvent } from "@/lib/db-write";
 
@@ -16,6 +17,38 @@ function toDatetimeLocal(iso: string | null): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Quién organiza. Colectivos Y venues: §5 le da eventos propios al venue,
+ * y organizar no es tocar.
+ *
+ * "SIN ASIGNAR" es una opción de verdad y va primera. Los eventos que ya
+ * existen no tienen organizador —no sale del texto del flyer— y forzar a
+ * elegir uno para poder guardar cualquier otro campo obligaría a inventar
+ * el dato.
+ */
+function OrganizerField({
+  organizadores,
+  actual,
+}: {
+  organizadores: Array<{ slug: string; name: string; esVenue: boolean }>;
+  actual?: string | null;
+}) {
+  return (
+    <label className="block sm:col-span-2">
+      <span className={labelCls}>ORGANIZADOR</span>
+      <select name="organizerSlug" defaultValue={actual ?? ""} className={inputCls}>
+        <option value="">SIN ASIGNAR</option>
+        {organizadores.map((o) => (
+          <option key={o.slug} value={o.slug}>
+            {o.name}
+            {o.esVenue ? " · VENUE" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function MetaFields({ e }: { e?: { scope: string; countryCode: string; language: string; status: string; featured: boolean } }) {
@@ -58,6 +91,30 @@ function MetaFields({ e }: { e?: { scope: string; countryCode: string; language:
 export default async function AdminEventos() {
   const events = await getAllEvents({ includeAll: true });
 
+  // Colectivos Y venues pueden organizar (§5), así que la lista junta
+  // los dos. Los lineups van de a todos en una consulta, no uno por
+  // evento: cada sql del driver HTTP es su propio round-trip.
+  const [colectivos, venues, lineups] = await Promise.all([
+    getAllCollectives({ includeAll: true }),
+    getAllVenues({ includeAll: true }),
+    getLineupsByEvent(events.map((e) => e.id)),
+  ]);
+  const organizadores = [
+    ...colectivos.map((c) => ({ slug: c.slug, name: c.name, esVenue: false })),
+    ...venues.map((v) => ({ slug: v.slug, name: v.name, esVenue: true })),
+  ].sort((x, y) => x.name.localeCompare(y.name, "es"));
+
+  // Para resolver entradas del lineup: artistas y colectivos, SIN venues.
+  // Un venue organiza pero no toca.
+  const candidatosLineup = [
+    ...(await getAllArtists({ includeAll: true })).map((a) => ({
+      slug: a.slug,
+      name: a.name,
+      kind: "artist" as const,
+    })),
+    ...colectivos.map((c) => ({ slug: c.slug, name: c.name, kind: "collective" as const })),
+  ].sort((x, y) => x.name.localeCompare(y.name, "es"));
+
   return (
     <div className="space-y-12">
       <div className="border border-primary p-6">
@@ -76,6 +133,7 @@ export default async function AdminEventos() {
           </label>
           <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" required placeholder="HOTU PRIME · NOCHE 01" className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>LINE-UP</span><input type="text" name="lineup" required placeholder="Nina Acid · Subsuelo DJs" className={inputCls} /></label>
+          <OrganizerField organizadores={organizadores} />
           <MetaFields />
           <button type="submit" className="sm:col-span-2 px-6 py-3 font-mono text-xs tracking-widest surface-chrome">CREAR EVENTO</button>
         </form>
@@ -115,6 +173,20 @@ export default async function AdminEventos() {
                 </label>
                 <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" defaultValue={e.title} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>LINE-UP</span><input type="text" name="lineup" defaultValue={e.lineup} required className={inputCls} /></label>
+                <OrganizerField organizadores={organizadores} actual={e.organizerSlug} />
+                {/* El editor del lineup relacionado, fuera del <form>: se
+                    guarda por su propia ruta y no con el submit del
+                    evento. Anidar un form adentro de otro es HTML
+                    inválido y el navegador lo desarma. */}
+                <div className="sm:col-span-2">
+                  <EventLineupEditor
+                    eventId={e.id}
+                    entries={lineups.get(e.id) ?? []}
+                    lineupTexto={e.lineup}
+                    candidatos={candidatosLineup}
+                    revisadoEn={e.lineupReviewedAt}
+                  />
+                </div>
                 <MetaFields e={e} />
                 <button type="submit" className="border border-primary px-4 py-2 font-mono text-xs tracking-widest text-primary">GUARDAR CAMBIOS</button>
               </form>

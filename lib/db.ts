@@ -144,7 +144,23 @@ export type EventItem = ContentMeta & {
   city: string;
   venue: string;
   title: string;
+  /**
+   * El texto libre del flyer. CONGELADO desde §7: sigue guardándose y
+   * mostrándose, pero la relación de verdad es event_lineup. Es la única
+   * prueba de qué decía el flyer, así que no se borra.
+   */
   lineup: string;
+  /** El colectivo o venue que lo organiza (§7). NULL = todavía sin asignar. */
+  organizerSlug: string | null;
+  /**
+   * Cuándo una persona revisó el lineup relacionado. NULL = sin revisar.
+   *
+   * "Revisado" NO es "todo resuelto": un nombre puede no corresponder a
+   * nadie para siempre —un invitado sin perfil, una crew que se
+   * disolvió—, y exigir resolverlo todo dejaría eventos marcados como
+   * pendientes eternamente.
+   */
+  lineupReviewedAt: string | null;
 };
 
 /** Una entrada del lineup de un evento (§7). */
@@ -1464,6 +1480,10 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
     venue: r.venue,
     title: r.title,
     lineup: r.lineup,
+    organizerSlug: (r.organizer_slug as string | null) ?? null,
+    lineupReviewedAt: r.lineup_reviewed_at
+      ? new Date(r.lineup_reviewed_at as string).toISOString()
+      : null,
   }));
 }
 
