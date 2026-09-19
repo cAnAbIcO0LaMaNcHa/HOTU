@@ -50,8 +50,8 @@
  * QUÉ ESCRIBE
  * ============================================================
  *
- * 1. Una cuenta por artista sin dueño: <slug>@test.hotu.local, con
- *    contraseña común y auth_provider 'credentials'.
+ * 1. Una cuenta por artista sin dueño: <slug>@perfil.hotu.local, SIN
+ *    contraseña y con auth_provider 'credentials'.
  * 2. artists.owner_email de cada uno.
  * 3. collectives.owner_email de los colectivos sin dueño.
  * 4. La membresía del dueño pasa a 'casa'. Si no tenía ninguna —el caso
@@ -63,28 +63,56 @@
  * inventado.
  *
  * ============================================================
- * LA CONTRASEÑA ES COMÚN Y ESO ES DELIBERADO
+ * LAS CUENTAS NACEN SIN CONTRASEÑA, Y NO PUEDEN ENTRAR
  * ============================================================
  *
- * Son cuentas de arranque para perfiles que hoy no tiene nadie, no
- * cuentas de personas. Cada hash lleva su propio salt igual —hashPassword
- * genera uno por llamada— así que la contraseña común no se nota en la
- * base y no habilita un ataque por tabla.
+ * password_hash queda en NULL. verifyCredentials devuelve null cuando no
+ * hay hash —es el mismo camino por el que una cuenta de Google no entra
+ * con contraseña— así que estas cuentas EXISTEN, son dueñas de su perfil
+ * y satisfacen el FK, pero nadie puede iniciar sesión con ellas.
  *
- * Queda anotado en PROGRESO.md como deuda: cuando cada DJ real reclame su
- * perfil, hay que forzar el cambio. Hasta entonces, un perfil sin dueño
- * es peor que uno con una contraseña conocida por el equipo.
+ * La primera versión les ponía una contraseña común. Se descartó por tres
+ * razones que se suman:
+ *
+ * 1. NO HAY FORMA DE CAMBIARLA. No existe ninguna ruta en el repo que
+ *    escriba password_hash sobre una cuenta viva: createAccount es
+ *    INSERT ... ON CONFLICT DO NOTHING, incapaz por diseño de pisar una
+ *    fila existente. Doce contraseñas permanentes.
+ * 2. EL EMAIL ES DEDUCIBLE. El patrón es <slug>@dominio y los slugs están
+ *    en la URL de cada perfil. Una contraseña compartida más un usuario
+ *    adivinable es una puerta abierta.
+ * 3. SON PERFILES DE ARTISTAS REALES. El día que alguno reclame el suyo,
+ *    el camino tiene que ser reclamarlo, no que alguien le pase una clave
+ *    que comparte con otros once.
+ *
+ * CONSECUENCIA ACEPTADA: hasta que exista el flujo de reclamo, esos 12
+ * perfiles solo los puede editar un SUPER_ADMIN — canEditArtist cae a
+ * isSuperAdmin cuando quien mira no es el dueño. No quedan inalcanzables,
+ * quedan reservados.
+ *
+ * Eso convierte "recuperar contraseña" de deuda anotada en REQUISITO, y
+ * así está en PROGRESO.md: sin ese flujo, estos perfiles no se pueden
+ * entregar.
  */
 
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { hashPassword } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const CONTRASENA = "HOTU11111";
-const DOMINIO = "@test.hotu.local";
+/**
+ * Dominio PROPIO, separado del de los fixtures.
+ *
+ * @test.hotu.local es el namespace declarado de seed-test. Meter doce
+ * cuentas de producción ahí adentro dejaba una mina puesta a mano: la
+ * limpieza obvia —DELETE FROM user_profiles WHERE email LIKE
+ * '%@test.hotu.local'— no falla, porque el FK es ON DELETE SET NULL.
+ * Pondría los doce owner_email en NULL en silencio y devolvería los
+ * perfiles al estado que esta migración vino a arreglar. Alguien lo hace
+ * un martes y nadie entiende el jueves.
+ */
+const DOMINIO = "@perfil.hotu.local";
 
 type Plan = {
   artistSlug: string;
@@ -333,15 +361,14 @@ export async function GET(request: Request) {
         );
         continue;
       }
-      const hash = await hashPassword(CONTRASENA);
       const queries = [
         // ON CONFLICT DO NOTHING: si la cuenta ya existe, NO se le pisa la
         // contraseña. Una segunda corrida no puede sacarle la cuenta a
         // alguien que ya la esté usando.
         sql`
           INSERT INTO user_profiles
-            (email, display_name, password_hash, auth_provider, updated_at)
-          VALUES (${p.email}, ${p.artistName}, ${hash}, 'credentials', now())
+            (email, display_name, auth_provider, updated_at)
+          VALUES (${p.email}, ${p.artistName}, 'credentials', now())
           ON CONFLICT (email) DO NOTHING
         `,
         // WHERE owner_email IS NULL: no le cambia el dueño a un perfil que
@@ -431,7 +458,7 @@ export async function GET(request: Request) {
     );
     for (const p of problemas) log.push(`  - ${p}`);
     log.push(
-      `Artistas escritos: ${escritos} de ${plan.length}. Cuentas del dominio ${DOMINIO}: ${antes.cuentasDelDominio} antes, ${despues.cuentasDelDominio} después — ese número incluye las de seed-test, no solo las de esta corrida.`
+      `Artistas escritos: ${escritos} de ${plan.length}. Cuentas del dominio ${DOMINIO}: ${antes.cuentasDelDominio} antes, ${despues.cuentasDelDominio} después — ese dominio es solo de esta migración, separado del de los fixtures.`
     );
 
     return NextResponse.json({

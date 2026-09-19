@@ -184,14 +184,55 @@ eso lee las tablas de género y `review_status`.
 
 ---
 
+## REQUISITO BLOQUEANTE — EL FLUJO DE RECLAMO DE PERFIL
+
+**Sin esto, 12 perfiles de producción no se pueden entregar a nadie.**
+Dejó de ser deuda anotada: es un requisito.
+
+Los 12 artistas y 6 colectivos que entraron por `/api/migrate` ahora
+tienen cuenta dueña —`<slug>@perfil.hotu.local`— pero esas cuentas
+nacen **sin contraseña**. `verifyCredentials` devuelve null cuando no hay
+`password_hash`, así que existen, son dueñas, satisfacen el FK, y **nadie
+puede iniciar sesión con ellas**.
+
+Se descartó ponerles una contraseña común por tres razones que se suman:
+
+1. **No habría forma de cambiarla.** No existe ninguna ruta en el repo
+   que escriba `password_hash` sobre una cuenta viva: `createAccount` es
+   `INSERT ... ON CONFLICT DO NOTHING`, incapaz por diseño de pisar una
+   fila existente. Serían doce contraseñas permanentes.
+2. **El email es deducible.** El patrón es `<slug>@dominio` y los slugs
+   están en la URL de cada perfil. Usuario adivinable más contraseña
+   compartida es una puerta abierta.
+3. **Son perfiles de artistas reales de la escena.** El día que alguno
+   reclame el suyo, el camino tiene que ser reclamarlo, no que alguien le
+   pase una clave que comparte con otros once.
+
+**Consecuencia aceptada mientras tanto:** esos perfiles solo los puede
+editar un SUPER_ADMIN — `canEditArtist` cae a `isSuperAdmin` cuando quien
+mira no es el dueño. No quedan inalcanzables, quedan **reservados**.
+
+**Qué hace falta**, como mínimo:
+- Una ruta que permita fijar contraseña sobre una cuenta que no tiene.
+- Alguna prueba de identidad para reclamar un perfil. No alcanza con
+  conocer el email, porque es deducible.
+- O, más simple: que el reclamo lo apruebe un SUPER_ADMIN a mano, igual
+  que la cola de aprobación de perfiles de DJ que ya existe.
+
+Relacionado y del mismo problema: **recuperar contraseña** tampoco
+existe para ninguna cuenta, ni las normales. Con Credentials en
+producción ya era necesario; ahora además bloquea esto.
+
+---
+
 ## DECISIONES PENDIENTES
 
 1. **Verificación de email y límite por IP.** Van juntos, con
    almacenamiento compartido. Hoy cualquiera se registra con un correo
    que no controla. Lo que contiene el daño es la aprobación manual: un
    registro basura sin perfil aprobado no llega a ningún lado.
-2. **Recuperar contraseña.** No existe, y con Credentials en producción
-   se vuelve necesaria.
+2. **Recuperar contraseña.** Ver la sección REQUISITO BLOQUEANTE de
+   arriba: dejó de ser un pendiente suelto.
 3. **El género del contenido.** HOTFIX §3 quiere filtro de branch y tag
    en `/noticias`, `/eventos`, `/sets` y `/discografia`, pero el modelo
    de género es solo para artistas y colectivos. Eso lo cubría `district`.
