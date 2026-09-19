@@ -1,0 +1,111 @@
+import Link from "next/link";
+import { ChevronRight, Disc3 } from "lucide-react";
+import { MembershipInbox } from "@/components/membership-inbox";
+import { ColabInbox } from "@/components/colab-inbox";
+import { CrearArtista } from "@/components/crear-artista";
+import { PanelVacio } from "@/components/panel-switcher";
+import {
+  getArtistBySlug,
+  getGenreBranches,
+  getGenreTags,
+  getInvitacionesColab,
+  getMyArtistSlug,
+  getMyCurrentCasa,
+  getMyMemberships,
+  getPendingForArtist,
+} from "@/lib/db";
+
+/**
+ * Panel ARTISTA: el press kit propio y todo lo que le llega al DJ.
+ *
+ * Press kit, solicitudes de membresía, invitaciones de colaboración. Lo
+ * que antes estaba mezclado con los pedidos y los tiquetes en una sola
+ * columna larga.
+ *
+ * SIN PERFIL DE DJ EL PANEL NO DESAPARECE: ahí va la invitación a
+ * crearlo. Es el único lugar donde alguien que no sabe que puede tener un
+ * press kit se puede enterar.
+ *
+ * Cada panel consulta lo suyo y nada más. La página vieja pedía las
+ * quince consultas siempre, aunque solo fueras a mirar tus tiquetes.
+ */
+export async function PanelArtista({ email }: { email: string }) {
+  const myArtistSlug = await getMyArtistSlug(email);
+
+  /**
+   * LAS INVITACIONES A COLABORAR SE PIDEN SIEMPRE, tengas artista o no.
+   *
+   * getInvitacionesColab matchea por artista O POR COLECTIVO: una
+   * invitación dirigida a un colectivo le llega a la cuenta que lo
+   * administra, y esa cuenta puede no tener perfil de DJ. En la primera
+   * versión esto vivía adentro de la rama "sí sos DJ", así que esas
+   * invitaciones quedaban invisibles en los cuatro paneles — la página
+   * vieja las renderizaba sin condición.
+   *
+   * PENDIENTE DE DECIDIR: una invitación dirigida a un COLECTIVO capaz
+   * pertenece al panel COLECTIVO, que es donde su dueño va a buscarla.
+   * Por ahora quedan las dos juntas acá, que es lo que hacía antes y no
+   * pierde ninguna.
+   */
+  const invitaciones = await getInvitacionesColab(email);
+
+  if (!myArtistSlug) {
+    // El vocabulario de géneros solo se pide acá, que es donde hay un
+    // selector que lo use. Un DJ que ya existe no abre este formulario.
+    const [branches, tags] = await Promise.all([getGenreBranches(), getGenreTags()]);
+    return (
+      <>
+        <ColabInbox invitaciones={invitaciones} />
+        <PanelVacio
+          titulo="TODAVÍA NO SOS DJ ACÁ"
+          explicacion="Un perfil de DJ es tu press kit público: biografía, sets, tracks, los eventos donde tocaste y tus números reales de convocatoria. Es lo que un organizador mira antes de contratarte, y es el primer escalón — sin él no podés fundar un colectivo ni registrar un venue."
+        />
+        <CrearArtista branches={branches} tags={tags} />
+      </>
+    );
+  }
+
+  // Con el email propio: un perfil recién creado está en borrador, y sin
+  // esto el dueño no vería su propio press kit en su propio perfil.
+  const [myArtist, pending, currentCasa, memberships] = await Promise.all([
+    getArtistBySlug(myArtistSlug, email),
+    getPendingForArtist(email),
+    getMyCurrentCasa(email),
+    getMyMemberships(email),
+  ]);
+
+  return (
+    <>
+      {myArtist && (
+        <div className="border-chrome mt-10 p-6">
+          <h2 className="inline-flex items-center gap-2 text-xl font-bold">
+            <Disc3 className="h-4 w-4 text-primary" /> MI PRESS KIT
+          </h2>
+          <p className="mt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+            Tu perfil público de DJ. Se edita ahí mismo: entrás y cambiás lo que veas, sin
+            formularios aparte. Los sets y tracks se suben desde ahí.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              href={`/artistas/${myArtist.slug}`}
+              className="surface-chrome sheen inline-flex items-center gap-2 px-4 py-2 font-mono text-[11px] font-bold tracking-[0.2em]"
+            >
+              VER Y EDITAR <ChevronRight className="h-3 w-3" />
+            </Link>
+            <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
+              {myArtist.name}
+              {myArtist.djCode ? ` · CÓDIGO ${myArtist.djCode}` : ""}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Invitaciones a colaborar (§6.1) y conversaciones de membresía.
+          Las dos esperan una respuesta de quien mira, así que van
+          arriba de todo lo demás del panel. */}
+      <ColabInbox invitaciones={invitaciones} />
+
+      <MembershipInbox pending={pending} memberships={memberships} currentCasa={currentCasa} />
+    </>
+  );
+}

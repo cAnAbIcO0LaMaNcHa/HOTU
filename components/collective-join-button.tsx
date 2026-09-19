@@ -77,8 +77,12 @@ export function CollectiveJoinButton({
         <p className="mt-2 font-mono text-[11px] text-muted-foreground">
           {collectiveName} tiene que responder. Vas a verla en tu perfil mientras espera.
         </p>
+        {/* Al panel ARTISTA, que es donde viven las conversaciones de
+            membresía desde que /perfil se partió en cuatro. Mandarlo a
+            /perfil pelado lo dejaba en MI PERFIL, mirando sus pedidos —
+            una transición no deja una página peor que antes. */}
         <Link
-          href="/perfil"
+          href="/perfil?panel=artista"
           className="mt-3 inline-block font-mono text-[10px] tracking-[0.2em] text-muted-foreground underline hover:text-primary"
         >
           VER MIS POSTULACIONES

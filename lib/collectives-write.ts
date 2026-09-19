@@ -86,7 +86,31 @@ export async function removeMember(
     return { ok: false, status: 404, error: "Collective not found" };
   }
 
-  if (!(await canEditCollective(collectiveSlug, actorEmail))) {
+  /**
+   * LO PUEDE CERRAR EL COLECTIVO **O** EL PROPIO DJ.
+   *
+   * Hasta acá solo el colectivo: cerrar una membresía era su decisión y
+   * no necesitaba handshake. Eso dejaba a un DJ sin forma de salirse de
+   * un colectivo al que entró — y no poder irte de un grupo del que sos
+   * parte es peor que cualquier cosa que esa restricción protegiera.
+   *
+   * Entrar SÍ necesita las dos partes: nadie te suma sin que aceptes.
+   * Salir no, de ninguno de los dos lados: ni el colectivo necesita tu
+   * permiso para desvincularte, ni vos el suyo para irte.
+   *
+   * El histórico se respeta igual: se cierra con to_date, no se borra.
+   */
+  const esElColectivo = await canEditCollective(collectiveSlug, actorEmail);
+  const esElArtista = actorEmail
+    ? (
+        await sql`
+          SELECT 1 FROM artists
+          WHERE slug = ${artistSlug} AND lower(owner_email) = lower(${actorEmail})
+        `
+      ).length > 0
+    : false;
+
+  if (!esElColectivo && !esElArtista) {
     return { ok: false, status: 403, error: "Not allowed to edit this collective" };
   }
 

@@ -146,6 +146,10 @@ EL DEV SERVER SE LEVANTA SIEMPRE CON `npm run dev`, Y CON NADA MÁS. No `next de
 3. Escribe SIEMPRE el mismo archivo, `dev.log`, truncado en cada arranque y con fecha y PID en la primera línea. Nada de dev3, dev4, dev5: la numeración fue justamente lo que dejó archivos viejos dando vueltas para que alguien leyera el equivocado.
 4. Espera a que el server esté listo y CONFIRMA que el archivo tiene bytes. Si no, baja el server y sale con código distinto de cero.
 
+EL FILESYSTEM DE WINDOWS NO DISTINGUE MAYÚSCULAS, Y ESO FABRICA FALSOS POSITIVOS AL VERIFICAR. Guardar dos respuestas en `salida-colectivo.html` y `salida-Colectivo.html` no son dos archivos: son el mismo, y el segundo pisa al primero. Un chequeo de "?panel=Colectivo cae en MI PERFIL" da positivo cuando en realidad estabas leyendo la respuesta de la otra URL.
+
+Es la misma familia que el log congelado y que verificar un deploy contra un fixture de dev: la herramienta no falla, contesta mal. Cuando el nombre del archivo temporal salga de algo que el test varía —una URL, un slug, un parámetro—, normalizá el nombre o numeralo, y ante un resultado raro volvé a pedir esa URL sola antes de reportarlo.
+
 LA VERIFICACIÓN DE UN DEPLOY VA CONTRA ALGO QUE EXISTA EN MAIN, NUNCA CONTRA UN FIXTURE DE DEV. Las bases no tienen los mismos datos: dev está lleno de filas de prueba —test-camila, otu, bodega-prueba— que en main no existen. Esperar un deploy pidiendo /colectivos/otu da 404 para siempre, y ese 404 se lee como "todavía no subió" cuando en realidad subió hace diez minutos.
 
 Es el mismo modo de falla que el log congelado: la verificación miraba el lugar equivocado y devolvía algo con forma de respuesta. No falla ruidosamente, contesta mal.
