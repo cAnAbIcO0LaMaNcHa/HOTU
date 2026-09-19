@@ -212,6 +212,66 @@ export async function getLineupsByEvent(
   return porEvento;
 }
 
+/** Las métricas de un colectivo o venue (§4.4). */
+export type MetricasColectivo = {
+  eventos: number;
+  venues: number;
+  ciudades: number;
+};
+
+/**
+ * Las métricas de un colectivo o un venue (§4.4).
+ *
+ * SOLO DE EVENTOS QUE ORGANIZÓ. Nunca la suma de los toques de sus
+ * miembros: un colectivo de diez DJs acumularía miles de horas que no
+ * son suyas. Por eso todo sale de events.organizer_slug y no hay un solo
+ * JOIN contra artist_collectives acá.
+ *
+ * Sirve igual para un venue, porque organizer_slug apunta a la tabla que
+ * guarda los dos y §5 le da métricas propias al venue.
+ *
+ * ============================================================
+ * DOS DE LAS CUATRO MÉTRICAS DE §4.4 CAMBIARON, Y NO POR CAPRICHO
+ * ============================================================
+ *
+ * §4.3 punto 6 pedía "horas, eventos, distritos, venues". De esas:
+ *
+ * DISTRITOS YA NO EXISTE. El sistema de distritos se retiró entero en la
+ * tanda 4 §3: las columnas quedaron congeladas y nadie las lee. Contar
+ * distritos hoy sería resucitar un concepto muerto para llenar un
+ * casillero. En su lugar va CIUDADES, que es lo que esa métrica quería
+ * decir —en cuántos lugares distintos armaron algo— y que sí es un dato
+ * vivo.
+ *
+ * HORAS NO SE PUEDE CALCULAR, y por eso no está. No es que falte el
+ * dato: falta la COLUMNA. events.event_date es un DATE —sin hora— así
+ * que un evento no guarda a qué hora empezó. Con solo end_at, la resta
+ * mide desde la MEDIANOCHE del día del evento, no desde que empezó la
+ * fiesta: una prueba con un cierre ocho horas después del inicio devolvió
+ * 13 horas.
+ *
+ * Un número equivocado es peor que ninguno — más todavía en una métrica
+ * que un colectivo va a mostrarle a un organizador para que lo contrate.
+ * Queda anotado en PROGRESO.md: para tener horas hace falta una hora de
+ * inicio en events, y eso es modelo nuevo, no un cálculo.
+ */
+export async function getMetricasColectivo(slug: string): Promise<MetricasColectivo> {
+  const [r] = await sql`
+    SELECT
+      COUNT(*)::int AS eventos,
+      COUNT(DISTINCT lower(venue))::int AS venues,
+      COUNT(DISTINCT lower(city))::int AS ciudades
+    FROM events
+    WHERE organizer_slug = ${slug} AND status = 'published'
+  `;
+
+  return {
+    eventos: (r?.eventos as number) ?? 0,
+    venues: (r?.venues as number) ?? 0,
+    ciudades: (r?.ciudades as number) ?? 0,
+  };
+}
+
 export type NewsItem = ContentMeta & {
   id: number;
   tag: string;

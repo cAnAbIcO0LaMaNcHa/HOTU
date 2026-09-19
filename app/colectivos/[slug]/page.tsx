@@ -7,11 +7,13 @@ import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
 import { GeneroEditable } from "@/components/genero-editable";
 import { CollectiveContent } from "@/components/collective-content";
+import { CollectiveMetrics } from "@/components/collective-metrics";
 import { LikeButton } from "@/components/like-button";
 import { canEditCollective } from "@/lib/collectives-write";
 import {
   countCollectiveLikes,
   getCollectiveBySlug,
+  getMetricasColectivo,
   getCollectiveSets,
   getCollectiveTracks,
   getGenreBranches,
@@ -73,11 +75,12 @@ export default async function CollectivePage({
 
   // Las dos en paralelo: son independientes y cada sql del driver HTTP
   // es su propio round-trip.
-  const [likeCount, liked, sets, tracks] = await Promise.all([
+  const [likeCount, liked, sets, tracks, metricas] = await Promise.all([
     countCollectiveLikes(slug),
     email ? hasLikedCollective(email, slug) : Promise.resolve(false),
     getCollectiveSets(slug),
     getCollectiveTracks(slug),
+    getMetricasColectivo(slug),
   ]);
 
   const roster = membersByCollective.get(slug) ?? [];
@@ -163,6 +166,12 @@ export default async function CollectivePage({
           placements congelados— y la consulta los une, así que esta
           sección no sabe ni tiene por qué saber de cuál vino cada pieza. */}
       <CollectiveContent sets={sets} tracks={tracks} collectiveName={collective.name} />
+
+      {/* MÉTRICAS (§4.4), al final del press kit y solo de lo que
+          organizó. Sin eventos organizados no se renderiza: hoy ninguno
+          tiene organizador asignado, y un bloque en cero informaría que
+          no organizó nada cuando lo que pasa es que falta el dato. */}
+      <CollectiveMetrics metricas={metricas} />
 
       <CollectiveJoinButton
         collectiveSlug={collective.slug}

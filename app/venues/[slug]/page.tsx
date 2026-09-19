@@ -5,11 +5,13 @@ import { MapPin, Users } from "lucide-react";
 import { auth } from "@/auth";
 import { AutoTranslate } from "@/components/auto-translate";
 import { CollectiveJoinButton } from "@/components/collective-join-button";
+import { CollectiveMetrics } from "@/components/collective-metrics";
 import { LikeButton } from "@/components/like-button";
 import { VenueContactButton } from "@/components/venue-contact-button";
 import {
   countCollectiveLikes,
   getCollectiveMembers,
+  getMetricasColectivo,
   getMyArtistSlug,
   getPendingForCollective,
   getVenueBySlug,
@@ -52,12 +54,13 @@ export default async function VenuePage({
   const session = await auth();
   const email = session?.user?.email ?? null;
 
-  const [membersByVenue, pending, myArtistSlug, likeCount, liked] = await Promise.all([
+  const [membersByVenue, pending, myArtistSlug, likeCount, liked, metricas] = await Promise.all([
     getCollectiveMembers("venue"),
     getPendingForCollective(slug),
     email ? getMyArtistSlug(email) : Promise.resolve(null),
     countCollectiveLikes(slug),
     email ? hasLikedCollective(email, slug) : Promise.resolve(false),
+    getMetricasColectivo(slug),
   ]);
 
   const roster = membersByVenue.get(slug) ?? [];
@@ -151,6 +154,11 @@ export default async function VenuePage({
           </div>
         </div>
       )}
+
+      {/* MÉTRICAS del venue (§4.4 + §5). esVenue quita "venues" y
+          "ciudades": un venue ES un lugar, contar en cuántos estuvo
+          siempre daría uno. */}
+      <CollectiveMetrics metricas={metricas} esVenue />
 
       <CollectiveJoinButton
         collectiveSlug={venue.slug}

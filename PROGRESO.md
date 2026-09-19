@@ -297,6 +297,146 @@ qué significaba cada código.
 
 ---
 
+## MIGRACIÓN PENDIENTE EN MAIN — TANDA-3 §7
+
+Una sola ruta, DOS PASOS, en este orden. Entre el paso 1 y el 2 se puede
+desplegar el código sin problema: las páginas caen al texto congelado de
+`events.lineup` mientras el lineup no esté importado.
+
+### Paso 1 — la estructura
+
+```
+https://hotu-one.vercel.app/api/setup-event-lineup?secret=$MIGRATE_SECRET&dryRun=1
+https://hotu-one.vercel.app/api/setup-event-lineup?secret=$MIGRATE_SECRET
+```
+
+**Qué mirar en el dryRun:** `verificado: false` con **20 problemas**,
+todos diciendo **"falta"**. Si alguno dice **"EXISTE PERO"**, PARÁ: hay
+algo con ese nombre y otra forma en main, y correr la migración NO lo
+arregla — `IF NOT EXISTS` compara por nombre y se saltea en silencio.
+
+**Y mirá `gigsHotuAMigrarDespues`.** Se espera **0**: en main nunca hubo
+importador de lineups, y ningún camino de la app escribe `source='hotu'`
+(`epk-write` hardcodea `'declarado'`; el único productor es `seed-test`,
+que es dev-only). **Si no es 0, pará y avisá**: esos toques dejan de
+leerse de `artist_gigs` y desaparecen del press kit de su artista si no
+quedan representados en `event_lineup`. El JSON dice cuáles son, con
+nombre y evento.
+
+**Las dos corridas reales:** `ok: true` **y** `verificado: true`, con
+`problemas: []`. Ojo: la ruta devuelve HTTP 200 aunque `verificado` sea
+false — `ok` significa "corrió", `verificado` significa "quedó bien".
+
+### Paso 2 — el import del texto libre
+
+```
+https://hotu-one.vercel.app/api/setup-event-lineup?secret=$MIGRATE_SECRET&import=1&dryRun=1
+https://hotu-one.vercel.app/api/setup-event-lineup?secret=$MIGRATE_SECRET&import=1
+```
+
+**Qué mirar en el dryRun:** el array `decisiones` trae **una línea por
+nombre**, con a qué resolvió y por qué. Leelo antes de correr el real: es
+la única oportunidad de ver qué va a hacer con cada nombre del flyer.
+En dev dio 2 artistas, 5 colectivos, 2 sin match, 0 ambiguos y 1 repetido
+descartado.
+
+Si aparece algún **"ambiguo"**, ese nombre matchea a dos y NO se va a
+asignar — queda para resolver a mano desde /admin/eventos.
+
+**La segunda corrida real** tiene que saltear todos los eventos
+("evento N salteado: ya tiene lineup cargado") e importar **0** entradas.
+Eso prueba que no pisa correcciones a mano.
+
+`events.lineup` no se toca en ninguno de los dos pasos. Es la única
+prueba de qué decía el flyer.
+
+---
+
+## LAS TRES COSAS QUE ESPERAN DATOS TUYOS — HACELAS DE UNA SENTADA
+
+Son tres, se cargan a mano, y **cada una destraba algo que ya está
+construido y hoy no se ve**. Están juntas acá porque hacerlas en una
+sentada es media hora; hacerlas de a una, tres sesiones.
+
+Ninguna rompe nada mientras falte: todo lo que depende de ellas no se
+renderiza, en vez de mostrar ceros o secciones vacías.
+
+### 1. LAS CASAS de los colectivos
+
+Ningún colectivo de producción tiene una 'casa' asignada. Las membresías
+entraron desde el jsonb viejo como vínculo múltiple, y ese array plano
+nunca dijo quién era el principal — inventarlo habría sido afirmar algo
+que el dato no decía.
+
+**Qué destraba:** el carrusel ARTISTAS DE LA CASA (hoy no se renderiza en
+ningún colectivo, verificado en producción), y **SETS y TRACKS del
+colectivo**, porque la consulta viva de §6 se cuelga de la casa actual
+del autor. Con una sola casa asignada aparecen las tres cosas juntas.
+
+**Dónde:** el panel del colectivo, desde tu perfil.
+
+### 2. EL GÉNERO de artistas y colectivos
+
+La taxonomía está sembrada —34 ramas, 719 tags— y **nadie declaró
+ninguno**. Los 12 artistas y 6 colectivos de producción son anteriores a
+ella y nunca pasaron por el formulario de alta.
+
+**Qué destraba:** el bloque ENCONTRÁ TU GÉNERO de la home (hoy no se
+renderiza), y los filtros de rama y tag de /artistas, /colectivos, /sets
+y /discografia, que hoy caen al filtro viejo de suplente.
+
+**Dónde:** la sección GÉNERO del press kit de cada uno, editable por su
+dueño.
+
+### 3. LOS ORGANIZADORES de los eventos
+
+**Ninguno de los 3 eventos de main tiene organizador.** No salía del
+texto del flyer: el lineup nombra a quién toca, no a quién organiza. El
+import no lo pudo adivinar y no lo intentó.
+
+**Qué destraba:** las MÉTRICAS del colectivo y del venue (§4.4), que hoy
+no se renderizan porque son solo de eventos organizados. Y es lo que va a
+permitir saber qué eventos armó cada colectivo.
+
+**Dónde:** /admin/eventos, selector ORGANIZADOR en cada evento.
+
+### De paso, si estás ahí
+
+Las **2 entradas de lineup sin resolver** en dev ("HOTU Crew" y "xxx"):
+en main van a ser las que el import no matchee. Se resuelven desde el
+mismo /admin/eventos, con el texto del flyer al lado. Se puede marcar un
+lineup como revisado dejando entradas sin resolver — un nombre puede no
+corresponder a nadie para siempre.
+
+---
+
+## LO QUE NO SE PUEDE CALCULAR TODAVÍA — FALTA MODELO, NO DATOS
+
+**Las HORAS de §4.3 punto 6.** No es que falte cargarlas: falta la
+columna. `events.event_date` es un **DATE**, así que un evento no guarda
+a qué hora empezó. Con solo `end_at`, la resta mide desde la medianoche
+del día del evento: una prueba con un cierre ocho horas después del
+inicio devolvió **13 horas**.
+
+Un número equivocado en el press kit que un colectivo le muestra a un
+organizador para que lo contrate es peor que una métrica de menos, así
+que la métrica no está. Para tenerla hace falta agregar una hora de
+inicio a `events`, y eso es modelo nuevo.
+
+**Los DISTRITOS de §4.3 punto 6.** El concepto se retiró entero en la
+tanda 4 §3 y las columnas quedaron congeladas. Contar distritos hoy sería
+resucitar algo muerto para llenar un casillero. En su lugar la métrica
+cuenta **ciudades**, que es lo que esa cifra quería decir —en cuántos
+lugares distintos armaron algo— y que sí es un dato vivo.
+
+**El GÉNERO DEL EVENTO**, y con él el filtro 1 de /eventos. Ahora que
+existe `event_lineup` ya se puede derivar del género de su lineup, que
+es lo que §3 decía. No entró en esta tanda porque el lineup recién se
+está poblando y ningún artista declaró género: estrenar un desplegable
+que no devuelve nada es justo lo que la regla de la transición prohíbe.
+
+---
+
 ## DATO SUCIO EN MAIN — ARREGLAR DESDE EL ADMIN
 
 **`events.id = 4` tiene una dirección en la columna `city`:**
