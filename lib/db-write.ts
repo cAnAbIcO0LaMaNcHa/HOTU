@@ -275,6 +275,17 @@ export async function deleteCollective(formData: FormData): Promise<void> {
     SELECT id, title FROM events WHERE organizer_slug = ${slug} ORDER BY event_date DESC
   `;
 
+  // Las noticias que publicó. VAN EN LA MISMA NEGATIVA, por lo mismo
+  // que los eventos: news.author_collective_slug es ON DELETE RESTRICT,
+  // así que sin esta guarda Postgres devuelve un foreign_key_violation
+  // crudo desde un Server Action — una pantalla rota con un digest, sin
+  // decirle al admin que el motivo son las noticias. Es el mismo bug que
+  // ya tuvimos con los eventos, y entra ANTES de que exista la primera
+  // noticia con autor, que es cuando todavía es barato.
+  const noticias = await sql`
+    SELECT id, title FROM news WHERE author_collective_slug = ${slug} ORDER BY news_date DESC
+  `;
+
   const piezas = await sql`
     SELECT 'set' AS tipo, set_slug AS pieza FROM content_placements
       WHERE collective_slug = ${slug} AND set_slug IS NOT NULL
@@ -283,6 +294,15 @@ export async function deleteCollective(formData: FormData): Promise<void> {
       WHERE collective_slug = ${slug} AND track_slug IS NOT NULL
     ORDER BY 1, 2
   `;
+
+  if (noticias.length > 0) {
+    throw new Error(
+      `No se puede borrar "${slug}": publicó ${noticias.length} noticia(s) — ` +
+        noticias.map((n) => `#${n.id} ${n.title}`).join(", ") +
+        ". Borralas o reasignalas antes. No se hace solo: una noticia sin autor " +
+        "pasaría a figurar como de HOTU, que es una atribución falsa."
+    );
+  }
 
   if (eventos.length > 0) {
     throw new Error(

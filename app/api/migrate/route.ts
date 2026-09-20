@@ -112,8 +112,8 @@ export async function GET(request: Request) {
       const existing = await sql`SELECT 1 FROM news WHERE title = ${n.title}`;
       if (existing.length === 0) {
         await sql`
-          INSERT INTO news (tag, news_date, title, excerpt)
-          VALUES (${n.tag}, ${n.date}, ${n.title}, ${n.excerpt})
+          INSERT INTO news (tag, news_date, title, excerpt, status)
+          VALUES (${n.tag}, ${n.date}, ${n.title}, ${n.excerpt}, 'published')
         `;
       }
     }
