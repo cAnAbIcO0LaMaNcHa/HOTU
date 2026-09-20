@@ -88,12 +88,17 @@ export function EventLineupEditor({
     return (
       <div className="mt-4 border border-dashed border-border p-4">
         <div className={"font-mono text-[10px] tracking-widest text-muted-foreground"}>
-          LINE-UP SIN IMPORTAR
+          NADIE ENGANCHADO TODAVÍA
         </div>
         <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
-          Este evento todavía no tiene lineup relacionado. Corré{" "}
-          <code>/api/setup-event-lineup?secret=…&amp;import=1</code> para traerlo del texto, o
-          editá el LINE-UP de arriba y volvé a importar.
+          El LINE-UP de arriba es el texto del flyer: para HOTU son letras, no
+          personas. Enganchar cada nombre con su perfil es lo que hace que el toque
+          le aparezca al DJ en su press kit y cuente en sus números.
+        </p>
+        <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          Este evento todavía no pasó por el importador. Corré{" "}
+          <code>/api/setup-event-lineup?secret=…&amp;import=1</code> para partir el texto
+          en nombres, o editá el LINE-UP de arriba y volvé a importar.
         </p>
       </div>
     );
@@ -103,7 +108,7 @@ export function EventLineupEditor({
     <div className="mt-4 border border-border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-mono text-[10px] tracking-widest text-primary">
-          LINE-UP RELACIONADO ({entries.length})
+          QUIÉN TOCA, ENGANCHADO CON SU PERFIL ({entries.length})
         </span>
         {revisadoEn ? (
           <span className="inline-flex items-center gap-1 font-mono text-[9px] tracking-widest text-muted-foreground">
@@ -115,6 +120,25 @@ export function EventLineupEditor({
           </span>
         )}
       </div>
+
+      {/*
+        QUÉ ES ESTO, EN LA PANTALLA Y NO EN UN COMENTARIO.
+
+        Decía "LINE-UP RELACIONADO (3)" y "GUARDAR Y MARCAR REVISADO", y
+        ninguna de las dos cosas se entendía sin saber de antemano que
+        existe una tabla event_lineup. Un control que hay que adivinar no
+        se usa, o peor, se usa creyendo que hace otra cosa.
+      */}
+      <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+        El LINE-UP de arriba es texto del flyer: para HOTU son letras. Acá cada
+        nombre se engancha con el perfil que le corresponde, y ese enganche es lo
+        que hace que el toque le aparezca al DJ en su press kit y cuente en sus
+        números. Lo que quede <strong>sin resolver</strong> simplemente no engancha
+        con nadie —un invitado sin perfil, una crew que se disolvió— y no rompe
+        nada. <strong>REVISADO</strong> solo quiere decir que alguien ya miró esta
+        lista: es una marca para no revisar dos veces lo mismo, y no cambia en nada
+        lo que ve el público.
+      </p>
 
       {/* El texto del flyer, congelado, como referencia. No es editable
           acá: se edita arriba, en el campo LINE-UP. */}
