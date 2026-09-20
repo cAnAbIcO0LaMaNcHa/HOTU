@@ -133,6 +133,31 @@ Los Server Actions que ya existen se pueden dejar andando, pero no se escriben n
 Nunca importar lib/db.ts en client components. Las utilidades puras (fechas, formato) van en lib/date-utils.ts. Ya hubo un bug por esto.
 Correr la migración ANTES de subir código que dependa de ella. El orden completo es: correrla en dev desde localhost, correrla una segunda vez para confirmar idempotencia, después en main, y recién ahí desplegar el código que la usa.
 
+UN BACKFILL NO PUEDE USAR COMO GUARDA UN VALOR QUE LA PROPIA MIGRACIÓN ESCRIBE. Ya apareció DOS VECES —el renombre de kind en la tanda 3, y review_status en las noticias de la comunidad— así que antes de correr cualquier migración con backfill hay que buscar este patrón explícitamente.
+
+La forma es siempre la misma: se agrega una columna CON default, y después un UPDATE filtra por ese mismo default para decidir a quién tocar.
+
+    ALTER TABLE x ADD COLUMN estado TEXT NOT NULL DEFAULT 'nuevo';
+    UPDATE x SET estado = 'viejo' WHERE estado = 'nuevo' AND ...;   -- MAL
+
+Eso NO es idempotente, aunque lo parezca. La primera corrida funciona. Pero cualquier fila que nazca después —por el default, desde el código normal— vuelve a matchear el WHERE, y la segunda corrida se la lleva puesta. No falla: corrompe. Y corrompe justo lo que alguien decidió a mano después de la primera corrida.
+
+En review_status el caso concreto era: un moderador baja una noticia a 'borrador' para volver a mirarla, se re-corre la migración —que es la regla del repo, se corren dos veces— y la noticia queda APROBADA sola.
+
+LA GUARDA TIENE QUE SER NULL, y la columna entra SIN default:
+
+    ALTER TABLE x ADD COLUMN estado TEXT;                            -- sin default
+    UPDATE x SET estado = 'viejo' WHERE estado IS NULL AND ...;      -- guarda de una sola vía
+    UPDATE x SET estado = 'nuevo' WHERE estado IS NULL;              -- el resto
+    ALTER TABLE x ALTER COLUMN estado SET DEFAULT 'nuevo';
+    ALTER TABLE x ALTER COLUMN estado SET NOT NULL;
+
+El NULL distingue "esta fila es nueva para la columna" de cualquier valor que la migración misma haya escrito. Se consume una vez y no se recrea: por eso la segunda corrida no toca nada.
+
+Los cinco statements van en UNA sola sql.transaction. Entre el ADD COLUMN sin default y el SET NOT NULL hay una ventana real —cada sql del driver HTTP de Neon es su propio request— en la que un INSERT concurrente escribe NULL y el SET NOT NULL revienta con la migración a medio aplicar.
+
+Y todo UPDATE de backfill lleva RETURNING, para que el log pueda decir CUÁNTAS filas tocó. Sin eso, "la segunda corrida no hace nada" es una afirmación, no una medición.
+
 UN RENOMBRE NO ACTUALIZA, INSERTA. Todo upsert de vocabulario resuelve el conflicto por una clave derivada del contenido — el slug sale del nombre —, así que cambiar el nombre cambia el slug y la fila vieja NO se actualiza: entra una nueva al lado y quedan las dos. No hay error, no hay fila perdida, solo una de más que nadie eligió y que va a aparecer en los selectores. Es el mismo tipo de falla que la segunda corrida del renombre de kind: no rompe, corrompe. Por eso todo seed reporta el conteo de ANTES y DESPUÉS, y por eso hay que mirarlo: si un conteo SUBE cuando esperabas que quedara igual, hubo un renombre y quedó un huérfano. Limpiarlo es a mano, y el FK RESTRICT hacia los perfiles garantiza que se note si alguien ya lo eligió. Pasó de verdad con tres cross-tags en dev ("Radio" contra "Radio / Broadcast"), y se detectó solo porque el total dio 53 donde tenía que dar 50.
 
 TODO SWAP DE CONSTRAINT VA EN UNA TRANSACCIÓN. Si una migración borra un constraint y lo vuelve a crear, las dos sentencias van juntas dentro de sql.transaction([...]), nunca como dos await sueltos. Cada sql`` del driver HTTP de Neon es su propio request y su propia transacción: entre un DROP CONSTRAINT y su ADD CONSTRAINT hay una ventana real de un round-trip en la que la tabla no tiene guarda, y si el ADD falla la ventana no se cierra nunca. Y falla más de lo que parece: una fila vieja con un valor que el CHECK nuevo no acepta tira check_violation, que NO es duplicate_object y por lo tanto el envoltorio DO $$ ... EXCEPTION WHEN duplicate_object $$ no lo atrapa. El resultado es una tabla sin CHECK, que es peor que no haber corrido nada. Dentro de la transacción el ADD va desnudo, sin ese envoltorio: después del DROP no queda nada con ese nombre que duplicar, así que el handler solo podría tragarse un error real. El patrón está en setup-membership-kinds (el swap del rename de kind) y en setup-venues (los dos CHECK de entity_kind y capacity).
