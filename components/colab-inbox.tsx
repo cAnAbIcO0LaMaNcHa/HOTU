@@ -69,6 +69,13 @@ export function ColabInbox({ invitaciones }: { invitaciones: InvitacionColab[] }
               {inv.tipo === "set" ? "SET" : "TRACK"}
             </div>
             <div className="mt-1 font-bold">{inv.piezaTitulo}</div>
+            {/* A cuál de tus colectivos invitaron. Sin esto, un dueño de
+                varios no sabe cuál está respondiendo. */}
+            {inv.colectivoNombre && (
+              <div className="mt-1 font-mono text-[10px] tracking-widest text-primary">
+                INVITARON A {inv.colectivoNombre.toUpperCase()}
+              </div>
+            )}
             <div className="mt-1 font-mono text-[10px] tracking-widest text-muted-foreground">
               de{" "}
               {inv.autorSlug ? (

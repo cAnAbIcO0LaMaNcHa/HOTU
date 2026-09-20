@@ -33,29 +33,20 @@ export async function PanelArtista({ email }: { email: string }) {
   const myArtistSlug = await getMyArtistSlug(email);
 
   /**
-   * LAS INVITACIONES A COLABORAR SE PIDEN SIEMPRE, tengas artista o no.
+   * SOLO LAS DIRIGIDAS AL ARTISTA. Las dirigidas a un colectivo viven en
+   * el panel COLECTIVO: la distinción es a QUIÉN ESTÁ DIRIGIDA, no quién
+   * la recibe. Las dos le llegan a la misma cuenta por owner_email, pero
+   * el dueño de un colectivo va a buscar la suya donde administra.
    *
-   * getInvitacionesColab matchea por artista O POR COLECTIVO: una
-   * invitación dirigida a un colectivo le llega a la cuenta que lo
-   * administra, y esa cuenta puede no tener perfil de DJ. En la primera
-   * versión esto vivía adentro de la rama "sí sos DJ", así que esas
-   * invitaciones quedaban invisibles en los cuatro paneles — la página
-   * vieja las renderizaba sin condición.
-   *
-   * PENDIENTE DE DECIDIR: una invitación dirigida a un COLECTIVO capaz
-   * pertenece al panel COLECTIVO, que es donde su dueño va a buscarla.
-   * Por ahora quedan las dos juntas acá, que es lo que hacía antes y no
-   * pierde ninguna.
+   * Sin perfil de DJ no puede haber ninguna dirigida al artista, así que
+   * acá no se pregunta.
    */
-  const invitaciones = await getInvitacionesColab(email);
-
   if (!myArtistSlug) {
     // El vocabulario de géneros solo se pide acá, que es donde hay un
     // selector que lo use. Un DJ que ya existe no abre este formulario.
     const [branches, tags] = await Promise.all([getGenreBranches(), getGenreTags()]);
     return (
       <>
-        <ColabInbox invitaciones={invitaciones} />
         <PanelVacio
           titulo="TODAVÍA NO SOS DJ ACÁ"
           explicacion="Un perfil de DJ es tu press kit público: biografía, sets, tracks, los eventos donde tocaste y tus números reales de convocatoria. Es lo que un organizador mira antes de contratarte, y es el primer escalón — sin él no podés fundar un colectivo ni registrar un venue."
@@ -67,11 +58,12 @@ export async function PanelArtista({ email }: { email: string }) {
 
   // Con el email propio: un perfil recién creado está en borrador, y sin
   // esto el dueño no vería su propio press kit en su propio perfil.
-  const [myArtist, pending, currentCasa, memberships] = await Promise.all([
+  const [myArtist, pending, currentCasa, memberships, invitaciones] = await Promise.all([
     getArtistBySlug(myArtistSlug, email),
     getPendingForArtist(email),
     getMyCurrentCasa(email),
     getMyMemberships(email),
+    getInvitacionesColab(email, "artist"),
   ]);
 
   return (

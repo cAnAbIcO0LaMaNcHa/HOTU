@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { ColabInbox } from "@/components/colab-inbox";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
 import { SalirDelColectivo } from "@/components/salir-del-colectivo";
 import { PanelVacio } from "@/components/panel-switcher";
@@ -8,6 +9,7 @@ import {
   getCollectiveMembers,
   getCollectivesOwnedBy,
   getGenreBranches,
+  getInvitacionesColab,
   getGenreTags,
   getMyArtistSlug,
   getMyMemberships,
@@ -91,6 +93,19 @@ export async function PanelColectivo({
   // dueño del artista. Preguntarlo sería un viaje garantizado a vacío.
   const memberships = myArtistSlug ? await getMyMemberships(email) : [];
 
+  /**
+   * Las invitaciones a colaborar DIRIGIDAS A UN COLECTIVO que administra.
+   *
+   * Acá y no en ARTISTA porque el dueño las va a buscar donde administra.
+   * No dependen de tener perfil de DJ: le llegan a la cuenta por ser
+   * dueña del colectivo, y una cuenta puede administrar sin ser DJ.
+   *
+   * Solo en el panel COLECTIVO: a un VENUE no se lo puede invitar a
+   * colaborar —la música es de quien la hace, no del lugar donde suena—
+   * así que preguntarlo sería un viaje garantizado a vacío.
+   */
+  const invitaciones = esVenue ? [] : await getInvitacionesColab(email, "collective");
+
   // De los que integro, solo los de este tipo, y sin los que ya administro
   // —ahí aparecen arriba con el panel completo, listarlos dos veces sería
   // decir que son dos cosas.
@@ -142,6 +157,11 @@ export async function PanelColectivo({
         ) : (
           <CreateCollectiveButton branches={branches} tags={tags} />
         ))}
+
+      {/* Invitaciones a colaborar dirigidas a un colectivo que
+          administra. Van arriba: son lo único del panel que espera una
+          respuesta. */}
+      <ColabInbox invitaciones={invitaciones} />
 
       {/* El que administro: panel completo. */}
       {paneles.map((o) => (

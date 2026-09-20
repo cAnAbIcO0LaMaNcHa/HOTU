@@ -1108,6 +1108,8 @@ export type InvitacionColab = {
   invitadaEn: string;
   /** Adónde va a quedar fija si acepta: su casa de HOY, o null. */
   destino: string | null;
+  /** El nombre del colectivo invitado, cuando la invitación es a uno. */
+  colectivoNombre: string | null;
 };
 
 /**
@@ -1116,18 +1118,29 @@ export type InvitacionColab = {
  * Pendiente = ni aceptada ni rechazada. Las rechazadas se conservan —el
  * histórico es inmutable— pero no vuelven a la bandeja.
  *
- * Llegan por dos caminos: invitaron al artista de esta cuenta, o a uno
- * de sus colectivos. Los dos se resuelven por owner_email, que es la
- * cuenta que puede responder.
+ * DIRIGIDA A UN ARTISTA O A UN COLECTIVO, y el llamador elige cuál
+ * quiere. La distinción es A QUIÉN ESTÁ DIRIGIDA, no quién la recibe:
+ * las dos le llegan a la misma cuenta por owner_email, pero el dueño de
+ * un colectivo va a buscar la suya donde administra y no donde está su
+ * press kit. Por eso el panel ARTISTA pide las de artista y el panel
+ * COLECTIVO las de colectivo.
+ *
+ * Una cuenta que es las dos cosas ve cada una en su lugar: la que la
+ * invitó a ella como DJ en ARTISTA, la que invitó a su crew en
+ * COLECTIVO.
  *
  * El destino se calcula AL LEER y no al invitar, a propósito: es dónde
  * va a quedar la pieza si acepta HOY, y la casa puede cambiar entre la
  * invitación y la respuesta. Mostrar el de la invitación sería prometer
  * un destino viejo.
  */
-export async function getInvitacionesColab(email: string): Promise<InvitacionColab[]> {
+export async function getInvitacionesColab(
+  email: string,
+  dirigidaA: "artist" | "collective" = "artist"
+): Promise<InvitacionColab[]> {
+  const esArtista = dirigidaA === "artist";
   const rows = await sql`
-    SELECT cc.id, cc.set_slug, cc.track_slug, cc.invited_at,
+    SELECT cc.id, cc.set_slug, cc.track_slug, cc.invited_at, c.name AS colectivo_nombre,
            COALESCE(s.title, t.title) AS titulo,
            COALESCE(s.artist_name, t.artist_name) AS autor_nombre,
            COALESCE(s.artist_slug, t.artist_slug) AS autor_slug,
@@ -1143,7 +1156,10 @@ export async function getInvitacionesColab(email: string): Promise<InvitacionCol
     LEFT JOIN dj_sets s ON s.slug = cc.set_slug
     LEFT JOIN tracks t ON t.slug = cc.track_slug
     WHERE cc.accepted_at IS NULL AND cc.declined_at IS NULL
-      AND (lower(a.owner_email) = lower(${email}) OR lower(c.owner_email) = lower(${email}))
+      AND CASE WHEN ${esArtista}
+        THEN cc.artist_slug IS NOT NULL AND lower(a.owner_email) = lower(${email})
+        ELSE cc.collective_slug IS NOT NULL AND lower(c.owner_email) = lower(${email})
+      END
     ORDER BY cc.invited_at DESC
   `;
   return rows.map((r) => ({
@@ -1155,6 +1171,7 @@ export async function getInvitacionesColab(email: string): Promise<InvitacionCol
     autorSlug: (r.autor_slug as string | null) ?? null,
     invitadaEn: String(r.invited_at),
     destino: (r.destino as string | null) ?? null,
+    colectivoNombre: (r.colectivo_nombre as string | null) ?? null,
   }));
 }
 
