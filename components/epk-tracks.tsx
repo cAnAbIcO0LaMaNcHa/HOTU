@@ -41,6 +41,7 @@ export function EpkTracks({
   return (
     <EpkSection
       title="TRACKS"
+      anchor="tracks"
       isEmpty={tracks.length === 0}
       canEdit={canEdit}
       action={

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, Disc3 } from "lucide-react";
+import { BotonPublicar } from "@/components/boton-publicar";
 import { MembershipInbox } from "@/components/membership-inbox";
 import { ColabInbox } from "@/components/colab-inbox";
 import { CrearArtista } from "@/components/crear-artista";
@@ -68,6 +69,35 @@ export async function PanelArtista({ email }: { email: string }) {
 
   return (
     <>
+      {/*
+        EL "+" DEL PANEL ARTISTA LLEVA AL PRESS KIT, no abre un
+        formulario propio. El de subir un set ya existe ahí (EpkNewRow) y
+        es más completo que cualquier copia: invita colaboradores, y esa
+        invitación es la que decide dónde queda fija la pieza para
+        siempre. Dos formularios para lo mismo son dos reglas para lo
+        mismo, y una de las dos se queda vieja.
+      */}
+      {myArtist && (
+        <BotonPublicar
+          acciones={[
+            {
+              tipo: "enlace",
+              id: "set",
+              label: "SUBIR UN SET",
+              que: "Una grabación tuya. Podés invitar a quien tocó con vos.",
+              href: `/artistas/${myArtist.slug}#sets`,
+            },
+            {
+              tipo: "enlace",
+              id: "track",
+              label: "SUBIR UN TRACK",
+              que: "Una producción propia, con portada y sello.",
+              href: `/artistas/${myArtist.slug}#tracks`,
+            },
+          ]}
+        />
+      )}
+
       {myArtist && (
         <div className="border-chrome mt-10 p-6">
           <h2 className="inline-flex items-center gap-2 text-xl font-bold">

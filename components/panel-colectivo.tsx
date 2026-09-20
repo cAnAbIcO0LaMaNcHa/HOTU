@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { BotonPublicar } from "@/components/boton-publicar";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { MisNoticias } from "@/components/mis-noticias";
 import { ColabInbox } from "@/components/colab-inbox";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
 import { SalirDelColectivo } from "@/components/salir-del-colectivo";
@@ -13,6 +15,8 @@ import {
   getGenreTags,
   getMyArtistSlug,
   getMyMemberships,
+  getMyNews,
+  getNewsTags,
   getPendingForCollective,
   getRecentDepartures,
 } from "@/lib/db";
@@ -124,6 +128,25 @@ export async function PanelColectivo({
     }))
   );
 
+  /**
+   * Lo del "+" y la bandeja de noticias: SOLO si administra algo.
+   *
+   * Sin nada propio no hay a nombre de quién publicar, y las dos
+   * consultas darían vacío garantizado. Es la misma razón por la que
+   * getMyMemberships no se pregunta sin artista.
+   */
+  const [misNoticias, tagsSugeridos] =
+    propios.length > 0
+      ? await Promise.all([getMyNews(email, kind), getNewsTags()])
+      : [[], []];
+
+  const destinos = propios.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    entityKind: kind,
+    sector: c.sector ?? "",
+  }));
+
   const necesitaVocabulario = !esVenue && propios.length === 0;
   const [branches, tags] = necesitaVocabulario
     ? await Promise.all([getGenreBranches(), getGenreTags()])
@@ -158,9 +181,44 @@ export async function PanelColectivo({
           <CreateCollectiveButton branches={branches} tags={tags} />
         ))}
 
+      {/*
+        EL "+" VA PRIMERO. Es a lo que se entra a este panel desde esta
+        tanda: hasta hoy la única forma de que un evento o una noticia
+        existieran era que los cargara el admin, y esto es lo que
+        reemplaza esa muleta. Las bandejas —que son cosas para
+        responder, no para hacer— quedan abajo.
+
+        Las convocatorias NO se ofrecen: no existe el modelo todavía.
+      */}
+      {propios.length > 0 && (
+        <BotonPublicar
+          acciones={[
+            {
+              tipo: "evento",
+              id: "evento",
+              label: "PUBLICAR UN EVENTO",
+              que: "Una fiesta con fecha, lugar y line up. Sale al sitio al toque.",
+            },
+            {
+              tipo: "noticia",
+              id: "noticia",
+              label: "PUBLICAR UNA NOTICIA",
+              que: "Un anuncio, un lanzamiento, algo que contar. Pasa por revisión.",
+            },
+          ]}
+          destinos={destinos}
+          tagsSugeridos={tagsSugeridos}
+        />
+      )}
+
+      {/* Lo que mandaste y en qué anda. Acá se lee el motivo si a una la
+          rechazaron: la notificación vive pegada a la noticia, no en un
+          sistema de avisos aparte. */}
+      <MisNoticias noticias={misNoticias} />
+
       {/* Invitaciones a colaborar dirigidas a un colectivo que
-          administra. Van arriba: son lo único del panel que espera una
-          respuesta. */}
+          administra. Esperan una respuesta, así que van arriba de lo que
+          es solo para mirar. */}
       <ColabInbox invitaciones={invitaciones} />
 
       {/* El que administro: panel completo. */}

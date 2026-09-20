@@ -53,6 +53,7 @@ export function EpkSets({
   return (
     <EpkSection
       title="DJ SETS"
+      anchor="sets"
       isEmpty={sets.length === 0}
       canEdit={canEdit}
       action={

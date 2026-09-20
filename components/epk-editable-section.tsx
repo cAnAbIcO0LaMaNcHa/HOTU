@@ -157,6 +157,7 @@ export function EpkSection({
   hint,
   children,
   action,
+  anchor,
 }: {
   title: string;
   isEmpty: boolean;
@@ -165,11 +166,18 @@ export function EpkSection({
   hint: string;
   children: ReactNode;
   action?: ReactNode;
+  /**
+   * El id para linkear la sección desde afuera. Lo usa el "+" del panel
+   * ARTISTA, que en vez de duplicar el formulario de subir un set manda
+   * a donde ya está. Sin ancla, ese link deja a alguien arriba de todo
+   * en un perfil largo, buscando a mano la sección que pidió.
+   */
+  anchor?: string;
 }) {
   if (isEmpty && !canEdit) return null;
 
   return (
-    <div className="mt-14">
+    <div id={anchor} className="mt-14 scroll-mt-24">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-2xl font-bold">{title}</h2>
         {action}
