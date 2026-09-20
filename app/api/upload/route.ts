@@ -9,13 +9,16 @@
  *
  * multipart/form-data:
  *   file  — the image, already downscaled by the browser
- *   slug  — the artist profile it belongs to (decides who may upload)
- *   kind  — "avatar" | "cover", only used to organise the store
+ *   slug  — el perfil al que pertenece, y quién puede subirlo. Para
+ *           "flyer" es el slug de un COLECTIVO o VENUE; para el resto,
+ *           el de un artista.
+ *   kind  — "avatar" | "cover" | "track-cover" | "flyer"
  */
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { canEditArtist } from "@/lib/artists-write";
+import { canEditCollective } from "@/lib/collectives-write";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -30,7 +33,7 @@ export const dynamic = "force-dynamic";
  * "track-cover" covers artwork for both TRACKS and DJ SETS rows — one
  * budget, one folder, since both render at the same square size.
  */
-const KINDS = ["avatar", "cover", "track-cover"] as const;
+const KINDS = ["avatar", "cover", "track-cover", "flyer"] as const;
 type Kind = (typeof KINDS)[number];
 
 export async function POST(request: Request) {
@@ -66,10 +69,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
 
-  // Authorisation is the profile's, not the uploader's: the same rule that
-  // guards the PATCH, so nobody can fill the store against a profile they
-  // cannot edit.
-  if (!(await canEditArtist(slug, email))) {
+  /**
+   * El permiso es del OBJETO, no del que sube: la misma regla que guarda
+   * el PATCH, así nadie llena el store contra algo que no puede editar.
+   *
+   * Y para el flyer la regla es la del COLECTIVO, no la del artista.
+   * Pedirle canEditArtist al dueño de un colectivo lo ataría a tener
+   * perfil de DJ para subir el flyer de su propia fiesta, y hay cuentas
+   * que administran sin ser DJ —colectivo@ es una— que se quedarían con
+   * el formulario de evento a medias y un 403 sin explicación.
+   */
+  const permitido =
+    kind === "flyer"
+      ? await canEditCollective(slug, email)
+      : await canEditArtist(slug, email);
+  if (!permitido) {
     return NextResponse.json({ error: "Not allowed to edit this profile" }, { status: 403 });
   }
 
@@ -87,7 +101,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const url = await uploadImage(`artists/${slug}/${kind}`, file);
+    const carpeta =
+      kind === "flyer" ? `collectives/${slug}/flyer` : `artists/${slug}/${kind}`;
+    const url = await uploadImage(carpeta, file);
     return NextResponse.json({ ok: true, url }, { status: 201 });
   } catch (err) {
     console.error("[upload] put() failed", err);

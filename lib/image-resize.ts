@@ -16,6 +16,13 @@ export const IMAGE_TARGETS = {
   cover: 1600,
   /** For track artwork, once tanda 2 adds the column. */
   trackCover: 1000,
+  /**
+   * El flyer de un evento. Mismo presupuesto que una portada, pero con
+   * nombre propio: es un afiche vertical con texto chico —fecha, line
+   * up, dirección— y si alguna vez hay que subirlo, hay que poder
+   * hacerlo sin tocar de paso las portadas del EPK.
+   */
+  flyer: 1600,
 } as const;
 
 export type ImageTarget = keyof typeof IMAGE_TARGETS;

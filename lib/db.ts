@@ -1577,3 +1577,93 @@ export async function getAllNews(opts: ReadOptions = {}): Promise<NewsItem[]> {
     excerpt: r.excerpt,
   }));
 }
+
+/* ===================================================================
+ * NOTICIAS DE LA COMUNIDAD (tanda 5 §3)
+ * =================================================================== */
+
+/**
+ * Una noticia propia, con su estado en la cola.
+ *
+ * Es la bandeja del autor: incluye lo que NO es público, que es
+ * justamente lo que el autor necesita ver. reviewNote es la notificación
+ * del rechazo — no hay un sistema de avisos aparte, el motivo se lee
+ * donde está la noticia, igual que en el press kit del DJ.
+ */
+export type MiNoticia = {
+  id: number;
+  tag: string;
+  date: string;
+  title: string;
+  excerpt: string;
+  /** El colectivo o venue que la firma. */
+  authorSlug: string;
+  authorName: string;
+  reviewStatus: "borrador" | "en_revision" | "rechazado" | "aprobado";
+  /** El motivo del rechazo, si la rechazaron. */
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  submittedAt: string | null;
+  /** Si está en el sitio. Solo la aprobación lo pone en true. */
+  publicada: boolean;
+};
+
+function mapMiNoticia(r: Record<string, unknown>): MiNoticia {
+  return {
+    id: Number(r.id),
+    tag: r.tag as string,
+    date: toISODate(r.news_date),
+    title: r.title as string,
+    excerpt: r.excerpt as string,
+    authorSlug: r.author_collective_slug as string,
+    authorName: (r.author_name as string | null) ?? (r.author_collective_slug as string),
+    reviewStatus: r.review_status as MiNoticia["reviewStatus"],
+    reviewNote: (r.review_note as string | null) ?? null,
+    reviewedAt: r.reviewed_at ? new Date(r.reviewed_at as string).toISOString() : null,
+    submittedAt: r.submitted_at ? new Date(r.submitted_at as string).toISOString() : null,
+    publicada: (r.status as string) === "published",
+  };
+}
+
+/**
+ * Las noticias firmadas por los colectivos y venues de esta cuenta.
+ *
+ * Por owner_email y no por una lista de slugs que arme el llamador: la
+ * pregunta "cuáles son mías" se responde en un solo lugar, y así no hay
+ * forma de que una pantalla pida las de otro pasando el slug equivocado.
+ *
+ * Sin filtro de entity_kind: un venue también firma noticias, y el panel
+ * VENUE muestra las suyas con el mismo componente.
+ */
+export async function getMyNews(email: string, kind?: EntityKind): Promise<MiNoticia[]> {
+  const rows = kind
+    ? await sql`
+        SELECT n.*, c.name AS author_name
+        FROM news n JOIN collectives c ON c.slug = n.author_collective_slug
+        WHERE lower(c.owner_email) = lower(${email}) AND c.entity_kind = ${kind}
+        ORDER BY n.news_date DESC, n.id DESC
+      `
+    : await sql`
+        SELECT n.*, c.name AS author_name
+        FROM news n JOIN collectives c ON c.slug = n.author_collective_slug
+        WHERE lower(c.owner_email) = lower(${email})
+        ORDER BY n.news_date DESC, n.id DESC
+      `;
+  return rows.map(mapMiNoticia);
+}
+
+/**
+ * Las etiquetas que ya se usaron, de la más usada a la menos.
+ *
+ * news.tag es texto libre y va a seguir siéndolo: un vocabulario cerrado
+ * habría que decidirlo, y no es una decisión que corresponda tomar de
+ * paso. Pero mostrar las que ya existen es lo único que evita que la
+ * misma cosa termine escrita de cinco formas — es sugerencia, no regla.
+ */
+export async function getNewsTags(): Promise<string[]> {
+  const rows = await sql`
+    SELECT tag, count(*)::int AS n FROM news
+    WHERE btrim(tag) <> '' GROUP BY tag ORDER BY n DESC, tag ASC LIMIT 20
+  `;
+  return rows.map((r) => r.tag as string);
+}
