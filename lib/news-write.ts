@@ -39,6 +39,7 @@
 import { neon } from "@neondatabase/serverless";
 import { canEditCollective, type WriteResult } from "./collectives-write";
 import { isSuperAdmin } from "./roles-check";
+import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -58,10 +59,6 @@ export type NuevaNoticia = {
   /** false para dejarla en borrador en vez de mandarla a revisión. */
   enviar?: unknown;
 };
-
-function texto(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
 
 /**
  * El mínimo para que un moderador tenga algo que leer.
@@ -91,18 +88,23 @@ function validarContenido(
  * único sobre upper(dj_code).
  */
 function normalizarTag(v: unknown): string {
-  return texto(v).toUpperCase().replace(/\s+/g, " ").slice(0, 24);
+  return limpiarYRecortar(limpiarTexto(v).toUpperCase().replace(/\s+/g, " "), 24);
 }
 
-function validarFecha(v: unknown): { date: string } | { error: string } {
-  const date = texto(v);
-  if (!date) return { date: new Date().toISOString().slice(0, 10) };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "La fecha tiene que ser AAAA-MM-DD" };
-  const d = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) {
-    return { error: `No existe la fecha ${date}` };
-  }
-  return { date };
+/**
+ * La fecha de una noticia NO PUEDE ESTAR EN EL FUTURO.
+ *
+ * /noticias y la home ordenan por news_date DESC y la home se queda con
+ * las tres primeras. Una noticia fechada en el 9999 es un anclaje
+ * permanente arriba de todo — exactamente el "botón para autodestacarse
+ * en la home" que el formulario de eventos dice no ofrecer, entrando por
+ * la otra puerta. Y como el moderador aprueba texto, no fechas, se le
+ * cuela mirando.
+ *
+ * Dejarla vacía significa hoy, que es lo que quiere el 99% de los casos.
+ */
+function fechaDeNoticia(v: unknown) {
+  return validarFecha(v, { maxAnios: 0 });
 }
 
 /* ===================================================================
@@ -115,7 +117,7 @@ export async function createCommunityNews(
 ): Promise<WriteResult<{ id: number; reviewStatus: ReviewStatus }>> {
   if (!email) return { ok: false, status: 403, error: "Not signed in" };
 
-  const autor = texto(input.authorCollectiveSlug);
+  const autor = limpiarTexto(input.authorCollectiveSlug);
   if (!autor) return { ok: false, status: 400, error: "Decí a nombre de quién la publicás" };
 
   const [col] = await sql`SELECT slug FROM collectives WHERE slug = ${autor}`;
@@ -128,13 +130,13 @@ export async function createCommunityNews(
     };
   }
 
-  const title = texto(input.title).slice(0, 200);
-  const excerpt = texto(input.excerpt).slice(0, 4000);
+  const title = limpiarYRecortar(input.title, 200);
+  const excerpt = limpiarYRecortar(input.excerpt, 4000);
   const tag = normalizarTag(input.tag);
   const mal = validarContenido(title, excerpt, tag);
   if (mal) return { ok: false, status: 400, error: mal.error };
 
-  const f = validarFecha(input.date);
+  const f = fechaDeNoticia(input.date);
   if ("error" in f) return { ok: false, status: 400, error: f.error };
 
   // Mandar a revisar es el default: es lo que quiere quien apretó
@@ -230,7 +232,25 @@ export async function updateCommunityNews(
       error: "Está en revisión. Retirala primero si querés cambiarla.",
     };
   }
-  if (propia.reviewStatus === "aprobado") {
+  /**
+   * LA GUARDA ES status, NO review_status. Acá había un agujero real.
+   *
+   * Esto miraba solo review_status, y deleteCommunityNews —en este mismo
+   * archivo— miraba los dos. El par inconsistente
+   * status='published' + review_status='rechazado' es alcanzable HOY:
+   * el Server Action updateNews del admin escribe status desde su select
+   * y no toca review_status, así que un moderador que publica una
+   * noticia de la comunidad desde /admin/noticias deja exactamente eso.
+   *
+   * Con la guarda vieja, el autor de esa noticia podía reescribirla
+   * entera estando en portada, que es literalmente la escapatoria que la
+   * cola existe para cerrar. Y el panel le decía "no se aprobó todavía,
+   * solo la ves vos" mientras estaba en vivo.
+   *
+   * "Publicada" es una propiedad de status. review_status dice dónde
+   * está en la cola, que es otra pregunta.
+   */
+  if (propia.status === "published" || propia.reviewStatus === "aprobado") {
     return {
       ok: false,
       status: 409,
@@ -242,9 +262,10 @@ export async function updateCommunityNews(
   // puede borrar nada acá: los cuatro campos son NOT NULL.
   const [actual] = await sql`SELECT tag, title, excerpt FROM news WHERE id = ${id}`;
 
-  const title = patch.title === undefined ? String(actual.title) : texto(patch.title).slice(0, 200);
+  const title =
+    patch.title === undefined ? String(actual.title) : limpiarYRecortar(patch.title, 200);
   const excerpt =
-    patch.excerpt === undefined ? String(actual.excerpt) : texto(patch.excerpt).slice(0, 4000);
+    patch.excerpt === undefined ? String(actual.excerpt) : limpiarYRecortar(patch.excerpt, 4000);
   const tag = patch.tag === undefined ? String(actual.tag) : normalizarTag(patch.tag);
 
   const mal = validarContenido(title, excerpt, tag);
@@ -259,9 +280,18 @@ export async function updateCommunityNews(
    * sin que nadie toque nada. Con el COALESCE, "sin fecha en el parche"
    * es literalmente "no la toques".
    */
+  /**
+   * null y "" son "no la toques", igual que undefined.
+   *
+   * Solo undefined lo era, y el <input type="date"> del editor manda ""
+   * en cuanto no puede representar lo guardado: pedir un cambio de
+   * título terminaba moviendo la fecha a HOY sin que nadie la tocara.
+   * Una fecha vacía desde un parche no es una fecha nueva, es la
+   * ausencia de una.
+   */
   let date: string | null = null;
-  if (patch.date !== undefined) {
-    const f = validarFecha(patch.date);
+  if (patch.date !== undefined && patch.date !== null && limpiarTexto(patch.date) !== "") {
+    const f = fechaDeNoticia(patch.date);
     if ("error" in f) return { ok: false, status: 400, error: f.error };
     date = f.date;
   }
@@ -271,7 +301,7 @@ export async function updateCommunityNews(
   const filas = await sql`
     UPDATE news SET tag = ${tag}, news_date = COALESCE(${date}::date, news_date),
                     title = ${title}, excerpt = ${excerpt}
-    WHERE id = ${id} AND review_status IN ('borrador','rechazado')
+    WHERE id = ${id} AND review_status IN ('borrador','rechazado') AND status <> 'published'
     RETURNING id
   `;
   if (filas.length === 0) {
@@ -289,21 +319,22 @@ export async function submitNewsForReview(
   if (!propia.ok) return propia;
 
   if (propia.reviewStatus === "en_revision") return { ok: true, value: { enviada: true } };
-  if (propia.reviewStatus === "aprobado") {
+  // Igual que arriba: publicada es status, no review_status.
+  if (propia.status === "published" || propia.reviewStatus === "aprobado") {
     return { ok: false, status: 409, error: "Ya está publicada" };
   }
 
   const [n] = await sql`SELECT tag, title, excerpt FROM news WHERE id = ${id}`;
   const mal = validarContenido(
-    String(n.title).trim(),
-    String(n.excerpt).trim(),
-    String(n.tag).trim()
+    limpiarTexto(n.title),
+    limpiarTexto(n.excerpt),
+    limpiarTexto(n.tag)
   );
   if (mal) return { ok: false, status: 400, error: mal.error };
 
   const filas = await sql`
     UPDATE news SET review_status = 'en_revision', submitted_at = now()
-    WHERE id = ${id} AND review_status IN ('borrador','rechazado')
+    WHERE id = ${id} AND review_status IN ('borrador','rechazado') AND status <> 'published'
     RETURNING id
   `;
   if (filas.length === 0) {

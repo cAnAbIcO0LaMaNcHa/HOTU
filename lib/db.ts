@@ -1661,9 +1661,16 @@ export async function getMyNews(email: string, kind?: EntityKind): Promise<MiNot
  * misma cosa termine escrita de cinco formas — es sugerencia, no regla.
  */
 export async function getNewsTags(): Promise<string[]> {
+  // SOLO DE LO PUBLICADO. Sin el filtro, la etiqueta de un borrador
+  // que nadie aprobó —o de una rechazada por spam— aparecía sugerida en
+  // el formulario de todos los demás publicadores, que ni administran
+  // ese colectivo ni pueden ver esa noticia. Una sugerencia es una
+  // recomendación de la casa: no puede salir de algo que la casa
+  // todavía no aceptó.
   const rows = await sql`
     SELECT tag, count(*)::int AS n FROM news
-    WHERE btrim(tag) <> '' GROUP BY tag ORDER BY n DESC, tag ASC LIMIT 20
+    WHERE btrim(tag) <> '' AND status = 'published'
+    GROUP BY tag ORDER BY n DESC, tag ASC LIMIT 20
   `;
   return rows.map((r) => r.tag as string);
 }

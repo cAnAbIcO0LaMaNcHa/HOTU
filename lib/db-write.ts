@@ -150,12 +150,23 @@ export async function deleteEvent(formData: FormData): Promise<void> {
   refreshAll();
 }
 
+/**
+ * review_status DE UNA NOTICIA DEL ADMIN, en los dos caminos de abajo.
+ *
+ * Lo escribe HOTU, así que está aprobada por definición: no hay nadie
+ * más a quien pedirle permiso. Sin esto nacía con el DEFAULT 'borrador'
+ * —el que puso la migración de la tanda 5— y el resultado era una fila
+ * PUBLICADA y SIN REVISAR al mismo tiempo, que es el par que toda esta
+ * pieza existe para que no exista. Peor todavía: las tres noticias
+ * viejas sí quedaron en 'aprobado', así que dos filas del mismo tipo
+ * tenían valores distintos en la misma columna.
+ */
 export async function createNews(formData: FormData): Promise<void> {
   if (!(await requireAdmin())) return;
   const m = readMeta(formData);
   await sql`
-    INSERT INTO news (tag, news_date, title, excerpt, district, scope, country_code, language, status, featured, priority_at)
-    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt})
+    INSERT INTO news (tag, news_date, title, excerpt, district, scope, country_code, language, status, featured, priority_at, review_status)
+    VALUES (${String(formData.get("tag"))}, ${String(formData.get("date"))}, ${String(formData.get("title"))}, ${String(formData.get("excerpt"))}, ${DISTRITO_CONGELADO}, ${m.scope}, ${m.countryCode}, ${m.language}, ${m.status}, ${m.featured}, ${m.priorityAt}, 'aprobado')
   `;
   refreshAll();
 }
@@ -174,7 +185,23 @@ export async function updateNews(formData: FormData): Promise<void> {
       language = ${m.language},
       status = ${m.status},
       featured = ${m.featured},
-      priority_at = ${m.priorityAt}
+      priority_at = ${m.priorityAt},
+      /*
+       * PUBLICAR ES APROBAR, TAMBIÉN DESDE ACÁ.
+       *
+       * Este Server Action escribía status desde su <select> sin tocar
+       * review_status, y un moderador que publicaba una noticia de la
+       * comunidad desde acá dejaba status='published' con
+       * review_status='rechazado' colgado. El autor veía "no se aprobó
+       * todavía, solo la ves vos" mientras la noticia estaba en portada,
+       * y —hasta el arreglo de news-write— la podía reescribir entera.
+       *
+       * Solo empuja hacia 'aprobado'. Despublicar NO la devuelve a la
+       * cola: eso sería decidir por el moderador, que puede estar
+       * bajándola por diez minutos.
+       */
+      review_status = CASE WHEN ${m.status} = 'published' THEN 'aprobado' ELSE review_status END,
+      review_note = CASE WHEN ${m.status} = 'published' THEN NULL ELSE review_note END
     WHERE id = ${Number(formData.get("id"))}
   `;
   refreshAll();

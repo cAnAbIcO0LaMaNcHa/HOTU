@@ -6,6 +6,18 @@ export const revalidate = 0;
 
 const inputCls = "w-full border border-border bg-background px-3 py-2 font-mono text-sm focus:border-primary focus:outline-none";
 const labelCls = "font-mono text-[10px] tracking-widest text-muted-foreground";
+/**
+ * SUGERENCIAS, NO UN VOCABULARIO CERRADO.
+ *
+ * Esto era un <select> con estos cinco valores. Desde que la comunidad
+ * publica noticias, news.tag es texto libre: una noticia con tag 'TEST'
+ * no matcheaba ninguna <option>, el navegador mostraba la primera
+ * (RELEASE) sin que nada dijera nada, y guardar cualquier otro campo de
+ * esa noticia le cambiaba la etiqueta en silencio.
+ *
+ * Es la forma exacta de "un control que contesta mal en vez de fallar":
+ * no hay error en ningún lado, solo un dato distinto del que había.
+ */
 const TAGS = ["RELEASE", "GEAR", "CLUB", "ARTISTA", "EVENTO"];
 const STATUS = ["published", "draft", "archived"];
 const STATUS_LABEL: Record<string, string> = { published: "PUBLICADO", draft: "BORRADOR", archived: "ARCHIVADO" };
@@ -52,10 +64,18 @@ export default async function AdminNoticias() {
 
   return (
     <div className="space-y-12">
+      {/* Las sugerencias: las cinco de siempre más las que ya estén en
+          uso, sin repetir. Una datalist no restringe, solo ofrece. */}
+      <datalist id="tags-noticias">
+        {[...new Set([...TAGS, ...news.map((n) => n.tag)])].map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+
       <div className="border border-primary p-6">
         <h2 className="text-xl font-bold">NUEVA NOTICIA</h2>
         <form action={createNews} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block"><span className={labelCls}>ETIQUETA</span><select name="tag" required className={inputCls}>{TAGS.map((t) => (<option key={t} value={t}>{t}</option>))}</select></label>
+          <label className="block"><span className={labelCls}>ETIQUETA</span><input type="text" name="tag" list="tags-noticias" required className={inputCls} /></label>
           <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" required className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" required className={inputCls} /></label>
           <label className="block sm:col-span-2"><span className={labelCls}>RESUMEN</span><textarea name="excerpt" required rows={3} className={inputCls} /></label>
@@ -80,7 +100,7 @@ export default async function AdminNoticias() {
               </div>
               <form action={updateNews} className="grid gap-4 sm:grid-cols-2">
                 <input type="hidden" name="id" value={n.id} />
-                <label className="block"><span className={labelCls}>ETIQUETA</span><select name="tag" defaultValue={n.tag} required className={inputCls}>{TAGS.map((t) => (<option key={t} value={t}>{t}</option>))}</select></label>
+                <label className="block"><span className={labelCls}>ETIQUETA</span><input type="text" name="tag" defaultValue={n.tag} list="tags-noticias" required className={inputCls} /></label>
                 <label className="block"><span className={labelCls}>FECHA</span><input type="date" name="date" defaultValue={n.date} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>TÍTULO</span><input type="text" name="title" defaultValue={n.title} required className={inputCls} /></label>
                 <label className="block sm:col-span-2"><span className={labelCls}>RESUMEN</span><textarea name="excerpt" defaultValue={n.excerpt} required rows={3} className={inputCls} /></label>

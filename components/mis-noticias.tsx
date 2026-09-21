@@ -81,7 +81,14 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
         {noticias.map((n) => (
           <div key={n.id} className="border border-border p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <Estado estado={n.reviewStatus} />
+              {/* MANDA publicada, NO review_status. Son dos preguntas
+                  distintas y se pueden contradecir: una noticia
+                  publicada desde /admin/noticias conserva el
+                  review_status que tenía, y el panel llegó a decir "no
+                  se aprobó todavía, solo la ves vos" sobre algo que
+                  estaba en portada. Lo que el autor necesita saber
+                  primero es si se ve o no. */}
+              <Estado estado={n.publicada ? "aprobado" : n.reviewStatus} />
               <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
                 {n.tag} · {n.date}
                 {noticias.some((o) => o.authorSlug !== n.authorSlug)
@@ -96,13 +103,13 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
             </p>
 
             {/* El motivo del rechazo, entero y sin recortar. */}
-            {n.reviewStatus === "rechazado" && n.reviewNote && (
+            {!n.publicada && n.reviewStatus === "rechazado" && n.reviewNote && (
               <blockquote className="mt-3 border-l-2 border-primary pl-4 font-mono text-[12px] leading-relaxed">
                 {n.reviewNote}
               </blockquote>
             )}
 
-            {editando === n.id ? (
+            {editando === n.id && !n.publicada ? (
               <EditorNoticia
                 noticia={n}
                 busy={busy === n.id}
@@ -114,7 +121,8 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
               />
             ) : (
               <div className="mt-4 flex flex-wrap gap-2">
-                {(n.reviewStatus === "borrador" || n.reviewStatus === "rechazado") && (
+                {!n.publicada &&
+                  (n.reviewStatus === "borrador" || n.reviewStatus === "rechazado") && (
                   <>
                     <button
                       type="button"
@@ -151,7 +159,7 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
                   </>
                 )}
 
-                {n.reviewStatus === "en_revision" && (
+                {!n.publicada && n.reviewStatus === "en_revision" && (
                   <button
                     type="button"
                     disabled={busy === n.id}
@@ -162,7 +170,7 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
                   </button>
                 )}
 
-                {n.reviewStatus === "aprobado" && (
+                {n.publicada && (
                   <Link
                     href="/noticias"
                     className="border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary hover:text-primary"
@@ -174,13 +182,17 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
             )}
 
             <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
-              {n.reviewStatus === "borrador" && "Solo la ves vos. Mandala cuando esté lista."}
-              {n.reviewStatus === "en_revision" &&
-                "La está leyendo alguien del equipo. Mientras tanto no se edita: quien la revisa tiene que ver lo que mandaste."}
-              {n.reviewStatus === "rechazado" &&
-                "Corregí lo que dice arriba y mandala de nuevo. No hay límite de intentos."}
-              {n.reviewStatus === "aprobado" &&
+              {n.publicada &&
                 "Publicada. Ya no se edita: si hay que corregir algo, se publica otra."}
+              {!n.publicada &&
+                n.reviewStatus === "borrador" &&
+                "Solo la ves vos. Mandala cuando esté lista."}
+              {!n.publicada &&
+                n.reviewStatus === "en_revision" &&
+                "La está leyendo alguien del equipo. Mientras tanto no se edita: quien la revisa tiene que ver lo que mandaste."}
+              {!n.publicada &&
+                n.reviewStatus === "rechazado" &&
+                "Corregí lo que dice arriba y mandala de nuevo. No hay límite de intentos."}
             </p>
           </div>
         ))}

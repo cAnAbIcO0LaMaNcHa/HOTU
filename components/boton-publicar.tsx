@@ -155,10 +155,22 @@ export function BotonPublicar({
             </button>
           </div>
 
-          {/* El selector solo aparece si de verdad hay dónde elegir. Es
-              uno por cuenta, así que en la práctica nunca; pero un
-              SUPER_ADMIN administra varios y sin esto publicaría a nombre
-              del primero de la lista sin enterarse. */}
+          {/*
+            El selector solo aparece si de verdad hay dónde elegir.
+
+            Hoy NUNCA aparece, y conviene que quede escrito por qué se
+            deja igual: los destinos salen de getCollectivesOwnedBy, que
+            filtra por owner_email, y createCollective admite uno por
+            cuenta y por tipo. Ni siquiera un SUPER_ADMIN ve más de uno
+            acá — puede publicar a nombre de cualquiera por API, pero su
+            panel muestra lo que es suyo.
+
+            Queda porque la alternativa no es "sacar código muerto", es
+            "publicar a nombre del primero de la lista sin avisar" el día
+            que una cuenta administre dos, que un traspaso de dueño
+            alcanza para producir. Ese día esto es lo único que evita
+            firmar con el nombre equivocado.
+          */}
           {destinos.length > 1 && (
             <label className="mt-4 block">
               <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">

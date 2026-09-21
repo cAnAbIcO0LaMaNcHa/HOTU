@@ -18,6 +18,7 @@
 import { neon } from "@neondatabase/serverless";
 import { isOwnBlobUrl } from "./blob";
 import { canEditCollective, type WriteResult } from "./collectives-write";
+import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -45,10 +46,6 @@ export type NuevoEvento = {
   flyerUrl?: unknown;
 };
 
-function texto(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
-
 /**
  * Publica un evento a nombre de un colectivo o de un venue.
  *
@@ -62,7 +59,7 @@ export async function createCommunityEvent(
 ): Promise<WriteResult<{ id: number; slugOrganizador: string }>> {
   if (!email) return { ok: false, status: 403, error: "Not signed in" };
 
-  const organizerSlug = texto(input.organizerSlug);
+  const organizerSlug = limpiarTexto(input.organizerSlug);
   if (!organizerSlug) {
     return { ok: false, status: 400, error: "Decí a nombre de quién lo publicás" };
   }
@@ -80,24 +77,24 @@ export async function createCommunityEvent(
     };
   }
 
-  const title = texto(input.title);
+  // limpiarYRecortar y no .slice: un emoji al final del tope dejaba
+  // medio carácter y el driver devolvía un 500 que no nombraba el campo.
+  const title = limpiarYRecortar(input.title, 160);
   if (title.length < 3) {
     return { ok: false, status: 400, error: "El evento necesita un nombre de al menos 3 letras" };
   }
 
-  // La fecha se valida en DOS pasos y los dos hacen falta. El formato
-  // solo dice que tiene la forma; re-serializar la fecha parseada es lo
-  // que descarta un 2026-02-31, que pasa el regex y Postgres rechaza
-  // después con un date/time field value out of range — un 500 crudo en
-  // vez de un mensaje.
-  const date = texto(input.date);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { ok: false, status: 400, error: "La fecha tiene que ser AAAA-MM-DD" };
-  }
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-    return { ok: false, status: 400, error: `No existe la fecha ${date}` };
-  }
+  /**
+   * La fecha, con tope de años para ADELANTE.
+   *
+   * Una fiesta en el 9999 no es un error de tipeo: es la primera de la
+   * agenda para siempre, igual que el DESTACADO que este formulario no
+   * ofrece justamente por eso. Cinco años alcanza para cualquier cosa
+   * que alguien esté anunciando de verdad.
+   */
+  const f = validarFecha(input.date, { maxAnios: 5, siVacia: "error" });
+  if ("error" in f) return { ok: false, status: 400, error: f.error };
+  const date = f.date;
 
   /**
    * end_at opcional. Mismo tratamiento que el admin: llega el valor
@@ -108,12 +105,20 @@ export async function createCommunityEvent(
    * inicio contra la cual comparar. Lo único que se puede afirmar es que
    * un evento no termina ANTES del día en que pasa.
    */
-  const endRaw = texto(input.endAt);
+  const endRaw = limpiarTexto(input.endAt);
   let endAt: string | null = null;
   if (endRaw) {
     const d = new Date(endRaw);
     if (Number.isNaN(d.getTime())) {
       return { ok: false, status: 400, error: "La hora de cierre no se entiende" };
+    }
+    // El año PRIMERO. Un año extendido (+275760) serializa como
+    // "+275760-09-13" y la comparación de strings de abajo daba
+    // "anterior al día del evento" — un 400 con el motivo equivocado,
+    // que manda a corregir lo que no está mal.
+    const anioFin = d.getUTCFullYear();
+    if (anioFin < 2000 || anioFin > new Date().getUTCFullYear() + 5) {
+      return { ok: false, status: 400, error: "El año de la hora de cierre no es válido" };
     }
     if (d.toISOString().slice(0, 10) < date) {
       return {
@@ -136,21 +141,21 @@ export async function createCommunityEvent(
    * Un colectivo sí tiene que decirlo: toca en lugares distintos.
    */
   const esVenue = (org.entity_kind as string) === "venue";
-  const venue = texto(input.venue) || (esVenue ? String(org.name) : "");
+  const venue = limpiarYRecortar(input.venue, 160) || (esVenue ? String(org.name) : "");
   if (!venue) {
     return { ok: false, status: 400, error: "Decí en qué lugar es" };
   }
 
   // La ciudad cae al sector del colectivo, que es donde createCollective
   // sembró la del fundador. Es un dato que el que publica ya dio una vez.
-  const city = texto(input.city) || texto(org.sector);
+  const city = limpiarYRecortar(input.city, 120) || limpiarYRecortar(org.sector, 120);
   if (!city) {
     return { ok: false, status: 400, error: "Decí en qué ciudad es" };
   }
 
   // lineup es NOT NULL y hoy es texto libre: el importador de
   // event_lineup lo resuelve después contra artistas y colectivos.
-  const lineup = texto(input.lineup).slice(0, 2000);
+  const lineup = limpiarYRecortar(input.lineup, 2000);
 
   /**
    * El flyer TIENE QUE SER UNO NUESTRO.
@@ -161,7 +166,7 @@ export async function createCommunityEvent(
    * host ajeno que mide quién abre la agenda, o que cambia la imagen por
    * otra cosa después de que un moderador la miró.
    */
-  const flyerRaw = texto(input.flyerUrl);
+  const flyerRaw = limpiarTexto(input.flyerUrl);
   if (flyerRaw && !isOwnBlobUrl(flyerRaw)) {
     return {
       ok: false,
@@ -176,8 +181,8 @@ export async function createCommunityEvent(
       (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
        district, scope, country_code, language, status, featured, priority_at)
     VALUES
-      (${date}, ${endAt}, ${flyerUrl}, ${city.slice(0, 120)}, ${venue.slice(0, 160)},
-       ${title.slice(0, 160)}, ${lineup}, ${organizerSlug},
+      (${date}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
+       ${title}, ${lineup}, ${organizerSlug},
        ${DISTRITO_CONGELADO}, 'country', 'COL', 'es', 'published', false, NULL)
     RETURNING id
   `;
