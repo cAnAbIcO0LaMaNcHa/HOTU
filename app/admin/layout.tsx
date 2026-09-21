@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth, signIn } from "@/auth";
-import { isSuperAdmin } from "@/lib/roles";
+import { isModerator } from "@/lib/roles";
 
 export const metadata: Metadata = {
   title: "Panel de administración",
@@ -27,12 +27,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     );
   }
 
-  if (!(await isSuperAdmin(email))) {
+  if (!(await isModerator(email))) {
     return (
       <section className="mx-auto max-w-md px-4 py-24 text-center">
         <span className="font-mono text-[10px] tracking-[0.3em] text-red-400">/ SIN PERMISO</span>
         <h1 className="mt-3 text-3xl font-bold">ACCESO DENEGADO</h1>
-        <p className="mt-4 font-mono text-sm text-muted-foreground">La cuenta {email} no tiene permisos de administrador.</p>
+        <p className="mt-4 font-mono text-sm text-muted-foreground">La cuenta {email} no tiene permisos de moderación.</p>
         <Link href="/" className="mt-6 inline-block border border-border px-4 py-3 font-mono text-xs tracking-widest hover:border-primary">VOLVER AL SITIO</Link>
       </section>
     );

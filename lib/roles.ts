@@ -10,11 +10,17 @@ const sql = neon(process.env.DATABASE_URL!);
  * everything else keep importing it from the same place — and, more to the
  * point, so the middleware and the layout keep running the same function.
  */
-export { isSuperAdmin } from "./roles-check";
+export { isModerator, isSuperAdmin } from "./roles-check";
 
-export type Role = "SUPER_ADMIN" | "GLOBAL_EDITOR" | "COUNTRY_EDITOR";
+export type Role = "SUPER_ADMIN" | "MODERATOR" | "GLOBAL_EDITOR" | "COUNTRY_EDITOR";
 
-export const ROLES: Role[] = ["SUPER_ADMIN", "GLOBAL_EDITOR", "COUNTRY_EDITOR"];
+/**
+ * user_roles.role NO tiene un CHECK que liste los valores —verificado
+ * contra la base—, así que sumar MODERATOR es un cambio de código y no
+ * una migración. Si algún día se le pone ese CHECK, el valor nuevo tiene
+ * que entrar ahí primero.
+ */
+export const ROLES: Role[] = ["SUPER_ADMIN", "MODERATOR", "GLOBAL_EDITOR", "COUNTRY_EDITOR"];
 
 /**
  * Countries HOTU currently operates in. This is a plain constant (not a DB

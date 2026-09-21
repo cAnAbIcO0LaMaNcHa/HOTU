@@ -9,6 +9,7 @@ const labelCls = "font-mono text-[10px] tracking-widest text-muted-foreground";
 
 const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "SUPER ADMIN — todo HOTU",
+  MODERATOR: "MODERADOR — las colas, censurar y banear. Nada más",
   GLOBAL_EDITOR: "GLOBAL EDITOR — contenido global",
   COUNTRY_EDITOR: "COUNTRY EDITOR — un país",
 };

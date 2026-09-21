@@ -1,4 +1,5 @@
 import { getAllOrdersAdmin } from "@/lib/orders";
+import { requireSuperAdmin } from "@/lib/roles";
 import { markOrderPaid } from "@/lib/tickets-write";
 
 export const revalidate = 0;
@@ -9,7 +10,30 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "CANCELADO",
 };
 
+/**
+ * PEDIDOS NO ES MODERACIÓN, ASÍ QUE NO ALCANZA CON SER MODERADOR.
+ *
+ * Desde que /admin lo abre un MODERATOR, esta pantalla necesita su
+ * propia puerta: marcar un pedido como pagado EMITE TIQUETES, que es
+ * plata. Un moderador entra al panel para aprobar noticias y bajar
+ * contenido; que de paso pudiera emitir boletas sería exactamente el
+ * permiso de talle único que el rol nuevo vino a partir.
+ *
+ * /admin/roles ya tenía la suya (requireSuperAdmin) desde antes.
+ */
 export default async function AdminPedidos() {
+  if (!(await requireSuperAdmin())) {
+    return (
+      <div className="border border-red-400/50 p-6">
+        <h2 className="text-xl font-bold text-red-400">SIN PERMISO</h2>
+        <p className="mt-2 font-mono text-sm text-muted-foreground">
+          Los pedidos emiten tiquetes, así que son de un SUPER_ADMIN. Moderar contenido
+          no alcanza.
+        </p>
+      </div>
+    );
+  }
+
   const orders = await getAllOrdersAdmin();
 
   return (
