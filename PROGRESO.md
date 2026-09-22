@@ -1,12 +1,111 @@
-# PROGRESO — taxonomía, venues y alta de DJ
+# PROGRESO — tanda 5: HOTU deja de ser un CMS
 
-Todo contra la branch **dev** de Neon. **Nada tocó main.** Nada se pusheó:
-**17 commits locales** por delante de `origin/main`, desde `0ac63de`.
+La gente sube su contenido, la plataforma lo organiza, y el admin solo
+modera. Los cuatro pasos están hechos.
+
+**Producción está al día hasta `c98f129`.** Las DOS migraciones de esta
+tanda están corridas y verificadas en main. Quedan **3 commits locales**
+sin pushear — ver PARA LLEVARLO A PRODUCCIÓN, abajo.
 
 Verificación: `npx tsc --noEmit` limpio después de cada pieza, y curl
 contra `npm run dev`. Nunca se corrió `next build`.
 
 ---
+
+## LOS CUATRO PASOS
+
+**PASO 1 — cuentas dueñas.** `cbafe70`, `3a7b319`. Los 12 artistas y 6
+colectivos sin dueño tienen una cuenta a su nombre, en `@perfil.hotu.local`
+y **sin contraseña**: existen, son dueñas, y no pueden entrar hasta que
+haya flujo de reclamo. Eso convierte "recuperar contraseña" en requisito,
+no en pendiente anotado (ver más abajo).
+
+**PASO 2 — los cuatro paneles.** `ad816b3`, `3224771`. `/perfil` se
+parte en MI PERFIL · ARTISTA · COLECTIVO · VENUE. El panel que NO tenés
+tampoco desaparece: es el único lugar donde alguien se entera de que
+puede tenerlo.
+
+**PASO 3 — el botón de publicar.** `709821a`, `11b2d5b`, `014ad86`,
+`f27de44`, `a83b9a7`. El "+" ofrece lo que esa cuenta puede hacer y nada
+más. Eventos salen publicados; noticias pasan por cola. Las convocatorias
+quedaron FUERA a pedido tuyo: no existe el modelo.
+
+**PASO 4 — el admin se vacía.** `5c19ff4`, `6b01acf`, `c98f129`,
+`81f7ee1`, `a81edfd`, `cb9f78f`. Quedan tres colas (DJs, noticias,
+lineups), censurar y banear. Se fueron `/admin/eventos`,
+`/admin/colectivos`, `/admin/eventos-pasados` y `lib/db-write.ts` entero.
+
+### Lo que hay que saber del paso 4
+
+- **Censurar no reusa `status`.** Es una marca propia que solo pone y
+  saca un moderador. Si ocultar fuera `status='draft'`, el autor lo
+  leería como borrador suyo y lo republicaría sin enterarse.
+- **El ban se deriva, no se copia.** Banear escribe UNA fila. Que el
+  perfil y sus piezas dejen de verse lo calculan las lecturas.
+- **Un moderador no banea a otro moderador ni a sí mismo.** Sacar un rol
+  es de ROLES, que es de un SUPER_ADMIN.
+- **El rol MODERATOR existe** porque antes la única forma de dar acceso
+  al panel era hacer a alguien SUPER_ADMIN — o sea, darle también los
+  roles y la plata de PEDIDOS.
+- **El admin no edita NADA.** Su única palanca sobre un evento o una
+  noticia ajena es censurar: bajarla del sitio, con motivo, reversible,
+  sin borrar nada. Ese es el estado "archivado".
+
+---
+
+## PARA LLEVARLO A PRODUCCIÓN
+
+**Las dos migraciones ya están corridas en main y verificadas.** No queda
+ninguna pendiente.
+
+Falta **un push**, de `c98f129` a `cb9f78f` (3 commits): los filtros de
+lectura, el admin vaciado, y el editor de eventos del organizador.
+
+    git push origin cb9f78f:main
+
+**No necesita migración previa**: las columnas que ese código lee ya
+están en main desde `setup-moderation`.
+
+### Qué mirar cuando el deploy esté arriba
+
+1. `/api/events/1` con DELETE y sin sesión tiene que dar **401**, no 404.
+   Eso prueba que el código nuevo está desplegado sin preguntarle nada a
+   la base.
+2. `/admin/eventos`, `/admin/colectivos` y `/admin/eventos-pasados`
+   tienen que dar **404**.
+3. `/admin/moderacion` y `/admin/lineups` tienen que **abrir**.
+4. Las nueve páginas públicas en **200**.
+5. En `/admin`, las tres colas con sus números. Lineups va a marcar
+   varios: los eventos viejos nunca se revisaron.
+
+---
+
+## LO PRIMERO QUE TENÉS QUE HACER EN PRODUCCIÓN
+
+**Date el rol MODERATOR a vos mismo no hace falta** — sos SUPER_ADMIN y
+`isModerator` te incluye. Pero si querés sumar a alguien a moderar,
+ahora se puede sin darle las llaves de todo: `/admin/roles`, rol
+MODERADOR.
+
+---
+
+# ================================================================
+# DE ACÁ PARA ABAJO: TANDA 4, YA EN PRODUCCIÓN
+# ================================================================
+#
+# Se deja como histórico y porque varias secciones siguen vigentes
+# (los datos que esperan tu mano, lo que falta modelo, lo bloqueado).
+#
+# PERO OJO CON DOS COSAS QUE YA NO APLICAN:
+#
+#   - "LLEVARLO A PRODUCCIÓN" de abajo son los pushes de la tanda 4.
+#     Ya están hechos. El push que falta es el de arriba.
+#   - "MIGRACIÓN PENDIENTE EN MAIN — TANDA-3 §7" YA SE CORRIÓ.
+#     Verificado: /artistas/groove-norte responde 200 en producción, y
+#     esa página consulta event_lineup para armar los toques. Si la
+#     tabla no estuviera, daría 500.
+#
+# ================================================================
 
 ## LO QUE QUEDÓ HECHO
 
@@ -185,6 +284,12 @@ eso lee las tablas de género y `review_status`.
 ---
 
 ## REQUISITO BLOQUEANTE — EL FLUJO DE RECLAMO DE PERFIL
+#
+# SIGUE VIGENTE Y AHORA ES MÁS URGENTE: la tanda 5 paso 1 creó las 18
+# cuentas dueñas en main, SIN contraseña. Existen, son dueñas de perfiles
+# de artistas reales de la escena, y hoy no hay ningún camino por el que
+# esa gente pueda entrar a lo suyo. Hasta que exista el reclamo, esos
+# perfiles los administra solamente un SUPER_ADMIN.
 
 **Sin esto, 12 perfiles de producción no se pueden entregar a nadie.**
 Dejó de ser deuda anotada: es un requisito.
@@ -338,7 +443,7 @@ qué significaba cada código.
 
 ---
 
-## MIGRACIÓN PENDIENTE EN MAIN — TANDA-3 §7
+## ~~MIGRACIÓN PENDIENTE EN MAIN~~ — TANDA-3 §7, YA CORRIDA
 
 Una sola ruta, DOS PASOS, en este orden. Entre el paso 1 y el 2 se puede
 desplegar el código sin problema: las páginas caen al texto congelado de
@@ -478,24 +583,40 @@ que no devuelve nada es justo lo que la regla de la transición prohíbe.
 
 ---
 
-## DATO SUCIO EN MAIN — ARREGLAR DESDE EL ADMIN
+## DATO SUCIO EN MAIN — Y YA NO SE ARREGLA DESDE EL ADMIN
 
 **`events.id = 4` tiene una dirección en la columna `city`:**
 `"Calle 80 # 14 - 11"`.
 
 El filtro CIUDAD de `/eventos` arma sus opciones con lo que hay en los
-datos (`uniqueSorted(all.map((e) => e.city))`), así que esa dirección
-aparece como si fuera una ciudad en el desplegable. No es un bug de
-código y no se arregla tocando código: la página está haciendo lo
-correcto con un dato equivocado.
+datos, así que esa dirección aparece como si fuera una ciudad en el
+desplegable. La página hace lo correcto con un dato equivocado.
 
-Va a mano desde el admin, no por migración: es UNA fila, y una migración
-que "limpia ciudades" tendría que adivinar cuál es la ciudad de esa
-dirección. La Calle 80 con Carrera 14 es Bogotá, pero eso lo afirma
-alguien que conoce el evento, no un script.
+**CAMBIÓ CÓMO SE ARREGLA, y es consecuencia directa del paso 4.** Decía
+"va a mano desde el admin". Ya no: el admin no edita contenido. Y ese
+evento **no tiene organizador** —lo cargó el admin cuando era un CMS—,
+así que ningún panel lo alcanza tampoco. Hoy es de nadie.
 
-Encontrado por el tester durante la pieza B. Es preexistente, ninguna de
-las piezas de esta sesión lo tocó.
+Hay cuatro eventos así en main. Tenés dos caminos:
+
+**(a) Asignarles un organizador**, por SQL, y que ese colectivo los
+corrija desde su panel:
+
+    UPDATE events SET organizer_slug = '<slug-del-colectivo>' WHERE id = 4;
+
+Es el camino que deja el dato bien Y el evento editable de ahí en más.
+
+**(b) Arreglar solo la ciudad**, por SQL:
+
+    UPDATE events SET city = 'Bogotá' WHERE id = 4;
+
+La Calle 80 con Carrera 14 es Bogotá, pero eso lo afirma alguien que
+conoce el evento, no un script — por eso no va en una migración.
+
+Recomiendo (a) para los cuatro: mientras no tengan organizador van a
+seguir siendo intocables cada vez que haga falta corregir algo.
+
+Encontrado por el tester en la tanda 4. Es preexistente.
 
 ---
 
