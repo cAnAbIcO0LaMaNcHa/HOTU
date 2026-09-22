@@ -262,7 +262,7 @@ export async function getMetricasColectivo(slug: string): Promise<MetricasColect
       COUNT(DISTINCT lower(venue))::int AS venues,
       COUNT(DISTINCT lower(city))::int AS ciudades
     FROM events
-    WHERE organizer_slug = ${slug} AND status = 'published'
+    WHERE organizer_slug = ${slug} AND status = 'published' AND censored_at IS NULL
   `;
 
   return {
@@ -337,7 +337,7 @@ function mapArtist(r: Record<string, unknown>): Artist {
 export async function getAllArtists(opts: ReadOptions = {}): Promise<Artist[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM artists ORDER BY joined_at DESC`
-    : await sql`SELECT * FROM artists WHERE status = 'published' ORDER BY joined_at DESC`;
+    : await sql`SELECT * FROM artists WHERE status = 'published' AND censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_profiles u WHERE lower(u.email) = lower(artists.owner_email) AND u.banned_at IS NOT NULL) ORDER BY joined_at DESC`;
   return rows.map(mapArtist);
 }
 
@@ -366,7 +366,22 @@ export async function getArtistBySlug(
   if (rows.length === 0) return undefined;
 
   const artist = mapArtist(rows[0]);
-  if (artist.status === "published") return artist;
+  /**
+   * CENSURADO = NO EXISTE, para cualquiera menos su dueño.
+   *
+   * Se chequea acá y no en el SELECT porque esta función también sirve
+   * al dueño su propio borrador. Un perfil censurado sigue siendo
+   * visible para su dueño —tiene que poder leer el motivo— y deja de
+   * serlo para todos los demás.
+   */
+  // De la FILA CRUDA, no del objeto mapeado: mapArtist no escribe
+  // censoredAt, así que leerlo de ahí daba undefined siempre y este
+  // chequeo no chequeaba nada. Un filtro inerte es peor que ninguno,
+  // porque parece que está.
+  const censurado = rows[0].censored_at != null;
+  if (artist.status === "published" && !censurado && !(await duenoBaneado(artist.slug))) {
+    return artist;
+  }
 
   if (!viewerEmail) return undefined;
   const owner = (rows[0].owner_email as string | null) ?? null;
@@ -417,14 +432,14 @@ function mapDjSet(r: Record<string, unknown>): DjSet {
 export async function getAllTracks(opts: ReadOptions = {}): Promise<Track[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM tracks ORDER BY released_at DESC`
-    : await sql`SELECT * FROM tracks WHERE status = 'published' ORDER BY released_at DESC`;
+    : await sql`SELECT * FROM tracks WHERE status = 'published' AND censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM artists ba JOIN user_profiles u ON lower(u.email) = lower(ba.owner_email) WHERE ba.slug = tracks.artist_slug AND u.banned_at IS NOT NULL) ORDER BY released_at DESC`;
   return rows.map(mapTrack);
 }
 
 export async function getAllSets(opts: ReadOptions = {}): Promise<DjSet[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM dj_sets ORDER BY recorded_at DESC`
-    : await sql`SELECT * FROM dj_sets WHERE status = 'published' ORDER BY recorded_at DESC`;
+    : await sql`SELECT * FROM dj_sets WHERE status = 'published' AND censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM artists ba JOIN user_profiles u ON lower(u.email) = lower(ba.owner_email) WHERE ba.slug = dj_sets.artist_slug AND u.banned_at IS NOT NULL) ORDER BY recorded_at DESC`;
   return rows.map(mapDjSet);
 }
 
@@ -459,7 +474,7 @@ export type ArtistGig = {
 export async function getSetsByArtist(slug: string): Promise<DjSet[]> {
   const rows = await sql`
     SELECT * FROM dj_sets
-    WHERE artist_slug = ${slug} AND status = 'published'
+    WHERE artist_slug = ${slug} AND status = 'published' AND censored_at IS NULL
     ORDER BY sort_order ASC NULLS LAST, recorded_at DESC
   `;
   return rows.map(mapDjSet);
@@ -469,7 +484,7 @@ export async function getSetsByArtist(slug: string): Promise<DjSet[]> {
 export async function getTracksByArtist(slug: string): Promise<Track[]> {
   const rows = await sql`
     SELECT * FROM tracks
-    WHERE artist_slug = ${slug} AND status = 'published'
+    WHERE artist_slug = ${slug} AND status = 'published' AND censored_at IS NULL
     ORDER BY sort_order ASC NULLS LAST, released_at DESC
   `;
   return rows.map(mapTrack);
@@ -512,7 +527,7 @@ export async function getTracksByArtist(slug: string): Promise<Track[]> {
 export async function getCollectiveSets(collectiveSlug: string): Promise<DjSet[]> {
   const rows = await sql`
     SELECT * FROM dj_sets s
-    WHERE s.status = 'published' AND (
+    WHERE s.status = 'published' AND s.censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM artists ba JOIN user_profiles u ON lower(u.email) = lower(ba.owner_email) WHERE ba.slug = s.artist_slug AND u.banned_at IS NOT NULL) AND (
       (NOT s.is_fixed AND EXISTS (
         SELECT 1 FROM artist_collectives ac
         WHERE ac.artist_slug = s.artist_slug
@@ -535,7 +550,7 @@ export async function getCollectiveSets(collectiveSlug: string): Promise<DjSet[]
 export async function getCollectiveTracks(collectiveSlug: string): Promise<Track[]> {
   const rows = await sql`
     SELECT * FROM tracks t
-    WHERE t.status = 'published' AND (
+    WHERE t.status = 'published' AND t.censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM artists ba JOIN user_profiles u ON lower(u.email) = lower(ba.owner_email) WHERE ba.slug = t.artist_slug AND u.banned_at IS NOT NULL) AND (
       (NOT t.is_fixed AND EXISTS (
         SELECT 1 FROM artist_collectives ac
         WHERE ac.artist_slug = t.artist_slug
@@ -596,7 +611,7 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
            e.id AS event_id, e.title, e.flyer_url, e.venue, e.city, e.event_date
     FROM event_lineup el
     JOIN events e ON e.id = el.event_id
-    WHERE el.artist_slug = ${slug} AND e.status = 'published'
+    WHERE el.artist_slug = ${slug} AND e.status = 'published' AND e.censored_at IS NULL
     ORDER BY e.event_date DESC
   `;
   const declarados: ArtistGig[] = rows.map((r) => ({
@@ -661,7 +676,7 @@ export async function getAllCollectives(
   const kind = opts.kind ?? "collective";
   const rows = opts.includeAll
     ? await sql`SELECT * FROM collectives WHERE entity_kind = ${kind} ORDER BY name`
-    : await sql`SELECT * FROM collectives WHERE entity_kind = ${kind} AND status = 'published' ORDER BY name`;
+    : await sql`SELECT * FROM collectives WHERE entity_kind = ${kind} AND status = 'published' AND censored_at IS NULL ORDER BY name`;
   return rows.map(mapCollective);
 }
 
@@ -746,7 +761,7 @@ export async function getCollectiveBySlug(
 ): Promise<Collective | undefined> {
   const rows = await sql`
     SELECT * FROM collectives
-    WHERE slug = ${slug} AND status = 'published' AND entity_kind = ${kind}
+    WHERE slug = ${slug} AND status = 'published' AND censored_at IS NULL AND entity_kind = ${kind}
   `;
   if (rows.length === 0) return undefined;
   return mapCollective(rows[0]);
@@ -757,6 +772,23 @@ export async function getVenueBySlug(slug: string): Promise<Collective | undefin
 }
 
 /** The artist profile this account speaks for, if it has one. */
+/**
+ * ¿El dueño de este artista está baneado?
+ *
+ * Se pregunta aparte y no con un JOIN en el SELECT porque
+ * getArtistBySlug devuelve la fila cruda mapeada, y agregarle una
+ * columna calculada obligaría a tocar el tipo Artist para un dato que
+ * solo importa en la decisión de servir o no.
+ */
+async function duenoBaneado(slug: string): Promise<boolean> {
+  const filas = await sql`
+    SELECT 1 FROM artists a
+    JOIN user_profiles u ON lower(u.email) = lower(a.owner_email)
+    WHERE a.slug = ${slug} AND u.banned_at IS NOT NULL
+  `;
+  return filas.length > 0;
+}
+
 export async function getMyArtistSlug(email: string): Promise<string | null> {
   const rows = await sql`
     SELECT slug FROM artists WHERE lower(owner_email) = lower(${email}) LIMIT 1
@@ -970,7 +1002,7 @@ export async function getLikedArtists(email: string): Promise<LikedArtist[]> {
     FROM artist_likes al
     JOIN artists a ON a.slug = al.artist_slug
     WHERE al.user_email = ${email}
-      AND a.status = 'published'
+      AND a.status = 'published' AND a.censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_profiles u WHERE lower(u.email) = lower(a.owner_email) AND u.banned_at IS NOT NULL)
     ORDER BY al.created_at DESC
   `;
   return rows.map((r) => ({
@@ -1026,7 +1058,7 @@ export async function getLikedCollectives(
     FROM collective_likes cl
     JOIN collectives c ON c.slug = cl.collective_slug
     WHERE cl.user_email = ${email}
-      AND c.status = 'published'
+      AND c.status = 'published' AND c.censored_at IS NULL
       AND c.entity_kind = ${kind}
     ORDER BY cl.created_at DESC
   `;
@@ -1078,11 +1110,11 @@ export type CandidatoColab = { slug: string; name: string; kind: "artist" | "col
  */
 export async function getCandidatosColab(): Promise<CandidatoColab[]> {
   const artistas = await sql`
-    SELECT slug, name FROM artists WHERE status = 'published' ORDER BY name
+    SELECT slug, name FROM artists WHERE status = 'published' AND censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_profiles u WHERE lower(u.email) = lower(artists.owner_email) AND u.banned_at IS NOT NULL) ORDER BY name
   `;
   const colectivos = await sql`
     SELECT slug, name FROM collectives
-    WHERE status = 'published' AND entity_kind = 'collective' ORDER BY name
+    WHERE status = 'published' AND censored_at IS NULL AND entity_kind = 'collective' ORDER BY name
   `;
   return [
     ...artistas.map((r) => ({
@@ -1493,7 +1525,7 @@ export async function getBranchesWithContent(): Promise<
     SELECT b.code, b.name, COUNT(DISTINCT g.artist_slug)::int AS n
     FROM artist_genres g
     JOIN genre_branches b ON b.code = g.branch_code
-    JOIN artists a ON a.slug = g.artist_slug AND a.status = 'published'
+    JOIN artists a ON a.slug = g.artist_slug AND a.status = 'published' AND a.censored_at IS NULL AND NOT EXISTS (SELECT 1 FROM user_profiles u WHERE lower(u.email) = lower(a.owner_email) AND u.banned_at IS NOT NULL)
     GROUP BY b.code, b.name
     ORDER BY n DESC, b.name
   `;
@@ -1546,7 +1578,7 @@ export async function getGenreTags(): Promise<TagOption[]> {
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM events ORDER BY event_date ASC`
-    : await sql`SELECT * FROM events WHERE status = 'published' ORDER BY event_date ASC`;
+    : await sql`SELECT * FROM events WHERE status = 'published' AND censored_at IS NULL ORDER BY event_date ASC`;
   return rows.map((r) => ({
     ...mapMeta(r),
     id: r.id,
@@ -1567,7 +1599,7 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
 export async function getAllNews(opts: ReadOptions = {}): Promise<NewsItem[]> {
   const rows = opts.includeAll
     ? await sql`SELECT * FROM news ORDER BY news_date DESC`
-    : await sql`SELECT * FROM news WHERE status = 'published' ORDER BY news_date DESC`;
+    : await sql`SELECT * FROM news WHERE status = 'published' AND censored_at IS NULL ORDER BY news_date DESC`;
   return rows.map((r) => ({
     ...mapMeta(r),
     id: r.id,
@@ -1669,7 +1701,7 @@ export async function getNewsTags(): Promise<string[]> {
   // todavía no aceptó.
   const rows = await sql`
     SELECT tag, count(*)::int AS n FROM news
-    WHERE btrim(tag) <> '' AND status = 'published'
+    WHERE btrim(tag) <> '' AND status = 'published' AND censored_at IS NULL
     GROUP BY tag ORDER BY n DESC, tag ASC LIMIT 20
   `;
   return rows.map((r) => r.tag as string);

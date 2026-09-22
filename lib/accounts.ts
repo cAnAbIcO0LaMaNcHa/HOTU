@@ -262,3 +262,25 @@ export async function verifyCredentials(
     image: row.avatar_url ?? null,
   };
 }
+
+/**
+ * ¿Esta cuenta está baneada? (tanda 5 §4)
+ *
+ * Vive acá y no en lib/moderation-write.ts porque la llama el callback
+ * signIn de auth.ts, que es el ÚNICO punto por el que pasan los dos
+ * proveedores. Importar el módulo de escritura desde la configuración de
+ * auth arrastraría isModerator y la cadena de roles a un archivo que se
+ * carga en cada request.
+ *
+ * lower() de los dos lados: user_profiles.email es la PK y se guarda
+ * normalizado, pero un proveedor puede mandar el mismo mail con otra
+ * capitalización, y un ban que se esquiva escribiendo una mayúscula no
+ * es un ban.
+ */
+export async function cuentaBaneada(email: string): Promise<boolean> {
+  const rows = await sql`
+    SELECT 1 FROM user_profiles
+    WHERE lower(email) = lower(${email}) AND banned_at IS NOT NULL
+  `;
+  return rows.length > 0;
+}

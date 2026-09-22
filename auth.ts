@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "@/auth.config";
-import { normalizeEmail, upsertAccount, verifyCredentials } from "@/lib/accounts";
+import { cuentaBaneada, normalizeEmail, upsertAccount, verifyCredentials } from "@/lib/accounts";
 
 /**
  * The full auth instance, for the Node runtime only.
@@ -46,6 +46,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account }) {
       const email = user?.email ? normalizeEmail(user.email) : null;
       if (!email) return false;
+
+      /**
+       * EL BAN SE APLICA ACÁ, Y SOLO ACÁ.
+       *
+       * Es el único punto por el que pasan LOS DOS proveedores. Ponerlo
+       * en verifyCredentials habría dejado Google abierto, y una cuenta
+       * baneada que igual puede entrar por el otro botón no está
+       * baneada.
+       *
+       * Va ANTES del upsert: una cuenta baneada no tiene por qué seguir
+       * refrescando su nombre y su foto en cada intento.
+       *
+       * FALLA ABIERTO si la base no contesta, igual que el upsert de
+       * abajo y por la misma razón que dice su comentario: si un corte
+       * de base negara todos los ingresos, quedaría afuera todo el
+       * mundo —los admins incluidos— justo cuando alguien tiene que
+       * entrar a arreglarlo. Un baneado que entra durante un corte es un
+       * radio de daño muchísimo menor que la plataforma entera cerrada,
+       * y el error queda logueado diciendo dónde mirar.
+       */
+      try {
+        if (await cuentaBaneada(email)) {
+          console.warn("[auth] intento de ingreso de una cuenta baneada:", email);
+          return false;
+        }
+      } catch (err) {
+        console.error("[auth] no pude comprobar el ban de", email, err);
+      }
 
       try {
         await upsertAccount({
