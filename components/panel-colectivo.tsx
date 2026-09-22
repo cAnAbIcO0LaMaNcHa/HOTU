@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BotonPublicar } from "@/components/boton-publicar";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { FranjaCensura } from "@/components/franja-censura";
 import { MisEventos } from "@/components/mis-eventos";
 import { MisNoticias } from "@/components/mis-noticias";
 import { ColabInbox } from "@/components/colab-inbox";
@@ -142,12 +143,23 @@ export async function PanelColectivo({
       ? await Promise.all([getMyNews(email, kind), getMyEvents(email, kind), getNewsTags()])
       : [[], [], []];
 
-  const destinos = propios.map((c) => ({
-    slug: c.slug,
-    name: c.name,
-    entityKind: kind,
-    sector: c.sector ?? "",
-  }));
+  /**
+   * A nombre de quién se puede publicar: los propios que NO estén
+   * bajados por moderación.
+   *
+   * El server ya los rechaza con un 409, pero ofrecer el formulario
+   * igual haría que alguien escriba una noticia entera para recibir el
+   * "no" recién al mandarla. El "+" ofrece lo que esta cuenta puede
+   * hacer, y en este momento no puede.
+   */
+  const destinos = propios
+    .filter((c) => !c.censoredAt)
+    .map((c) => ({
+      slug: c.slug,
+      name: c.name,
+      entityKind: kind,
+      sector: c.sector ?? "",
+    }));
 
   const necesitaVocabulario = !esVenue && propios.length === 0;
   const [branches, tags] = necesitaVocabulario
@@ -192,7 +204,22 @@ export async function PanelColectivo({
 
         Las convocatorias NO se ofrecen: no existe el modelo todavía.
       */}
-      {propios.length > 0 && (
+      {/* La censura, ARRIBA de todo y por colectivo. El dueño no tenía
+          ninguna forma de enterarse de que le bajaron el suyo: el panel
+          le mostraba la tarjeta entera, con el botón de publicar
+          incluido, como si nada hubiera pasado. */}
+      {propios
+        .filter((c) => c.censoredAt)
+        .map((c) => (
+          <FranjaCensura
+            key={c.slug}
+            que={`${c.name} —tu ${palabra}—`}
+            motivo={c.censorReason}
+            censuradaEn={c.censoredAt}
+          />
+        ))}
+
+      {destinos.length > 0 && (
         <BotonPublicar
           acciones={[
             {

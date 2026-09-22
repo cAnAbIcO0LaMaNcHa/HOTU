@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 // roles-check y no roles.ts: el primero no importa @/auth, así que no
 // arrastra nada de next-auth acá.
-import { isSuperAdmin } from "./roles-check";
+import { isModerator, isSuperAdmin } from "./roles-check";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -772,18 +772,40 @@ export async function getCollectiveMembers(
  */
 export async function getCollectiveBySlug(
   slug: string,
-  kind: EntityKind = "collective"
+  kind: EntityKind = "collective",
+  /**
+   * Quién está mirando. Con esto, el DUEÑO ve su colectivo censurado en
+   * vez de recibir un 404 igual que un desconocido.
+   *
+   * Es el mismo patrón que getArtistBySlug, y faltaba: PanelModeracion
+   * promete "su autor la sigue viendo, marcada y con el motivo", y para
+   * un colectivo eso era falso. La dueña de uno bajado no tenía forma de
+   * enterarse salvo visitando su propia página y encontrando un 404 sin
+   * explicación.
+   */
+  viewerEmail?: string | null
 ): Promise<Collective | undefined> {
   const rows = await sql`
     SELECT * FROM collectives
-    WHERE slug = ${slug} AND status = 'published' AND censored_at IS NULL AND entity_kind = ${kind}
+    WHERE slug = ${slug} AND status = 'published' AND entity_kind = ${kind}
   `;
   if (rows.length === 0) return undefined;
-  return mapCollective(rows[0]);
+  const c = mapCollective(rows[0]);
+  if (!c.censoredAt) return c;
+
+  // Censurado: solo su dueño y un moderador. Para el resto no existe.
+  if (!viewerEmail) return undefined;
+  const owner = (rows[0].owner_email as string | null) ?? null;
+  if (owner && owner.toLowerCase() === viewerEmail.toLowerCase()) return c;
+  if (await isModerator(viewerEmail)) return c;
+  return undefined;
 }
 
-export async function getVenueBySlug(slug: string): Promise<Collective | undefined> {
-  return getCollectiveBySlug(slug, "venue");
+export async function getVenueBySlug(
+  slug: string,
+  viewerEmail?: string | null
+): Promise<Collective | undefined> {
+  return getCollectiveBySlug(slug, "venue", viewerEmail);
 }
 
 /** The artist profile this account speaks for, if it has one. */

@@ -65,9 +65,34 @@ export async function createCommunityEvent(
   }
 
   const [org] = await sql`
-    SELECT slug, name, sector, entity_kind FROM collectives WHERE slug = ${organizerSlug}
+    SELECT slug, name, sector, entity_kind, censored_at
+    FROM collectives WHERE slug = ${organizerSlug}
   `;
   if (!org) return { ok: false, status: 404, error: "Ese colectivo no existe" };
+
+  /**
+   * UN COLECTIVO CENSURADO NO PUBLICA NADA NUEVO.
+   *
+   * Sin esto, censurar escondía su página y no frenaba nada más: la
+   * entidad bajada seguía produciendo contenido público, en vivo, con su
+   * propia página en 404. Una moderación que no detiene lo que vino a
+   * detener no es moderación, es una cortina.
+   *
+   * EDITAR lo que ya existe SÍ se puede —igual que con un evento
+   * censurado—, porque la censura trae un motivo, el motivo suele ser
+   * algo que se arregla, y editar no devuelve nada al sitio. La línea
+   * está entre corregir lo tuyo y estrenar algo nuevo mientras estás
+   * bajado.
+   */
+  if (org.censored_at) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "Este perfil está bajado por moderación, así que no puede publicar nada nuevo. " +
+        "El motivo está en tu panel. Cuando se resuelva, volvés a publicar.",
+    };
+  }
 
   if (!(await canEditCollective(organizerSlug, email))) {
     return {

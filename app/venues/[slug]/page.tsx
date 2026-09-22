@@ -48,7 +48,7 @@ export default async function VenuePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const venue = await getVenueBySlug(slug);
+  const venue = await getVenueBySlug(slug, (await auth())?.user?.email ?? null);
   if (!venue) notFound();
 
   const session = await auth();

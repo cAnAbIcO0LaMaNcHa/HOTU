@@ -53,11 +53,14 @@ export default async function CollectivePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const collective = await getCollectiveBySlug(slug);
-  if (!collective) notFound();
 
+  // La sesión PRIMERO: getCollectiveBySlug la necesita para decidir si
+  // sirve un colectivo censurado, que su dueño sí tiene que poder ver.
   const session = await auth();
   const email = session?.user?.email ?? null;
+
+  const collective = await getCollectiveBySlug(slug, "collective", email);
+  if (!collective) notFound();
 
   const [membersByCollective, pending, myArtistSlug] = await Promise.all([
     getCollectiveMembers(),

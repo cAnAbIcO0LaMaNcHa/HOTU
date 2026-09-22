@@ -15,7 +15,7 @@ export default async function EventosPage() {
   /**
    * Events sort themselves by time rather than by an "archived" flag: an
    * event is over once end_at has passed, or once its day has ended when
-   * no admin set one. No manual step, and /admin/eventos-pasados still has
+   * no admin set one. No manual step, and this same page keeps
    * the full history.
    *
    * Both halves are rendered. The page used to drop the past entirely and
