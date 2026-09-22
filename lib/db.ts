@@ -1908,3 +1908,67 @@ export async function getLineupsPendientes(): Promise<LineupPendiente[]> {
     sinResolver: Number(r.sin_resolver ?? 0),
   }));
 }
+
+/** Un evento propio, con lo que el organizador necesita ver y corregir. */
+export type MiEvento = {
+  id: number;
+  title: string;
+  date: string;
+  endAt: string | null;
+  venue: string;
+  city: string;
+  lineup: string;
+  flyerUrl: string | null;
+  organizerSlug: string;
+  organizerName: string;
+  /** Si un moderador lo bajó, y por qué. */
+  censoredAt: string | null;
+  censorReason: string | null;
+  /** Boletas y pedidos: si hay, no se puede borrar. */
+  vendidas: number;
+};
+
+/**
+ * Los eventos de los colectivos y venues de esta cuenta.
+ *
+ * Por owner_email, igual que getMyNews: la pregunta "cuáles son míos" se
+ * responde en un solo lugar y no hay forma de pedir los de otro pasando
+ * el slug equivocado.
+ *
+ * Trae los censurados: son justamente los que el organizador tiene que
+ * poder ver para leer el motivo.
+ */
+export async function getMyEvents(email: string, kind?: EntityKind): Promise<MiEvento[]> {
+  const rows = kind
+    ? await sql`
+        SELECT e.*, c.name AS organizer_name,
+               (SELECT COUNT(*)::int FROM tickets WHERE event_id = e.id)
+             + (SELECT COUNT(*)::int FROM order_items WHERE event_id = e.id) AS vendidas
+        FROM events e JOIN collectives c ON c.slug = e.organizer_slug
+        WHERE lower(c.owner_email) = lower(${email}) AND c.entity_kind = ${kind}
+        ORDER BY e.event_date DESC, e.id DESC
+      `
+    : await sql`
+        SELECT e.*, c.name AS organizer_name,
+               (SELECT COUNT(*)::int FROM tickets WHERE event_id = e.id)
+             + (SELECT COUNT(*)::int FROM order_items WHERE event_id = e.id) AS vendidas
+        FROM events e JOIN collectives c ON c.slug = e.organizer_slug
+        WHERE lower(c.owner_email) = lower(${email})
+        ORDER BY e.event_date DESC, e.id DESC
+      `;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    title: r.title as string,
+    date: toISODate(r.event_date),
+    endAt: r.end_at ? new Date(r.end_at as string).toISOString() : null,
+    venue: r.venue as string,
+    city: r.city as string,
+    lineup: r.lineup as string,
+    flyerUrl: (r.flyer_url as string | null) ?? null,
+    organizerSlug: r.organizer_slug as string,
+    organizerName: (r.organizer_name as string) ?? (r.organizer_slug as string),
+    censoredAt: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
+    censorReason: (r.censor_reason as string | null) ?? null,
+    vendidas: Number(r.vendidas ?? 0),
+  }));
+}

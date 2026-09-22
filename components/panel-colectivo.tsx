@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BotonPublicar } from "@/components/boton-publicar";
 import { CollectiveInbox } from "@/components/collective-inbox";
+import { MisEventos } from "@/components/mis-eventos";
 import { MisNoticias } from "@/components/mis-noticias";
 import { ColabInbox } from "@/components/colab-inbox";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
@@ -15,6 +16,7 @@ import {
   getGenreTags,
   getMyArtistSlug,
   getMyMemberships,
+  getMyEvents,
   getMyNews,
   getNewsTags,
   getPendingForCollective,
@@ -135,10 +137,10 @@ export async function PanelColectivo({
    * consultas darían vacío garantizado. Es la misma razón por la que
    * getMyMemberships no se pregunta sin artista.
    */
-  const [misNoticias, tagsSugeridos] =
+  const [misNoticias, misEventos, tagsSugeridos] =
     propios.length > 0
-      ? await Promise.all([getMyNews(email, kind), getNewsTags()])
-      : [[], []];
+      ? await Promise.all([getMyNews(email, kind), getMyEvents(email, kind), getNewsTags()])
+      : [[], [], []];
 
   const destinos = propios.map((c) => ({
     slug: c.slug,
@@ -214,6 +216,11 @@ export async function PanelColectivo({
       {/* Lo que mandaste y en qué anda. Acá se lee el motivo si a una la
           rechazaron: la notificación vive pegada a la noticia, no en un
           sistema de avisos aparte. */}
+      {/* Lo que publicaste y en qué anda. Acá se corrige un evento
+          con la fecha mal —que hasta esta tanda solo podía arreglar el
+          admin— y acá se lee el motivo si a algo lo bajó un moderador. */}
+      <MisEventos eventos={misEventos} />
+
       <MisNoticias noticias={misNoticias} />
 
       {/* Invitaciones a colaborar dirigidas a un colectivo que

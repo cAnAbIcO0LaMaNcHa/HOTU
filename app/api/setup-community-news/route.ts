@@ -39,7 +39,8 @@
  *
  * La primera versión de esta migración NO lo cambiaba, con el argumento
  * de que rompería los INSERT del admin "que no nombran status". ESO ERA
- * FALSO: createNews (lib/db-write.ts) nombra status explícitamente y su
+ * FALSO: createNews (entonces en lib/db-write.ts, borrado después con
+ * el resto del CMS en la tanda 5 §4) nombraba status explícitamente y su
  * valor sale de readMeta, que ya defaultea a 'published' en JavaScript.
  * El único INSERT del repo que lo omite es el seeder del prototipo en
  * /api/migrate, que además tiene guarda de existencia previa — y se le

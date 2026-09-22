@@ -43,7 +43,7 @@ import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-/** Igual que en lib/db-write.ts y lib/events-write.ts. */
+/** Igual que en lib/events-write.ts. */
 const DISTRITO_CONGELADO = "D00";
 
 export type ReviewStatus = "borrador" | "en_revision" | "rechazado" | "aprobado";
