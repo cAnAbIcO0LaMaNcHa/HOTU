@@ -1,38 +1,128 @@
 import Link from "next/link";
-import { getAllEvents, getAllNews, getAllArtists, getAllTracks, getAllSets, getAllCollectives } from "@/lib/db";
+import { AlertTriangle, Check, EyeOff, ListChecks, Newspaper, UserX } from "lucide-react";
+import {
+  getArtistsInReview,
+  getBannedAccounts,
+  getCensored,
+  getLineupsPendientes,
+  getNewsInReview,
+} from "@/lib/db";
 
 export const revalidate = 0;
 
+/**
+ * El inicio del admin: qué está esperando una decisión (tanda 5 §4).
+ *
+ * ============================================================
+ * ACÁ HABÍA UN CONTADOR DE INVENTARIO. AHORA HAY UNA BANDEJA.
+ * ============================================================
+ *
+ * Esta pantalla decía "EVENTOS 4 · NOTICIAS 3 · ARTISTAS 12" con un
+ * "EDITABLE →" al lado, porque el admin era el lugar donde se cargaba
+ * todo. Cuántas noticias hay en total no es una pregunta que alguien se
+ * haga: es el número que sale cuando la herramienta es un CMS.
+ *
+ * La pregunta de un moderador es OTRA: qué está esperando que yo
+ * decida. Así que los números son colas, y una cola en cero es una
+ * buena noticia, no un inventario vacío.
+ */
 export default async function AdminHome() {
-  const [events, news, artists, tracks, sets, collectives] = await Promise.all([
-    getAllEvents({ includeAll: true }),
-    getAllNews({ includeAll: true }),
-    getAllArtists({ includeAll: true }),
-    getAllTracks({ includeAll: true }),
-    getAllSets({ includeAll: true }),
-    getAllCollectives({ includeAll: true }),
+  const [djs, noticias, lineups, censuradas, baneadas] = await Promise.all([
+    getArtistsInReview(),
+    getNewsInReview(),
+    getLineupsPendientes(),
+    getCensored(),
+    getBannedAccounts(),
   ]);
 
-  const stats = [
-    { label: "EVENTOS", count: events.length, href: "/admin/eventos", editable: true },
-    { label: "NOTICIAS", count: news.length, href: "/admin/noticias", editable: true },
-    { label: "ARTISTAS", count: artists.length, href: "/artistas", editable: false },
-    { label: "DISCOGRAFÍA", count: tracks.length, href: "/discografia", editable: false },
-    { label: "SETS", count: sets.length, href: "/sets", editable: false },
-    { label: "COLECTIVOS", count: collectives.length, href: "/colectivos", editable: false },
+  const colas = [
+    {
+      label: "PERFILES DE DJ",
+      n: djs.length,
+      href: "/admin/artistas",
+      Icono: ListChecks,
+      que: "Esperando aprobación para publicarse",
+    },
+    {
+      label: "NOTICIAS",
+      n: noticias.length,
+      href: "/admin/noticias",
+      Icono: Newspaper,
+      que: "Mandadas por colectivos y venues",
+    },
+    {
+      label: "LINEUPS",
+      n: lineups.length,
+      href: "/admin/lineups",
+      Icono: AlertTriangle,
+      que: "Por enganchar con los perfiles de quienes tocan",
+    },
   ];
+
+  const hechas = [
+    { label: "CENSURADO", n: censuradas.length, Icono: EyeOff },
+    { label: "CUENTAS CERRADAS", n: baneadas.length, Icono: UserX },
+  ];
+
+  const pendientes = colas.reduce((t, c) => t + c.n, 0);
 
   return (
     <div>
-      <p className="font-mono text-sm text-muted-foreground">Los cambios que hagas acá se publican al instante en el sitio.</p>
+      <p className="max-w-2xl font-mono text-sm leading-relaxed text-muted-foreground">
+        El contenido de HOTU lo suben los DJs, los colectivos y los venues desde sus
+        propios perfiles. Acá no se crea nada: se aprueba, se baja lo que no va, y se
+        cierra la puerta a quien hace daño.
+      </p>
+
+      {pendientes === 0 && (
+        <p className="mt-6 inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.2em] text-primary">
+          <Check className="h-4 w-4" /> NO HAY NADA ESPERANDO
+        </p>
+      )}
+
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((s) => (
-          <Link key={s.label} href={s.href} className="sheen border-chrome block p-6 transition-colors hover:border-primary">
-            <div className="font-mono text-[10px] tracking-widest text-primary">{s.label}</div>
-            <div className="mt-2 text-4xl font-bold">{s.count}</div>
-            <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">{s.editable ? "EDITABLE →" : "SOLO LECTURA"}</div>
+        {colas.map((c) => (
+          <Link
+            key={c.label}
+            href={c.href}
+            className="sheen border-chrome block p-6 transition-colors hover:border-primary"
+          >
+            <div className="inline-flex items-center gap-2 font-mono text-[10px] tracking-widest text-primary">
+              <c.Icono className="h-3 w-3" /> {c.label}
+            </div>
+            <div className={`mt-2 text-4xl font-bold ${c.n === 0 ? "text-muted-foreground" : ""}`}>
+              {c.n}
+            </div>
+            <div className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              {c.que}
+            </div>
           </Link>
         ))}
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-mono text-[10px] tracking-[0.3em] text-muted-foreground">
+          DECISIONES TOMADAS
+        </h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {hechas.map((h) => (
+            <Link
+              key={h.label}
+              href="/admin/moderacion"
+              className="block border border-border p-5 transition-colors hover:border-primary"
+            >
+              <div className="inline-flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground">
+                <h.Icono className="h-3 w-3" /> {h.label}
+              </div>
+              <div className="mt-2 text-2xl font-bold">{h.n}</div>
+            </Link>
+          ))}
+        </div>
+        <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          Todo se deshace con un click, y todo queda con el motivo a la vista. Una
+          decisión de moderación que nadie puede revisar después es una que nadie
+          audita.
+        </p>
       </div>
     </div>
   );

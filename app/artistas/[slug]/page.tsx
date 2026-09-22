@@ -7,6 +7,7 @@ import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
 import { LikeButton } from "@/components/like-button";
+import { FranjaCensura } from "@/components/franja-censura";
 import { FranjaRevision } from "@/components/franja-revision";
 import { GeneroEditable } from "@/components/genero-editable";
 import { canEditArtist, loQueFalta } from "@/lib/artists-write";
@@ -89,7 +90,19 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
       {/* La franja de revisión, solo para el dueño y el admin. Un
           visitante nunca llega acá con un perfil sin publicar: le da 404. */}
+      {/* La censura va ARRIBA de la revisión: si un moderador bajó el
+          perfil, eso manda sobre en qué punto de la cola esté. Mandarlo
+          a completar campos cuando lo que pasó fue otra cosa sería
+          hacerle perder el tiempo. */}
       {canEdit && (
+        <FranjaCensura
+          que="Tu perfil"
+          motivo={artist.censorReason}
+          censuradaEn={artist.censoredAt}
+        />
+      )}
+
+      {canEdit && !artist.censoredAt && (
         <FranjaRevision
           slug={slug}
           reviewStatus={artist.reviewStatus}

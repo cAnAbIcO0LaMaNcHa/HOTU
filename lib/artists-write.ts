@@ -12,7 +12,7 @@
 import { neon } from "@neondatabase/serverless";
 import { SOCIAL_PLATFORMS, type ArtistSocials, type SocialPlatform } from "./socials";
 import { deleteOwnBlob } from "./blob";
-import { isSuperAdmin } from "./roles-check";
+import { isModerator, isSuperAdmin } from "./roles-check";
 // El WriteResult de este archivo no es genérico y no contempla 409, que
 // es justo lo que el alta necesita (código tomado, ya tenés un perfil).
 // Se usa el genérico de collectives-write, que es el mismo que ya usan
@@ -654,8 +654,11 @@ export async function approveArtist(
   slug: string,
   adminEmail?: string | null
 ): Promise<Resultado<{ aprobado: true }>> {
-  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
-    return { ok: false, status: 403, error: "Solo un administrador aprueba perfiles" };
+  // isModerator y no isSuperAdmin: aprobar la cola es el trabajo del
+  // rol nuevo. Editar un perfil ajeno sigue siendo de un SUPER_ADMIN
+  // —eso es canEditArtist, más abajo—, porque moderar no es editar.
+  if (!adminEmail || !(await isModerator(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un moderador aprueba perfiles" };
   }
   const filas = await sql`
     UPDATE artists
@@ -687,8 +690,8 @@ export async function rejectArtist(
   note: unknown,
   adminEmail?: string | null
 ): Promise<Resultado<{ rechazado: true }>> {
-  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
-    return { ok: false, status: 403, error: "Solo un administrador rechaza perfiles" };
+  if (!adminEmail || !(await isModerator(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un moderador rechaza perfiles" };
   }
 
   const motivo = typeof note === "string" ? note.trim() : "";

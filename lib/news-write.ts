@@ -38,7 +38,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { canEditCollective, type WriteResult } from "./collectives-write";
-import { isSuperAdmin } from "./roles-check";
+import { isModerator } from "./roles-check";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -406,6 +406,17 @@ export async function deleteCommunityNews(
  * =================================================================== */
 
 /**
+ * MODERAR LA COLA ES DE UN MODERADOR, NO DE UN SUPER_ADMIN.
+ *
+ * Estas dos funciones pedían isSuperAdmin porque se escribieron antes
+ * de que existiera el rol. El resultado era que un MODERATOR veía la
+ * cola entera y recibía 403 al apretar aprobar: un botón que existe y
+ * no funciona, que es peor que no tener el botón.
+ *
+ * Un SUPER_ADMIN sigue pudiendo: isModerator lo incluye.
+ */
+
+/**
  * Aprueba y PUBLICA. Las dos cosas en la misma sentencia a propósito:
  * aprobar sin publicar deja una noticia que el autor ve aprobada y nadie
  * más ve, que es el peor de los dos estados posibles.
@@ -417,8 +428,8 @@ export async function approveNews(
   id: number,
   adminEmail?: string | null
 ): Promise<WriteResult<{ aprobada: true }>> {
-  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
-    return { ok: false, status: 403, error: "Solo un administrador aprueba noticias" };
+  if (!adminEmail || !(await isModerator(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un moderador aprueba noticias" };
   }
   if (!Number.isInteger(id)) return { ok: false, status: 404, error: "Noticia no encontrada" };
 
@@ -452,8 +463,8 @@ export async function rejectNews(
   note: unknown,
   adminEmail?: string | null
 ): Promise<WriteResult<{ rechazada: true }>> {
-  if (!adminEmail || !(await isSuperAdmin(adminEmail))) {
-    return { ok: false, status: 403, error: "Solo un administrador rechaza noticias" };
+  if (!adminEmail || !(await isModerator(adminEmail))) {
+    return { ok: false, status: 403, error: "Solo un moderador rechaza noticias" };
   }
   if (!Number.isInteger(id)) return { ok: false, status: 404, error: "Noticia no encontrada" };
 

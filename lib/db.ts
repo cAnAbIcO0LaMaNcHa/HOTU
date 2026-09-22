@@ -22,6 +22,20 @@ export type ContentMeta = {
   status: "draft" | "published" | "archived";
   featured: boolean;
   priorityAt: string | null;
+  /**
+   * La marca de moderación (tanda 5 §4). null = no censurado.
+   *
+   * Va en ContentMeta y no en cada tipo porque las seis tablas
+   * editoriales la tienen, igual que status. Y va SEPARADA de status a
+   * propósito: status es si el AUTOR quiere que se vea, esto es si un
+   * MODERADOR lo bajó, y los dos pueden ser verdad a la vez.
+   *
+   * Los lectores públicos ya filtran por censored_at IS NULL en el SQL,
+   * así que esto solo llega con valor cuando quien mira es el dueño o
+   * un moderador — que son los únicos que tienen que leer el motivo.
+   */
+  censoredAt: string | null;
+  censorReason: string | null;
 };
 
 /**
@@ -302,6 +316,8 @@ function mapMeta(r: Record<string, unknown>): ContentMeta {
     status: (r.status as ContentMeta["status"]) ?? "published",
     featured: Boolean(r.featured),
     priorityAt: r.priority_at ? new Date(r.priority_at as string).toISOString() : null,
+    censoredAt: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
+    censorReason: (r.censor_reason as string | null) ?? null,
   };
 }
 
@@ -374,11 +390,10 @@ export async function getArtistBySlug(
    * visible para su dueño —tiene que poder leer el motivo— y deja de
    * serlo para todos los demás.
    */
-  // De la FILA CRUDA, no del objeto mapeado: mapArtist no escribe
-  // censoredAt, así que leerlo de ahí daba undefined siempre y este
-  // chequeo no chequeaba nada. Un filtro inerte es peor que ninguno,
-  // porque parece que está.
-  const censurado = rows[0].censored_at != null;
+  // Ahora sí sale del objeto mapeado, porque mapMeta lo escribe. La
+  // primera versión lo leía de ahí cuando NADIE lo escribía, así que
+  // daba undefined siempre y el chequeo no chequeaba nada.
+  const censurado = artist.censoredAt != null;
   if (artist.status === "published" && !censurado && !(await duenoBaneado(artist.slug))) {
     return artist;
   }
@@ -1638,6 +1653,13 @@ export type MiNoticia = {
   submittedAt: string | null;
   /** Si está en el sitio. Solo la aprobación lo pone en true. */
   publicada: boolean;
+  /**
+   * La marca del moderador. Es OTRA cosa que review_status: una noticia
+   * puede estar aprobada Y censurada, y en ese caso lo que el autor
+   * tiene que leer es la censura.
+   */
+  censoredAt: string | null;
+  censorReason: string | null;
 };
 
 function mapMiNoticia(r: Record<string, unknown>): MiNoticia {
@@ -1653,7 +1675,9 @@ function mapMiNoticia(r: Record<string, unknown>): MiNoticia {
     reviewNote: (r.review_note as string | null) ?? null,
     reviewedAt: r.reviewed_at ? new Date(r.reviewed_at as string).toISOString() : null,
     submittedAt: r.submitted_at ? new Date(r.submitted_at as string).toISOString() : null,
-    publicada: (r.status as string) === "published",
+    publicada: (r.status as string) === "published" && r.censored_at == null,
+    censoredAt: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
+    censorReason: (r.censor_reason as string | null) ?? null,
   };
 }
 
@@ -1705,4 +1729,182 @@ export async function getNewsTags(): Promise<string[]> {
     GROUP BY tag ORDER BY n DESC, tag ASC LIMIT 20
   `;
   return rows.map((r) => r.tag as string);
+}
+
+
+/* ===================================================================
+ * LO QUE MIRA EL MODERADOR (tanda 5 §4)
+ * =================================================================== */
+
+/** Una noticia esperando decisión, con lo necesario para decidirla. */
+export type NoticiaEnRevision = {
+  id: number;
+  tag: string;
+  date: string;
+  title: string;
+  excerpt: string;
+  autorSlug: string;
+  autorNombre: string;
+  autorEsVenue: boolean;
+  submittedAt: string | null;
+  dias: number;
+  /** Cuántas le aprobamos antes a este autor. Contexto, no regla. */
+  aprobadasDelAutor: number;
+};
+
+/**
+ * La cola de noticias de la comunidad. Lo más viejo primero.
+ *
+ * Trae el nombre del autor y cuántas le aprobamos antes, porque eso es
+ * lo que cambia la lectura de un texto dudoso: la primera de alguien que
+ * recién llega no se lee igual que la décima de un colectivo que viene
+ * publicando bien. Es contexto para decidir, no una regla que decida.
+ */
+export async function getNewsInReview(): Promise<NoticiaEnRevision[]> {
+  const rows = await sql`
+    SELECT n.id, n.tag, n.news_date, n.title, n.excerpt, n.submitted_at,
+           n.author_collective_slug, c.name AS autor_nombre, c.entity_kind,
+           EXTRACT(DAY FROM (now() - n.submitted_at))::int AS dias,
+           (SELECT COUNT(*)::int FROM news o
+             WHERE o.author_collective_slug = n.author_collective_slug
+               AND o.review_status = 'aprobado') AS aprobadas
+    FROM news n
+    JOIN collectives c ON c.slug = n.author_collective_slug
+    WHERE n.review_status = 'en_revision'
+    ORDER BY n.submitted_at ASC NULLS LAST, n.id ASC
+  `;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    tag: r.tag as string,
+    date: toISODate(r.news_date),
+    title: r.title as string,
+    excerpt: r.excerpt as string,
+    autorSlug: r.author_collective_slug as string,
+    autorNombre: r.autor_nombre as string,
+    autorEsVenue: (r.entity_kind as string) === "venue",
+    submittedAt: r.submitted_at ? new Date(r.submitted_at as string).toISOString() : null,
+    dias: Number(r.dias ?? 0),
+    aprobadasDelAutor: Number(r.aprobadas ?? 0),
+  }));
+}
+
+/** Una pieza bajada del sitio por un moderador. */
+export type PiezaCensurada = {
+  tipo: "artist" | "collective" | "event" | "news" | "set" | "track";
+  clave: string;
+  titulo: string;
+  motivo: string;
+  censuradaEn: string;
+  censuradaPor: string | null;
+};
+
+/**
+ * Todo lo que está censurado, de lo más reciente a lo más viejo.
+ *
+ * Seis consultas y no un UNION: las seis tablas tienen claves de tipos
+ * distintos y títulos en columnas distintas, y un UNION obligaría a
+ * castear todo a texto para volver a separarlo después. Cada una pega
+ * contra su índice parcial, así que son seis lecturas de un puñado de
+ * filas.
+ */
+export async function getCensored(): Promise<PiezaCensurada[]> {
+  const partes: Array<{ tipo: PiezaCensurada["tipo"]; tabla: string; clave: string; titulo: string }> = [
+    { tipo: "artist", tabla: "artists", clave: "slug", titulo: "name" },
+    { tipo: "collective", tabla: "collectives", clave: "slug", titulo: "name" },
+    { tipo: "event", tabla: "events", clave: "id", titulo: "title" },
+    { tipo: "news", tabla: "news", clave: "id", titulo: "title" },
+    { tipo: "set", tabla: "dj_sets", clave: "slug", titulo: "title" },
+    { tipo: "track", tabla: "tracks", clave: "slug", titulo: "title" },
+  ];
+  const todo: PiezaCensurada[] = [];
+  for (const p of partes) {
+    // Los nombres salen de esta constante, no de ningún request.
+    const rows = await sql(
+      `SELECT ${p.clave}::text AS clave, ${p.titulo} AS titulo,
+              censor_reason, censored_at, censored_by
+       FROM ${p.tabla} WHERE censored_at IS NOT NULL`
+    );
+    for (const r of rows) {
+      todo.push({
+        tipo: p.tipo,
+        clave: r.clave as string,
+        titulo: (r.titulo as string) ?? "(sin título)",
+        motivo: (r.censor_reason as string) ?? "",
+        censuradaEn: new Date(r.censored_at as string).toISOString(),
+        censuradaPor: (r.censored_by as string | null) ?? null,
+      });
+    }
+  }
+  return todo.sort((a, b) => (a.censuradaEn < b.censuradaEn ? 1 : -1));
+}
+
+/** Una cuenta cerrada. */
+export type CuentaBaneada = {
+  email: string;
+  nombre: string | null;
+  motivo: string;
+  baneadaEn: string;
+  baneadaPor: string | null;
+  /** Qué queda a su nombre. Para saber qué se está escondiendo. */
+  artistas: string[];
+};
+
+export async function getBannedAccounts(): Promise<CuentaBaneada[]> {
+  const rows = await sql`
+    SELECT u.email, u.display_name, u.ban_reason, u.banned_at, u.banned_by,
+           COALESCE((SELECT array_agg(a.name ORDER BY a.slug) FROM artists a
+                      WHERE lower(a.owner_email) = lower(u.email)), '{}') AS artistas
+    FROM user_profiles u
+    WHERE u.banned_at IS NOT NULL
+    ORDER BY u.banned_at DESC
+  `;
+  return rows.map((r) => ({
+    email: r.email as string,
+    nombre: (r.display_name as string | null) ?? null,
+    motivo: (r.ban_reason as string) ?? "",
+    baneadaEn: new Date(r.banned_at as string).toISOString(),
+    baneadaPor: (r.banned_by as string | null) ?? null,
+    artistas: (r.artistas as string[]) ?? [],
+  }));
+}
+
+/** Un evento cuyo lineup todavía no enganchó nadie con su perfil. */
+export type LineupPendiente = {
+  id: number;
+  title: string;
+  date: string;
+  lineup: string;
+  entradas: number;
+  sinResolver: number;
+};
+
+/**
+ * Los eventos con lineup por enganchar, los más próximos primero.
+ *
+ * Sale de /admin/eventos, que se va con el CMS. Esto NO es creación de
+ * contenido: es lo que convierte el texto de un flyer en vínculos a
+ * perfiles reales, y de eso depende que un toque aparezca en el press
+ * kit del DJ y cuente en sus números. Con los eventos de la comunidad
+ * hay MÁS lineups que enganchar, no menos.
+ */
+export async function getLineupsPendientes(): Promise<LineupPendiente[]> {
+  const rows = await sql`
+    SELECT e.id, e.title, e.event_date, e.lineup,
+           COUNT(el.id)::int AS entradas,
+           COUNT(*) FILTER (WHERE el.artist_slug IS NULL AND el.collective_slug IS NULL)::int AS sin_resolver
+    FROM events e
+    LEFT JOIN event_lineup el ON el.event_id = e.id
+    WHERE e.status = 'published' AND e.censored_at IS NULL
+      AND e.lineup_reviewed_at IS NULL
+    GROUP BY e.id, e.title, e.event_date, e.lineup
+    ORDER BY e.event_date DESC
+  `;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    title: r.title as string,
+    date: toISODate(r.event_date),
+    lineup: r.lineup as string,
+    entradas: Number(r.entradas ?? 0),
+    sinResolver: Number(r.sin_resolver ?? 0),
+  }));
 }

@@ -47,15 +47,24 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <div className="font-mono text-[10px] tracking-widest text-muted-foreground">{email}</div>
       </div>
-      <nav className="mt-6 flex flex-wrap gap-2">
+      {/*
+        LA NAVEGACIÓN ES LA LISTA DE LO QUE ESTE PANEL HACE.
+
+        Se fueron EVENTOS, ARCHIVO y COLECTIVOS: eran el CMS. Lo que
+        queda son tres colas, la moderación, y dos cosas que no son
+        moderación y piden SUPER_ADMIN por su cuenta —ROLES nombra
+        moderadores, PEDIDOS emite tiquetes—, separadas a la derecha
+        para que se lean como lo que son.
+      */}
+      <nav className="mt-6 flex flex-wrap items-center gap-2">
         <Link href="/admin" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">INICIO</Link>
-        <Link href="/admin/eventos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">EVENTOS</Link>
-        <Link href="/admin/eventos-pasados" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">ARCHIVO</Link>
+        <Link href="/admin/artistas" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">DJS</Link>
         <Link href="/admin/noticias" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">NOTICIAS</Link>
-        <Link href="/admin/artistas" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">ARTISTAS</Link>
-        <Link href="/admin/colectivos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">COLECTIVOS</Link>
-        <Link href="/admin/roles" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">ROLES</Link>
-        <Link href="/admin/pedidos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">PEDIDOS</Link>
+        <Link href="/admin/lineups" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">LINEUPS</Link>
+        <Link href="/admin/moderacion" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">MODERACIÓN</Link>
+        <span className="mx-2 hidden h-4 w-px bg-border sm:block" aria-hidden />
+        <Link href="/admin/roles" className="border border-border/50 px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground hover:border-primary hover:text-primary">ROLES</Link>
+        <Link href="/admin/pedidos" className="border border-border/50 px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground hover:border-primary hover:text-primary">PEDIDOS</Link>
         <Link href="/" className="ml-auto border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">VER SITIO</Link>
       </nav>
       <div className="mt-10">{children}</div>

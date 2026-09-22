@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, Check, Clock, Eye, Newspaper } from "lucide-react";
+import { FranjaCensura } from "./franja-censura";
 import { Field, TextAreaField } from "./epk-editable-section";
 import type { MiNoticia } from "@/lib/db";
 
@@ -88,7 +89,17 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
                   se aprobó todavía, solo la ves vos" sobre algo que
                   estaba en portada. Lo que el autor necesita saber
                   primero es si se ve o no. */}
-              <Estado estado={n.publicada ? "aprobado" : n.reviewStatus} />
+              {/* Con censura NO se muestra estado de cola. Una noticia
+                  aprobada y después bajada seguía diciendo PUBLICADA, que
+                  es justo lo contrario de lo que pasa. Lo que hay que
+                  leer en ese caso lo dice la franja de abajo. */}
+              {n.censoredAt ? (
+                <span className="font-mono text-[10px] tracking-[0.3em] text-red-400">
+                  BAJADA POR MODERACIÓN
+                </span>
+              ) : (
+                <Estado estado={n.publicada ? "aprobado" : n.reviewStatus} />
+              )}
               <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
                 {n.tag} · {n.date}
                 {noticias.some((o) => o.authorSlug !== n.authorSlug)
@@ -102,6 +113,14 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
               {n.excerpt.length > 220 ? `${n.excerpt.slice(0, 220)}...` : n.excerpt}
             </p>
 
+            {/* La censura primero: si un moderador la bajó, eso manda
+                sobre dónde esté en la cola. */}
+            <FranjaCensura
+              que="Esta noticia"
+              motivo={n.censorReason}
+              censuradaEn={n.censoredAt}
+            />
+
             {/* El motivo del rechazo, entero y sin recortar. */}
             {!n.publicada && n.reviewStatus === "rechazado" && n.reviewNote && (
               <blockquote className="mt-3 border-l-2 border-primary pl-4 font-mono text-[12px] leading-relaxed">
@@ -109,7 +128,7 @@ export function MisNoticias({ noticias }: { noticias: MiNoticia[] }) {
               </blockquote>
             )}
 
-            {editando === n.id && !n.publicada ? (
+            {n.censoredAt ? null : editando === n.id && !n.publicada ? (
               <EditorNoticia
                 noticia={n}
                 busy={busy === n.id}
