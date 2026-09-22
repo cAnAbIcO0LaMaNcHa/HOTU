@@ -80,6 +80,44 @@ están en main desde `setup-moderation`.
 
 ---
 
+## PARA §8 — DECIDIR, NO ASUMIR
+
+**Borrar un colectivo permanentemente ya no lo puede hacer nadie.**
+
+`/admin/colectivos` era el único lugar que exponía `deleteCollective`, y
+se fue con el CMS en el paso 4. Lo encontró el tester.
+
+Qué SÍ está cubierto: esconder un colectivo problemático. Eso es la
+censura — con motivo, reversible, sin borrar nada.
+
+Qué NO: borrar de verdad uno espurio o duplicado. Hoy no lo puede hacer
+ni un SUPER_ADMIN desde la UI.
+
+Las dos salidas contradicen algo, y por eso no se eligió sola:
+
+- **Devolvérselo al admin** contradice "el admin no es un perfil
+  interactuable": borrar contenido ajeno es interactuar con él.
+- **Dárselo al dueño** es una pieza nueva, con sus propias guardas —
+  `deleteCollective` se negaba por noticias publicadas, por eventos
+  organizados y por `content_placements`, y todo eso habría que
+  reconstruirlo en el camino del dueño.
+
+Mientras tanto no bloquea nada: un colectivo mal creado se puede
+RENOMBRAR (el nombre es editable desde el panel), así que nadie queda
+encerrado por el "uno por cuenta".
+
+---
+
+## PARA §8 — EL TOGGLE `featured`, INERTE
+
+Vivía solo en las páginas del admin que se borraron. Verificado por el
+tester: `featured` ya no se lee en ninguna parte de la UI, solo existe
+en `lib/db.ts`. La pérdida no la nota nadie porque la función ya no
+hacía nada. Queda anotado para cuando se decida si destacar algo en la
+home vuelve a existir, y de qué forma.
+
+---
+
 ## LO PRIMERO QUE TENÉS QUE HACER EN PRODUCCIÓN
 
 **Date el rol MODERATOR a vos mismo no hace falta** — sos SUPER_ADMIN y
