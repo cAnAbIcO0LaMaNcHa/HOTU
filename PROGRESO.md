@@ -676,40 +676,58 @@ que no devuelve nada es justo lo que la regla de la transición prohíbe.
 
 ---
 
-## DATO SUCIO EN MAIN — Y YA NO SE ARREGLA DESDE EL ADMIN
+## ~~DATO SUCIO EN MAIN~~ — RESUELTO, y cómo
 
-**`events.id = 4` tiene una dirección en la columna `city`:**
-`"Calle 80 # 14 - 11"`.
+`events.id = 4` tenía una dirección en `city`: `"Calle 80 # 14 - 11"`,
+y el filtro de `/eventos` la ofrecía como si fuera una ciudad.
 
-El filtro CIUDAD de `/eventos` arma sus opciones con lo que hay en los
-datos, así que esa dirección aparece como si fuera una ciudad en el
-desplegable. La página hace lo correcto con un dato equivocado.
+Se arregló junto con el otro problema del que era síntoma: **los cuatro
+eventos de main no tenían organizador**, porque los había cargado el
+admin cuando era un CMS, y desde la tanda 5 §4 el admin no edita. Nadie
+podía tocarlos.
 
-**CAMBIÓ CÓMO SE ARREGLA, y es consecuencia directa del paso 4.** Decía
-"va a mano desde el admin". Ya no: el admin no edita contenido. Y ese
-evento **no tiene organizador** —lo cargó el admin cuando era un CMS—,
-así que ningún panel lo alcanza tampoco. Hoy es de nadie.
+Lo que se corrió en la consola de Neon contra main, cada bloque con su
+SELECT antes y RETURNING después, y todos guardados con `IS NULL` para
+que una segunda corrida no pisara nada:
 
-Hay cuatro eventos así en main. Tenés dos caminos:
+    UPDATE events SET organizer_slug = 'hotu-residents'
+    WHERE id = 2 AND organizer_slug IS NULL;        -- HOTU RITUAL OPEN AIR
 
-**(a) Asignarles un organizador**, por SQL, y que ese colectivo los
-corrija desde su panel:
+    UPDATE events SET organizer_slug = 'chia-underground'
+    WHERE id = 5 AND organizer_slug IS NULL;        -- CHÍA UNDERGROUND VOL.12
 
-    UPDATE events SET organizer_slug = '<slug-del-colectivo>' WHERE id = 4;
+    UPDATE events SET organizer_slug = 'hotu-residents'
+    WHERE id = 4 AND organizer_slug IS NULL;        -- TADA · Miércoles de Techno
 
-Es el camino que deja el dato bien Y el evento editable de ahí en más.
+    UPDATE events SET city = 'Bogotá'
+    WHERE id = 4 AND city = 'Calle 80 # 14 - 11';
 
-**(b) Arreglar solo la ciudad**, por SQL:
+Antes de eso hubo un paso que no estaba previsto: **`hotu-residents` y
+`chia-underground` no tenían dueño** —ni fantasma ni real—, así que
+`getMyEvents`, que filtra por `owner_email`, no iba a mostrar nada
+aunque los eventos quedaran organizados. Se resolvieron con el
+formulario de §8 pieza 1 (ENTREGARLE UN PERFIL A SU DUEÑO), que ya
+cubría el caso del perfil huérfano.
 
-    UPDATE events SET city = 'Bogotá' WHERE id = 4;
+**Verificado desde afuera**: `/eventos` ofrece `Bogotá`, `CHÍA` y
+`LA CALERA`, y cero coincidencias de "Calle 80" en la página.
 
-La Calle 80 con Carrera 14 es Bogotá, pero eso lo afirma alguien que
-conoce el evento, no un script — por eso no va en una migración.
+**Verificado desde el panel**: MIS EVENTOS quedó poblado con los tres
+eventos, los tres con CORREGIR, y TADA **sin** BORRAR porque tiene 3
+boletas vendidas. La guarda "una boleta es prueba de un pago" corriendo
+en producción, no solo en las pruebas.
 
-Recomiendo (a) para los cuatro: mientras no tengan organizador van a
-seguir siendo intocables cada vez que haga falta corregir algo.
+### Lo que quedó pendiente de esto
 
-Encontrado por el tester en la tanda 4. Es preexistente.
+`events.id = 6` (`xxx 000`, `draft`, venue `xxx`) sigue **sin
+organizador**, a propósito: es un borrador de prueba, no un evento real.
+Como no tiene dueño, nadie lo puede editar. Se va cuando se borren los
+demás datos de prueba (ver EL BORRADO DE LOS PERFILES DE PRUEBA), o
+suelto con:
+
+    SELECT id, title, status FROM events WHERE id = 6;
+    DELETE FROM events WHERE id = 6 AND status = 'draft' AND organizer_slug IS NULL
+    RETURNING id, title;
 
 ---
 
