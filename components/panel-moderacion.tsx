@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRightLeft, EyeOff, RotateCcw, UserX } from "lucide-react";
@@ -66,6 +66,57 @@ export function PanelModeracion({
     dueno: string | null;
     administra: { artistas: Array<{ slug: string; name: string }>; colectivos: Array<{ slug: string; name: string; esVenue: boolean }> };
   } | null>(null);
+  /**
+   * PARA QUÉ perfil es la vista previa que hay en pantalla.
+   *
+   * Sin esto, "hay una previa" no significa "hay una previa DE ESTO":
+   * alguien mira lo que mueve un slug, cambia el slug, y confirma sobre
+   * la foto del anterior.
+   */
+  const [tPreviewDe, setTPreviewDe] = useState<string>("");
+  const [tBuscando, setTBuscando] = useState(false);
+
+  /**
+   * LA VISTA PREVIA SE PIDE MIENTRAS SE ESCRIBE, NO AL SALIR DEL CAMPO.
+   *
+   * Antes iba en el onBlur, y el fetch es asíncrono: clickear ENTREGAR
+   * dispara el blur, pero la respuesta podía llegar DESPUÉS de que el
+   * traspaso ya había salido. Una previa que llega tarde no es una
+   * previa, y una que se puede saltear no sirve para lo único que hace:
+   * evitar que alguien confirme algo que mueve más de lo que creía.
+   *
+   * El efecto se cancela a sí mismo al cambiar el slug, así que una
+   * respuesta vieja que llegue tarde no pisa a una nueva.
+   */
+  useEffect(() => {
+    const slug = tSlug.trim();
+    setTPreview(null);
+    setTPreviewDe("");
+    if (!slug) return;
+
+    let vigente = true;
+    setTBuscando(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/moderation/owner?tipo=${tTipo}&slug=${encodeURIComponent(slug)}`
+        );
+        const d = await res.json().catch(() => ({}));
+        if (!vigente) return;
+        if (res.ok) {
+          setTPreview(d);
+          setTPreviewDe(slug);
+        }
+      } finally {
+        if (vigente) setTBuscando(false);
+      }
+    }, 350);
+
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [tTipo, tSlug]);
 
   const elTipo = TIPOS.find((t) => t.id === tipo)!;
 
@@ -391,10 +442,7 @@ export function PanelModeracion({
             <select
               value={tTipo}
               disabled={busy}
-              onChange={(e) => {
-                setTTipo(e.target.value as "artist" | "collective");
-                setTPreview(null);
-              }}
+              onChange={(e) => setTTipo(e.target.value as "artist" | "collective")}
               className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
             >
               <option value="artist">PERFIL DE DJ</option>
@@ -408,25 +456,7 @@ export function PanelModeracion({
             <input
               value={tSlug}
               disabled={busy}
-              onChange={(e) => {
-                setTSlug(e.target.value);
-                setTPreview(null);
-              }}
-              onBlur={async () => {
-                const slug = tSlug.trim();
-                if (!slug) return;
-                try {
-                  const res = await fetch(
-                    `/api/admin/moderation/owner?tipo=${tTipo}&slug=${encodeURIComponent(slug)}`
-                  );
-                  const d = await res.json().catch(() => ({}));
-                  setTPreview(res.ok ? d : null);
-                  if (!res.ok) setError(d.error ?? "No encontré ese perfil");
-                  else setError(null);
-                } catch {
-                  setTPreview(null);
-                }
-              }}
+              onChange={(e) => setTSlug(e.target.value)}
               placeholder="nombre-en-la-url"
               className="mt-1 w-full border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-primary"
             />
@@ -499,7 +529,16 @@ export function PanelModeracion({
 
         <button
           type="button"
-          disabled={busy || tMotivo.trim().length < 10 || tSlug.trim() === "" || tEmail.trim() === ""}
+          disabled={
+            busy ||
+            tMotivo.trim().length < 10 ||
+            tEmail.trim() === "" ||
+            // La guarda de verdad: sin una previa de ESTE perfil, no hay
+            // botón. Es lo que convierte "te mostramos qué se mueve" en
+            // una garantía y no en una intención.
+            tPreviewDe === "" ||
+            tPreviewDe !== tSlug.trim()
+          }
           onClick={async () => {
             const r = await pedir(
               "/api/admin/moderation/owner",
@@ -523,6 +562,13 @@ export function PanelModeracion({
         >
           {busy ? "..." : "ENTREGAR"}
         </button>
+        {tSlug.trim() !== "" && tPreviewDe !== tSlug.trim() && (
+          <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+            {tBuscando
+              ? "Buscando ese perfil..."
+              : "No encontré ese perfil. El botón se habilita cuando aparezca acá arriba qué se va a mover."}
+          </p>
+        )}
         <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
           Si la cuenta vieja era una de las que se crearon sin contraseña y no le
           queda nada, se borra sola: un email deducible de la URL y sin dueño es una
