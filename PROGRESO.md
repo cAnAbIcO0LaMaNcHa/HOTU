@@ -3,9 +3,9 @@
 La gente sube su contenido, la plataforma lo organiza, y el admin solo
 modera. Los cuatro pasos están hechos.
 
-**Producción está al día hasta `c98f129`.** Las DOS migraciones de esta
-tanda están corridas y verificadas en main. Quedan **3 commits locales**
-sin pushear — ver PARA LLEVARLO A PRODUCCIÓN, abajo.
+**PRODUCCIÓN ESTÁ AL DÍA. No queda nada sin pushear ni ninguna
+migración pendiente.** Las dos migraciones de esta tanda están corridas y
+verificadas en main, y el código está desplegado.
 
 Verificación: `npx tsc --noEmit` limpio después de cada pieza, y curl
 contra `npm run dev`. Nunca se corrió `next build`.
@@ -53,30 +53,27 @@ lineups), censurar y banear. Se fueron `/admin/eventos`,
 
 ---
 
-## PARA LLEVARLO A PRODUCCIÓN
+## ~~PARA LLEVARLO A PRODUCCIÓN~~ — HECHO Y VERIFICADO
 
-**Las dos migraciones ya están corridas en main y verificadas.** No queda
-ninguna pendiente.
+Las dos migraciones corridas en main, el código desplegado, y las cinco
+señales comprobadas. Se deja el detalle de lo que se miró, porque es el
+molde para la próxima vez:
 
-Falta **un push**, de `c98f129` a `cb9f78f` (3 commits): los filtros de
-lectura, el admin vaciado, y el editor de eventos del organizador.
+1. **Una ruta nueva que responde 401 y no 404.** Es la mejor señal de que
+   un deploy subió, porque no le pregunta nada a la base: no depende de
+   que existan datos, y distingue "el código está" de "el código no está"
+   sin ambigüedad.
+2. Las páginas borradas dando 404 y las nuevas abriendo — **esto hay que
+   mirarlo CON SESIÓN**: el middleware de `/admin/*` redirige antes de
+   resolver la ruta, así que desde afuera una página borrada y una nueva
+   dan el mismo 307. Desde afuera no se puede distinguir, y conviene
+   saberlo antes de creer que se verificó algo.
+3. Las páginas públicas en 200, y con contenido real adentro — no solo el
+   código de estado.
 
-    git push origin cb9f78f:main
-
-**No necesita migración previa**: las columnas que ese código lee ya
-están en main desde `setup-moderation`.
-
-### Qué mirar cuando el deploy esté arriba
-
-1. `/api/events/1` con DELETE y sin sesión tiene que dar **401**, no 404.
-   Eso prueba que el código nuevo está desplegado sin preguntarle nada a
-   la base.
-2. `/admin/eventos`, `/admin/colectivos` y `/admin/eventos-pasados`
-   tienen que dar **404**.
-3. `/admin/moderacion` y `/admin/lineups` tienen que **abrir**.
-4. Las nueve páginas públicas en **200**.
-5. En `/admin`, las tres colas con sus números. Lineups va a marcar
-   varios: los eventos viejos nunca se revisaron.
+Lo que NO sirve como señal: pedir una URL que dependa de datos que solo
+existen en dev. `/colectivos/otu` da 404 para siempre en producción, y
+ese 404 se lee como "todavía no subió".
 
 ---
 
