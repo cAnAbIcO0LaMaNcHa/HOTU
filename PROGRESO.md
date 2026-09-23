@@ -80,6 +80,55 @@ están en main desde `setup-moderation`.
 
 ---
 
+## §8 PIEZA 1 — HECHA: ENTREGARLE UN PERFIL A SU DUEÑO
+
+En `/admin/moderacion`, abajo de todo. El moderador pone el perfil, la
+cuenta que lo va a recibir y CÓMO lo verificó, y el traspaso mueve todo
+lo que esa cuenta administra.
+
+Tres cosas que conviene saber antes de usarlo:
+
+- **No verifica nada: registra tu decisión.** No hay forma automatizable
+  de comprobar que alguien es quien dice. Medido: el repo no tiene
+  transporte de correo, los emails de esas cuentas son de un dominio que
+  no existe, y de 17 artistas solo 3 tienen `contact_email` —los tres
+  falsos— y ninguno tiene redes cargadas. HOTU no sabe cómo contactar a
+  nadie. Por eso el motivo tiene que decir CÓMO comprobaste.
+- **Se lleva TODO lo de esa cuenta**, no el perfil suelto. Siete de las
+  cuentas administran un artista y un colectivo. El formulario te muestra
+  qué se va a mover antes de que confirmes.
+- **La cuenta vieja se borra sola** si era un fantasma: sin contraseña,
+  sin likes, sin pedidos, sin tiquetes y sin roles. Si alguna vez lo usás
+  para traspasar entre dos personas reales, la cuenta de origen no se
+  toca.
+
+Lo que falta de la pieza 2, para cuando haga falta: el botón RECLAMAR en
+el perfil público y su cola. Sin eso, un artista nunca se entera de que
+puede pedirlo — es el mismo argumento que el panel vacío. Necesita una
+tabla nueva y por lo tanto migración.
+
+---
+
+## EL BORRADO DE LOS PERFILES DE PRUEBA — PENDIENTE, Y CHOCA CON UN HUECO
+
+Los DJs y colectivos que hay en producción son del prototipo, no son
+gente real. Hay que borrarlos cuando la página esté terminada.
+
+**No es un DELETE y listo.** Un artista tiene colgando sets, tracks,
+membresías, toques, likes y entradas de lineup, con mezcla de CASCADE y
+SET NULL. Y sobre todo: **hoy no existe ninguna forma de borrar un
+colectivo** — `deleteCollective` se fue con el CMS en la tanda 5 §4, con
+todas sus guardas (se negaba por noticias publicadas, por eventos
+organizados y por `content_placements`).
+
+O sea que este pendiente y el de abajo son el mismo problema visto desde
+dos lados. Cuando se decida cómo se borra un colectivo, esto se resuelve
+de paso — probablemente como una ruta de limpieza `/api/setup-*`, que es
+el patrón que el repo ya usa para operaciones de una sola vez y que deja
+el conteo de antes y después a la vista.
+
+---
+
 ## PARA §8 — DECIDIR, NO ASUMIR
 
 **Borrar un colectivo permanentemente ya no lo puede hacer nadie.**
@@ -323,11 +372,17 @@ eso lee las tablas de género y `review_status`.
 
 ## REQUISITO BLOQUEANTE — EL FLUJO DE RECLAMO DE PERFIL
 #
-# SIGUE VIGENTE Y AHORA ES MÁS URGENTE: la tanda 5 paso 1 creó las 18
-# cuentas dueñas en main, SIN contraseña. Existen, son dueñas de perfiles
-# de artistas reales de la escena, y hoy no hay ningún camino por el que
-# esa gente pueda entrar a lo suyo. Hasta que exista el reclamo, esos
-# perfiles los administra solamente un SUPER_ADMIN.
+# CORRECCIÓN: NO son artistas reales. Acá decía "perfiles de artistas
+# reales de la escena" y era falso — venía heredado del encuadre de la
+# tanda 5. Los artistas y colectivos que hay en producción son datos de
+# prueba del prototipo, y se van a borrar cuando la página esté lista
+# (ver EL BORRADO DE LOS PERFILES DE PRUEBA, abajo).
+#
+# Lo que sigue en pie: cuando lleguen artistas DE VERDAD van a necesitar
+# un camino a lo suyo, y esa maquinaria ya está — ver §8 PIEZA 1, abajo.
+# Lo que NO está es que el artista pueda iniciar el reclamo desde el
+# sitio, ni la recuperación de contraseña para cuentas normales, que
+# necesita transporte de correo y hoy el repo no tiene ninguno.
 
 **Sin esto, 12 perfiles de producción no se pueden entregar a nadie.**
 Dejó de ser deuda anotada: es un requisito.

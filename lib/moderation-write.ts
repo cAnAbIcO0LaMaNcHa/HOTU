@@ -319,3 +319,222 @@ export async function levantarBan(
   }
   return { ok: true, value: { levantado: true } };
 }
+
+/* ===================================================================
+ * REASIGNAR EL DUEÑO DE UN PERFIL (§8, pieza 1)
+ *
+ * El caso que lo pide: los perfiles que nacieron sin dueño y a los que
+ * el paso 1 de la tanda 5 les creó una cuenta a su nombre, SIN
+ * contraseña. Esas cuentas existen, administran perfiles, y nadie puede
+ * entrar en ellas. Cuando la persona de verdad aparezca, esto es lo que
+ * la pone al frente de lo suyo.
+ *
+ * ============================================================
+ * LA VERIFICACIÓN ES HUMANA, Y NO SE PUEDE FINGIR OTRA COSA
+ * ============================================================
+ *
+ * No hay forma automatizable de comprobar que alguien es quien dice: el
+ * repo no tiene transporte de correo, los emails de esas cuentas son de
+ * un dominio que no existe, y de 17 artistas solo 3 tienen
+ * contact_email —los tres falsos— y ninguno tiene redes cargadas. La
+ * plataforma no sabe cómo contactar a nadie.
+ *
+ * Entonces esto NO verifica: REGISTRA la decisión de quien verificó por
+ * fuera. Por eso el motivo es obligatorio y por eso tiene que decir CÓMO
+ * se comprobó. "Me escribió por el Instagram de HOTU y mandó una foto
+ * del set" es lo que alguien tiene que poder leer dentro de seis meses.
+ * =================================================================== */
+
+/** Todo lo que una cuenta administra hoy. */
+export type LoQueAdministra = {
+  artistas: Array<{ slug: string; name: string }>;
+  colectivos: Array<{ slug: string; name: string; esVenue: boolean }>;
+};
+
+async function administradoPor(email: string): Promise<LoQueAdministra> {
+  const [artistas, colectivos] = await Promise.all([
+    sql`SELECT slug, name FROM artists WHERE lower(owner_email) = lower(${email}) ORDER BY slug`,
+    sql`SELECT slug, name, entity_kind FROM collectives WHERE lower(owner_email) = lower(${email}) ORDER BY slug`,
+  ]);
+  return {
+    artistas: artistas.map((a) => ({ slug: a.slug as string, name: a.name as string })),
+    colectivos: colectivos.map((c) => ({
+      slug: c.slug as string,
+      name: c.name as string,
+      esVenue: (c.entity_kind as string) === "venue",
+    })),
+  };
+}
+
+/**
+ * Qué administra la cuenta que hoy es dueña de este perfil.
+ *
+ * Se consulta ANTES de mover nada, para que el moderador vea en pantalla
+ * qué se va a llevar el traspaso. Un botón que mueve más de lo que dice
+ * es un botón que se aprieta una sola vez.
+ */
+export async function queAdministraElDuenoDe(
+  tipo: "artist" | "collective",
+  slug: string
+): Promise<{ dueno: string | null; administra: LoQueAdministra } | null> {
+  const tabla = tipo === "artist" ? "artists" : "collectives";
+  const [fila] = await sql(`SELECT owner_email FROM ${tabla} WHERE slug = $1`, [limpiarTexto(slug)]);
+  if (!fila) return null;
+  const dueno = (fila.owner_email as string | null) ?? null;
+  if (!dueno) return { dueno: null, administra: { artistas: [], colectivos: [] } };
+  return { dueno, administra: await administradoPor(dueno) };
+}
+
+/**
+ * Pasa TODO lo que administra el dueño actual de un perfil a otra cuenta.
+ *
+ * ============================================================
+ * SE LLEVA TODO, NO UN PERFIL SUELTO
+ * ============================================================
+ *
+ * Siete de estas cuentas administran un artista Y un colectivo. Mover
+ * solo el artista dejaría el colectivo a nombre de una cuenta en la que
+ * nadie puede entrar: el problema exacto que esto viene a resolver,
+ * reproducido a la mitad.
+ *
+ * ============================================================
+ * LA CUENTA VACÍA SE BORRA, PERO SOLO SI ES UN FANTASMA
+ * ============================================================
+ *
+ * Un email deducible de la URL, sin contraseña y sin dueño, es una
+ * puerta esperando a que alguien abra un flujo de recuperación.
+ *
+ * Pero el borrado exige que sea un fantasma de verdad: sin contraseña,
+ * sin likes, sin pedidos, sin tiquetes y sin roles. Si esto se usa
+ * alguna vez para traspasar entre dos personas reales, la cuenta de
+ * origen NO se toca — su dueño la sigue usando para todo lo demás.
+ */
+export async function reasignarDueno(
+  tipo: unknown,
+  slug: unknown,
+  emailDestinoCrudo: unknown,
+  motivoCrudo: unknown,
+  moderadorEmail?: string | null
+): Promise<
+  WriteResult<{
+    movidos: LoQueAdministra;
+    desde: string | null;
+    hacia: string;
+    cuentaBorrada: boolean;
+  }>
+> {
+  if (!moderadorEmail || !(await isModerator(moderadorEmail))) {
+    return { ok: false, status: 403, error: "Solo un moderador reasigna un perfil" };
+  }
+  if (tipo !== "artist" && tipo !== "collective") {
+    return { ok: false, status: 400, error: "tipo tiene que ser 'artist' o 'collective'" };
+  }
+  const v = validarMotivo(motivoCrudo);
+  if ("error" in v) return { ok: false, status: 400, error: v.error };
+
+  const clave = limpiarTexto(slug);
+  if (!clave) return { ok: false, status: 400, error: "Falta el perfil" };
+  const destino = limpiarTexto(emailDestinoCrudo).toLowerCase();
+  if (!destino) return { ok: false, status: 400, error: "Falta la cuenta que lo va a recibir" };
+
+  const actual = await queAdministraElDuenoDe(tipo, clave);
+  if (!actual) return { ok: false, status: 404, error: "No encontré ese perfil" };
+
+  /**
+   * LA CUENTA DESTINO TIENE QUE EXISTIR YA.
+   *
+   * Crearla desde acá sería el admin dando de alta cuentas ajenas, que
+   * es volver al CMS por otra puerta. La persona se registra con su
+   * email real —que además es lo único que prueba que controla ese
+   * correo— y recién ahí se le entrega el perfil.
+   */
+  const [cuenta] = await sql`
+    SELECT email, banned_at FROM user_profiles WHERE lower(email) = ${destino}
+  `;
+  if (!cuenta) {
+    return {
+      ok: false,
+      status: 404,
+      error:
+        "Esa cuenta no existe todavía. Pedile que se registre con su email real y " +
+        "volvé a intentarlo: registrarse es lo único que prueba que controla ese correo.",
+    };
+  }
+  if (cuenta.banned_at) {
+    return { ok: false, status: 409, error: "Esa cuenta está baneada" };
+  }
+  if (actual.dueno && actual.dueno.toLowerCase() === destino) {
+    return { ok: false, status: 409, error: "Ese perfil ya es de esa cuenta" };
+  }
+
+  const origen = actual.dueno;
+
+  /**
+   * ¿La cuenta de origen es un fantasma que se puede borrar?
+   *
+   * Se pregunta ANTES de mover, con la cuenta todavía entera. Después
+   * habría que distinguir "no tiene nada porque acabamos de vaciarla" de
+   * "no tenía nada", que es la misma pregunta con más pasos.
+   */
+  let esFantasma = false;
+  if (origen) {
+    const [f] = await sql`
+      SELECT
+        (SELECT password_hash IS NULL FROM user_profiles WHERE lower(email) = lower(${origen})) AS sin_pass,
+        (SELECT COUNT(*)::int FROM artist_likes WHERE lower(user_email) = lower(${origen})) AS likes_a,
+        (SELECT COUNT(*)::int FROM collective_likes WHERE lower(user_email) = lower(${origen})) AS likes_c,
+        (SELECT COUNT(*)::int FROM orders WHERE lower(user_email) = lower(${origen})) AS pedidos,
+        (SELECT COUNT(*)::int FROM tickets WHERE lower(user_email) = lower(${origen})) AS boletas,
+        (SELECT COUNT(*)::int FROM user_roles WHERE lower(email) = lower(${origen})) AS roles
+    `;
+    esFantasma =
+      f.sin_pass === true &&
+      Number(f.likes_a) === 0 &&
+      Number(f.likes_c) === 0 &&
+      Number(f.pedidos) === 0 &&
+      Number(f.boletas) === 0 &&
+      Number(f.roles) === 0;
+  }
+
+  const movidos = origen
+    ? actual.administra
+    : tipo === "artist"
+      ? { artistas: [{ slug: clave, name: clave }], colectivos: [] }
+      : { artistas: [], colectivos: [{ slug: clave, name: clave, esVenue: false }] };
+
+  /**
+   * Los pasos van JUNTOS.
+   *
+   * Entre mover los artistas y mover los colectivos hay una ventana real
+   * —cada sql del driver HTTP es su propio request— y si el segundo
+   * falla queda la mitad traspasada: el DJ entra a lo suyo y su
+   * colectivo sigue a nombre de una cuenta muerta, que es peor que no
+   * haber empezado.
+   *
+   * El borrado va AL FINAL y no antes: el FK de owner_email es ON DELETE
+   * SET NULL, así que borrar primero dejaría los perfiles sin dueño y el
+   * traspaso no movería nada.
+   */
+  const pasos = [
+    origen
+      ? sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`
+      : sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND owner_email IS NULL`,
+    origen
+      ? sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`
+      : sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND owner_email IS NULL`,
+  ];
+  if (origen && esFantasma) {
+    pasos.push(sql`DELETE FROM user_profiles WHERE lower(email) = lower(${origen})`);
+  }
+  await sql.transaction(pasos);
+
+  return {
+    ok: true,
+    value: {
+      movidos,
+      desde: origen,
+      hacia: cuenta.email as string,
+      cuentaBorrada: Boolean(origen && esFantasma),
+    },
+  };
+}

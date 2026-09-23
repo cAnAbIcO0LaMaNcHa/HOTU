@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { EyeOff, RotateCcw, UserX } from "lucide-react";
+import { ArrowRightLeft, EyeOff, RotateCcw, UserX } from "lucide-react";
 import type { CuentaBaneada, PiezaCensurada } from "@/lib/db";
 
 const TIPOS: Array<{ id: PiezaCensurada["tipo"]; label: string; donde: string; clave: string }> = [
@@ -56,6 +56,16 @@ export function PanelModeracion({
 
   const [email, setEmail] = useState("");
   const [motivoBan, setMotivoBan] = useState("");
+
+  // El traspaso de un perfil a su dueño de verdad.
+  const [tTipo, setTTipo] = useState<"artist" | "collective">("artist");
+  const [tSlug, setTSlug] = useState("");
+  const [tEmail, setTEmail] = useState("");
+  const [tMotivo, setTMotivo] = useState("");
+  const [tPreview, setTPreview] = useState<{
+    dueno: string | null;
+    administra: { artistas: Array<{ slug: string; name: string }>; colectivos: Array<{ slug: string; name: string; esVenue: boolean }> };
+  } | null>(null);
 
   const elTipo = TIPOS.find((t) => t.id === tipo)!;
 
@@ -350,6 +360,174 @@ export function PanelModeracion({
             </div>
           </div>
         )}
+      </section>
+
+      {/* ---------------- TRASPASAR UN PERFIL ---------------- */}
+      <section>
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <ArrowRightLeft className="h-4 w-4 text-primary" />
+          <h2 className="font-mono text-[10px] tracking-[0.3em] text-primary">
+            ENTREGARLE UN PERFIL A SU DUEÑO
+          </h2>
+        </div>
+        <p className="mt-3 max-w-2xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+          Para los perfiles que nacieron sin dueño y quedaron a nombre de una cuenta
+          en la que nadie puede entrar. Cuando la persona aparece y te demuestra que
+          es suyo, esto se lo entrega.
+        </p>
+        <p className="mt-2 max-w-2xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+          <strong className="text-primary">Esto no verifica nada: lo verificás vos.</strong>{" "}
+          HOTU no tiene forma de contactar a nadie —no hay correo saliente, y los
+          perfiles no tienen redes ni mail de contacto cargados—, así que la prueba
+          la conseguís por fuera y acá queda escrito CÓMO. Eso es lo que alguien va a
+          leer dentro de seis meses.
+        </p>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+              QUÉ PERFIL
+            </span>
+            <select
+              value={tTipo}
+              disabled={busy}
+              onChange={(e) => {
+                setTTipo(e.target.value as "artist" | "collective");
+                setTPreview(null);
+              }}
+              className="mt-1 w-full border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+            >
+              <option value="artist">PERFIL DE DJ</option>
+              <option value="collective">COLECTIVO O VENUE</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+              SLUG (el de la URL)
+            </span>
+            <input
+              value={tSlug}
+              disabled={busy}
+              onChange={(e) => {
+                setTSlug(e.target.value);
+                setTPreview(null);
+              }}
+              onBlur={async () => {
+                const slug = tSlug.trim();
+                if (!slug) return;
+                try {
+                  const res = await fetch(
+                    `/api/admin/moderation/owner?tipo=${tTipo}&slug=${encodeURIComponent(slug)}`
+                  );
+                  const d = await res.json().catch(() => ({}));
+                  setTPreview(res.ok ? d : null);
+                  if (!res.ok) setError(d.error ?? "No encontré ese perfil");
+                  else setError(null);
+                } catch {
+                  setTPreview(null);
+                }
+              }}
+              placeholder="nombre-en-la-url"
+              className="mt-1 w-full border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+
+        {/*
+          QUÉ SE VA A LLEVAR, ANTES DE APRETAR.
+
+          El traspaso mueve TODO lo que administra esa cuenta, no el
+          perfil suelto: siete de las cuentas fantasma tienen un artista
+          y un colectivo, y mover solo uno deja el otro a nombre de una
+          cuenta muerta. Un botón que mueve más de lo que dice es un
+          botón que se aprieta una sola vez.
+        */}
+        {tPreview && (
+          <div className="mt-4 border border-border p-4">
+            <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
+              {tPreview.dueno ? `HOY ES DE ${tPreview.dueno}` : "HOY NO ES DE NADIE"}
+            </div>
+            <div className="mt-2 font-mono text-[11px] leading-relaxed">
+              SE VA A MOVER:
+              <ul className="mt-1 list-inside list-disc">
+                {tPreview.administra.artistas.map((a) => (
+                  <li key={`a:${a.slug}`}>{a.name} — perfil de DJ</li>
+                ))}
+                {tPreview.administra.colectivos.map((c) => (
+                  <li key={`c:${c.slug}`}>
+                    {c.name} — {c.esVenue ? "venue" : "colectivo"}
+                  </li>
+                ))}
+                {tPreview.administra.artistas.length === 0 &&
+                  tPreview.administra.colectivos.length === 0 && <li>solo este perfil</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+              A QUÉ CUENTA (tiene que existir ya)
+            </span>
+            <input
+              value={tEmail}
+              disabled={busy}
+              onChange={(e) => setTEmail(e.target.value)}
+              placeholder="su-email-real@ejemplo.com"
+              className="mt-1 w-full border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-primary"
+            />
+            <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+              Si todavía no se registró, pedíselo: registrarse es lo único que prueba
+              que controla ese correo.
+            </span>
+          </label>
+          <label className="block">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
+              CÓMO LO VERIFICASTE
+            </span>
+            <textarea
+              value={tMotivo}
+              rows={3}
+              disabled={busy}
+              onChange={(e) => setTMotivo(e.target.value)}
+              placeholder="Me escribió por el Instagram de HOTU y mandó una foto del set"
+              className="mt-1 w-full border border-border bg-transparent px-3 py-2 font-mono text-[11px] leading-relaxed outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+
+        <button
+          type="button"
+          disabled={busy || tMotivo.trim().length < 10 || tSlug.trim() === "" || tEmail.trim() === ""}
+          onClick={async () => {
+            const r = await pedir(
+              "/api/admin/moderation/owner",
+              { tipo: tTipo, slug: tSlug.trim(), email: tEmail.trim(), motivo: tMotivo },
+              "Entregado."
+            );
+            if (r) {
+              const m = r.movidos ?? { artistas: [], colectivos: [] };
+              const cuantos = m.artistas.length + m.colectivos.length;
+              setAviso(
+                `Entregado a ${r.hacia}: ${cuantos} perfil(es).` +
+                  (r.cuentaBorrada ? " La cuenta vieja quedó vacía y se borró." : "")
+              );
+              setTSlug("");
+              setTEmail("");
+              setTMotivo("");
+              setTPreview(null);
+            }
+          }}
+          className="surface-chrome sheen mt-5 px-5 py-2.5 font-mono text-[11px] font-bold tracking-[0.2em] disabled:opacity-40"
+        >
+          {busy ? "..." : "ENTREGAR"}
+        </button>
+        <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+          Si la cuenta vieja era una de las que se crearon sin contraseña y no le
+          queda nada, se borra sola: un email deducible de la URL y sin dueño es una
+          puerta esperando a que alguien abra un flujo de recuperación.
+        </p>
       </section>
 
       <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
