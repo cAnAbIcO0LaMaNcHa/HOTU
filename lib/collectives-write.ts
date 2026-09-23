@@ -427,3 +427,165 @@ async function freeSlug(name: string): Promise<string> {
   // duplicate slug would violate the primary key, so fall back to time.
   return `${base}-${Date.now()}`;
 }
+
+/* ===================================================================
+ * CEDER LA ADMINISTRACIÓN (§8 pieza A)
+ *
+ * El dueño le pasa el colectivo a otra persona. No lo borra, no lo
+ * esconde, no lo vacía: cambia quién lo administra y nada más.
+ *
+ * ============================================================
+ * LA LISTA SON LOS MIEMBROS, NO "LAS CUENTAS DE HOTU"
+ * ============================================================
+ *
+ * Ofrecer todas las cuentas registradas le filtraría el email de cada
+ * usuario a cualquier dueño de colectivo. Y dejar que se teclee un email
+ * suelto es peor de lo que parece: el "esa cuenta no existe" se
+ * convierte en un oráculo para averiguar quién está registrado, que es
+ * justo lo que /api/accounts evita devolviendo siempre la misma
+ * respuesta exista o no el email.
+ *
+ * Los miembros del colectivo son un conjunto cerrado que su dueño YA ve,
+ * y son el caso real: se le cede el crew a alguien del crew. Para
+ * cedérselo a alguien de afuera está la herramienta del moderador, que
+ * pide motivo y deja rastro.
+ * =================================================================== */
+
+/** Un miembro al que se le puede ceder la administración. */
+export type CandidatoCesion = {
+  email: string;
+  artistSlug: string;
+  artistName: string;
+  kind: MembershipKind;
+  /** Si ya administra otro colectivo. No lo impide: lo informa. */
+  yaAdministra: number;
+};
+
+/**
+ * A quién se le puede ceder este colectivo.
+ *
+ * Miembros ACTIVOS y aceptados, cuyo artista tenga cuenta dueña, que no
+ * estén baneados, y que no sean el dueño actual.
+ */
+export async function getCandidatosCesion(
+  collectiveSlug: string
+): Promise<CandidatoCesion[]> {
+  const rows = await sql`
+    SELECT DISTINCT ON (u.email)
+           u.email, a.slug AS artist_slug, a.name AS artist_name, ac.kind,
+           (SELECT COUNT(*)::int FROM collectives o
+             WHERE lower(o.owner_email) = lower(u.email)) AS ya_administra
+    FROM artist_collectives ac
+    JOIN artists a ON a.slug = ac.artist_slug
+    JOIN user_profiles u ON lower(u.email) = lower(a.owner_email)
+    JOIN collectives c ON c.slug = ac.collective_slug
+    WHERE ac.collective_slug = ${collectiveSlug}
+      AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+      AND u.banned_at IS NULL
+      AND (c.owner_email IS NULL OR lower(u.email) <> lower(c.owner_email))
+    ORDER BY u.email, a.slug
+  `;
+  return rows.map((r) => ({
+    email: r.email as string,
+    artistSlug: r.artist_slug as string,
+    artistName: r.artist_name as string,
+    kind: r.kind as MembershipKind,
+    yaAdministra: Number(r.ya_administra ?? 0),
+  }));
+}
+
+/**
+ * Le pasa la administración del colectivo a otra cuenta.
+ *
+ * ============================================================
+ * SOLO EL DUEÑO, NO canEditCollective
+ * ============================================================
+ *
+ * canEditCollective incluye al SUPER_ADMIN, y ceder no es editar: es
+ * disponer de algo que no es tuyo. Que un admin le pase el colectivo de
+ * otro a un tercero tiene que pasar por la herramienta de moderación,
+ * que exige motivo y lo deja escrito. Acá la comparación es directa
+ * contra owner_email.
+ *
+ * ============================================================
+ * UN COLECTIVO CENSURADO NO SE CEDE
+ * ============================================================
+ *
+ * Si no, hay un camino de lavado con todos los pasos disponibles:
+ * publicar basura, recibir la censura, encajarle el colectivo a un
+ * tercero, y fundar uno nuevo con el cupo que la cesión libera. Cada
+ * paso es legítimo por separado; juntos son una puerta.
+ *
+ * Mientras esté censurado, el lío es de quien lo hizo.
+ *
+ * ============================================================
+ * EL "UNO POR CUENTA" NO APLICA ACÁ, Y ES A PROPÓSITO
+ * ============================================================
+ *
+ * createCollective limita a uno por cuenta y por tipo. Ese límite es
+ * para FUNDAR, no para RECIBIR: recibir un colectivo es una decisión de
+ * otra persona, no una forma de acumular, y bloquearlo dejaría
+ * colectivos sin poder ceder a la persona correcta solo porque ya fundó
+ * el suyo.
+ *
+ * Así que alguien puede terminar administrando dos, y ESO NO ES UN BUG.
+ * Queda escrito acá para que no se "corrija" en el futuro.
+ */
+export async function cederColectivo(
+  collectiveSlug: string,
+  emailDestinoCrudo: unknown,
+  actorEmail?: string | null
+): Promise<WriteResult<{ hacia: string }>> {
+  if (!actorEmail) return { ok: false, status: 403, error: "Not signed in" };
+
+  const [c] = await sql`
+    SELECT slug, name, owner_email, censored_at FROM collectives WHERE slug = ${collectiveSlug}
+  `;
+  if (!c) return { ok: false, status: 404, error: "Ese colectivo no existe" };
+
+  const dueno = (c.owner_email as string | null) ?? null;
+  if (!dueno || dueno.toLowerCase() !== actorEmail.toLowerCase()) {
+    return { ok: false, status: 403, error: "Solo su dueño puede cederlo" };
+  }
+  if (c.censored_at) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "Está bajado por moderación y no se puede ceder. El motivo está en tu panel: " +
+        "mientras siga así, sigue siendo tuyo.",
+    };
+  }
+
+  const destino = typeof emailDestinoCrudo === "string" ? emailDestinoCrudo.trim().toLowerCase() : "";
+  if (!destino) return { ok: false, status: 400, error: "Elegí a quién se lo cedés" };
+  if (destino === actorEmail.toLowerCase()) {
+    return { ok: false, status: 409, error: "Ya es tuyo" };
+  }
+
+  /**
+   * El destino tiene que estar EN LA LISTA, no solo existir.
+   *
+   * Comprobarlo contra la misma consulta que arma el desplegable es lo
+   * que impide que alguien mande un email cualquiera por la API y
+   * convierta esto en el oráculo de cuentas registradas que la lista
+   * cerrada existe para evitar. La UI no es la guarda.
+   */
+  const candidatos = await getCandidatosCesion(collectiveSlug);
+  const elegido = candidatos.find((x) => x.email.toLowerCase() === destino);
+  if (!elegido) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "Solo podés cederlo a alguien que sea miembro del colectivo y tenga cuenta. " +
+        "Si va a ser de alguien de afuera, escribile al equipo.",
+    };
+  }
+
+  await sql`
+    UPDATE collectives SET owner_email = ${elegido.email}
+    WHERE slug = ${collectiveSlug} AND lower(owner_email) = lower(${actorEmail})
+  `;
+  return { ok: true, value: { hacia: elegido.email } };
+}

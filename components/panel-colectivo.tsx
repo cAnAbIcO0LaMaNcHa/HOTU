@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BotonPublicar } from "@/components/boton-publicar";
+import { CederColectivo } from "@/components/ceder-colectivo";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { FranjaCensura } from "@/components/franja-censura";
 import { MisEventos } from "@/components/mis-eventos";
@@ -257,6 +258,7 @@ export async function PanelColectivo({
 
       {/* El que administro: panel completo. */}
       {paneles.map((o) => (
+        <div key={`admin:${o.collective.slug}`}>
         <CollectiveInbox
           key={o.collective.slug}
           collectiveSlug={o.collective.slug}
@@ -274,6 +276,18 @@ export async function PanelColectivo({
               }
             : {})}
         />
+        {/* Ceder va al final del panel de ESE colectivo, no arriba: es
+            lo último que alguien hace con él, y ponerlo entre los
+            controles de todos los días lo vuelve un click de más cerca
+            de lo que debería estar. */}
+        <div className="mt-4">
+          <CederColectivo
+            slug={o.collective.slug}
+            nombre={o.collective.name}
+            palabra={palabra}
+          />
+        </div>
+        </div>
       ))}
 
       {/* Los que integro: solo ver, y salirme. */}
