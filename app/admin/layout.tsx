@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth, signIn } from "@/auth";
-import { isModerator } from "@/lib/roles";
+import { isModerator, isSuperAdmin } from "@/lib/roles";
+import { limpiezaHabilitada } from "@/lib/accounts-delete";
 
 export const metadata: Metadata = {
   title: "Panel de administración",
@@ -38,6 +39,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     );
   }
 
+  /**
+   * El enlace a la limpieza solo existe mientras el interruptor esté
+   * puesto Y quien mira sea un SUPER_ADMIN. La página se defiende sola
+   * con dos notFound(), así que esto no es la guarda: es para que un
+   * moderador no vea una puerta que no puede abrir.
+   */
+  const verLimpieza = limpiezaHabilitada() && (await isSuperAdmin(email));
+
   return (
     <section className="mx-auto max-w-6xl px-4 py-12">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
@@ -65,6 +74,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <span className="mx-2 hidden h-4 w-px bg-border sm:block" aria-hidden />
         <Link href="/admin/roles" className="border border-border/50 px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground hover:border-primary hover:text-primary">ROLES</Link>
         <Link href="/admin/pedidos" className="border border-border/50 px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground hover:border-primary hover:text-primary">PEDIDOS</Link>
+        {verLimpieza && (
+          <Link href="/admin/limpieza" className="border border-red-500/50 px-4 py-2 font-mono text-xs tracking-widest text-red-400 hover:border-red-500">LIMPIEZA</Link>
+        )}
         <Link href="/" className="ml-auto border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">VER SITIO</Link>
       </nav>
       <div className="mt-10">{children}</div>

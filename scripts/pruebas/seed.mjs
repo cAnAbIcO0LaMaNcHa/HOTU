@@ -60,7 +60,34 @@ export async function restaurarSeed(sql) {
   await sql`DELETE FROM news WHERE title LIKE 'ZZ%' OR title LIKE 'CEN-%' OR title LIKE 'HALL-%' OR title LIKE 'ADM-%' OR title LIKE 'PRUEBA-%'`;
   await sql`DELETE FROM collectives WHERE slug LIKE 'zz-%'`;
   await sql`DELETE FROM artists WHERE slug LIKE 'zz-%'`;
+
+  /**
+   * EL COMERCIO DE PRUEBA, ANTES QUE LA CUENTA, Y EN ESTE ORDEN.
+   *
+   * Desde que orders.user_email y tickets.user_email tienen FK con
+   * ON DELETE RESTRICT, el DELETE de abajo TIRA si alguna cuenta zz-
+   * llegó a comprar algo. Y no falla en la prueba que compró: falla en
+   * la SIGUIENTE, al arrancar, con un foreign_key_violation que no tiene
+   * nada que ver con lo que esa batería estaba probando.
+   *
+   * El orden es el mismo que usa la limpieza pre-lanzamiento, por la
+   * misma razón: es el mecanismo, no un atajo. ticket_attributions
+   * apunta a tickets con RESTRICT, y tickets apunta a orders y a
+   * order_items también con RESTRICT.
+   */
+  await sql`DELETE FROM ticket_attributions WHERE ticket_id IN (SELECT id FROM tickets WHERE user_email LIKE 'zz-%')`;
+  await sql`DELETE FROM tickets WHERE user_email LIKE 'zz-%'`;
+  await sql`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE user_email LIKE 'zz-%')`;
+  await sql`DELETE FROM orders WHERE user_email LIKE 'zz-%'`;
+
   await sql`DELETE FROM user_profiles WHERE email LIKE 'zz-%'`;
+
+  /**
+   * El registro de eliminaciones de prueba. Es la ÚNICA tabla que se
+   * limpia por su propio email y no por una FK, justamente porque no
+   * tiene ninguna: sobrevive a la cuenta a propósito.
+   */
+  await sql`DELETE FROM account_removals WHERE email LIKE 'zz-%'`;
 
   // Ningún ban, ninguna censura, ningún rol prestado.
   await sql`UPDATE user_profiles SET banned_at = NULL, banned_by = NULL, ban_reason = NULL WHERE banned_at IS NOT NULL`;

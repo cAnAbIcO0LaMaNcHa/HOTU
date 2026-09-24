@@ -13,9 +13,11 @@ const MOD = "aplicante@test.hotu.local";
 const VICTIMA = "artista@test.hotu.local";
 const COMPRADOR = "usuario@test.hotu.local";
 
-// El restore vive en seed.mjs, compartido: banear pone owner_email en
-// NULL y levantar el ban NO lo devuelve —a propósito—, así que probar un
-// ban le quitaba reisen y bodega-prueba a duena@ de forma permanente.
+// El restore vive en seed.mjs, compartido. Nació porque banear ponía
+// owner_email en NULL sin devolverlo al levantar el ban, y probar un ban
+// le quitaba reisen y bodega-prueba a duena@ para siempre. ESO YA NO
+// PASA —el ban no toca la propiedad—, pero el restore se queda: una
+// corrida que se cae a mitad sigue dejando bans y censuras puestos.
 const restaurar = () => restaurarSeed(sql);
 
 await restaurar();
