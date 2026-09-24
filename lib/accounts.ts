@@ -284,3 +284,98 @@ export async function cuentaBaneada(email: string): Promise<boolean> {
   `;
   return rows.length > 0;
 }
+
+/* ===================================================================
+ * ¿ES UNA CUENTA FANTASMA?
+ *
+ * Una cuenta fantasma es una que EXISTE pero que nadie usa ni puede
+ * usar: las que el paso 1 de la tanda 5 creó para que los perfiles sin
+ * dueño tuvieran una. Saberlo importa porque decide cuánto se lleva un
+ * traspaso de moderación: de un fantasma, todo; de una persona real,
+ * solo lo que se nombró.
+ *
+ * ============================================================
+ * "SIN CONTRASEÑA" NO ALCANZA, Y CASI FUE UN BUG GRAVE
+ * ============================================================
+ *
+ * Las cuentas de Google tienen password_hash en NULL: entran por OAuth y
+ * nunca hubo una contraseña que guardar. Medido en dev:
+ *
+ *     fedesubu@gmail.com | provider=google | sin_pass=true | 3 pedidos
+ *
+ * Con "sin contraseña" a secas, la cuenta del dueño del proyecto —con
+ * pedidos y todo— quedaba clasificada como fantasma, y un traspaso desde
+ * ella se habría llevado absolutamente todo lo que administra.
+ *
+ * Así que hacen falta LAS DOS cosas: sin contraseña Y sin proveedor
+ * vinculado. Juntas significan "no puede autenticarse por ninguna vía":
+ * verifyCredentials rechaza un hash NULL, y un alta por Google habría
+ * escrito auth_provider='google' — y el ON CONFLICT de upsertAccount NO
+ * sobrescribe auth_provider, así que tampoco se ensucia después.
+ *
+ * ============================================================
+ * ES UNA CAPACIDAD, NO UNA HISTORIA. Y HAY QUE CUIDARLA.
+ * ============================================================
+ *
+ * Esto mide "no puede entrar", no "nunca entró". Hoy coinciden porque no
+ * hay ninguna otra forma de que una cuenta pierda su contraseña.
+ *
+ * DEJARÍAN DE COINCIDIR si el flujo de recuperar contraseña —pendiente en
+ * PROGRESO.md— alguna vez pusiera password_hash en NULL, aunque fuera un
+ * instante: una cuenta real y activa parecería fantasma, y un traspaso se
+ * llevaría todo lo suyo. Ese flujo tiene que escribir un hash nuevo o
+ * usar una tabla de tokens aparte. Queda anotado en AGENTS.md.
+ *
+ * La actividad (likes, pedidos, boletas, roles) se mira además de la
+ * capacidad: si alguien dejó rastro, no es un fantasma aunque hoy no
+ * pueda entrar. Es la guarda que hace que este criterio falle del lado
+ * seguro — de más, nunca de menos.
+ * =================================================================== */
+
+/** Los hechos que deciden si una cuenta es un fantasma. */
+export type ActividadCuenta = {
+  /** Tiene password_hash: puede entrar por credenciales. */
+  tieneContrasena: boolean;
+  /** Tiene un proveedor externo vinculado (Google): puede entrar por ahí. */
+  proveedorVinculado: boolean;
+  likes: number;
+  pedidos: number;
+  boletas: number;
+  roles: number;
+};
+
+/**
+ * PURA a propósito: la usan la vista previa y la escritura, y tienen que
+ * dar exactamente lo mismo. Duplicar el criterio en dos lugares es cómo
+ * una vista previa termina prometiendo algo distinto de lo que pasa.
+ */
+export function esCuentaFantasma(a: ActividadCuenta): boolean {
+  if (a.tieneContrasena) return false;
+  if (a.proveedorVinculado) return false;
+  return a.likes === 0 && a.pedidos === 0 && a.boletas === 0 && a.roles === 0;
+}
+
+/** Lee de la base los hechos que necesita esCuentaFantasma. */
+export async function actividadDeCuenta(email: string): Promise<ActividadCuenta | null> {
+  const [f] = await sql`
+    SELECT
+      u.password_hash IS NOT NULL AS tiene_contrasena,
+      u.auth_provider = 'google' AS proveedor_vinculado,
+      (SELECT COUNT(*)::int FROM artist_likes WHERE lower(user_email) = lower(u.email))
+      + (SELECT COUNT(*)::int FROM collective_likes WHERE lower(user_email) = lower(u.email)) AS likes,
+      (SELECT COUNT(*)::int FROM orders WHERE lower(user_email) = lower(u.email)) AS pedidos,
+      (SELECT COUNT(*)::int FROM tickets WHERE lower(user_email) = lower(u.email)) AS boletas,
+      (SELECT COUNT(*)::int FROM user_roles WHERE lower(email) = lower(u.email)) AS roles
+    FROM user_profiles u
+    WHERE lower(u.email) = lower(${email})
+  `;
+  if (!f) return null;
+  return {
+    tieneContrasena: f.tiene_contrasena === true,
+    proveedorVinculado: f.proveedor_vinculado === true,
+    likes: Number(f.likes ?? 0),
+    pedidos: Number(f.pedidos ?? 0),
+    boletas: Number(f.boletas ?? 0),
+    roles: Number(f.roles ?? 0),
+  };
+}

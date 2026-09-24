@@ -51,14 +51,23 @@ export async function PATCH(request: Request) {
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  let body: { tipo?: unknown; slug?: unknown; email?: unknown; motivo?: unknown };
+  let body: {
+    tipo?: unknown;
+    slug?: unknown;
+    email?: unknown;
+    motivo?: unknown;
+    /** El modo que el formulario mostró, para que el lib pueda negarse
+     *  si la cuenta cambió de clasificación en el medio. */
+    modo?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
   }
 
-  const r = await reasignarDueno(body.tipo, body.slug, body.email, body.motivo, email);
+  const modo = body.modo === "todo" || body.modo === "solo_nombrado" ? body.modo : undefined;
+  const r = await reasignarDueno(body.tipo, body.slug, body.email, body.motivo, email, modo);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
 
   // Cambia quién puede editar qué, y el press kit muestra al dueño cosas

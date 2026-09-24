@@ -43,6 +43,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { isModerator } from "./roles-check";
+import { actividadDeCuenta, esCuentaFantasma } from "./accounts";
 import { limpiarTexto, recortar } from "./texto";
 import { revocarCesionesAbiertas, type WriteResult } from "./collectives-write";
 
@@ -345,6 +346,25 @@ export async function levantarBan(
  * del set" es lo que alguien tiene que poder leer dentro de seis meses.
  * =================================================================== */
 
+/**
+ * CUÁNTO SE LLEVA UN TRASPASO, y quién lo decide.
+ *
+ *   todo           — de una cuenta FANTASMA. Nadie la usa ni puede
+ *                    usarla, así que dejarle la mitad solo produce otro
+ *                    perfil administrado por una cuenta muerta: el
+ *                    problema que el traspaso viene a resolver, a medias.
+ *   solo_nombrado  — de una cuenta REAL. Mover su perfil de artista
+ *                    porque alguien le traspasó su colectivo es tomarle
+ *                    algo que nadie pidió. Casi nunca es la intención, y
+ *                    el formulario que lo mostraba no alcanzaba: nadie
+ *                    lee un recuadro cuando cree saber lo que va a pasar.
+ *
+ * LO DECIDE EL SERVIDOR, mirando la cuenta. El formulario manda cuál
+ * creyó ver para que la escritura pueda rechazar si cambió en el medio,
+ * pero no lo elige.
+ */
+export type ModoTraspaso = "todo" | "solo_nombrado";
+
 /** Todo lo que una cuenta administra hoy. */
 export type LoQueAdministra = {
   artistas: Array<{ slug: string; name: string }>;
@@ -376,13 +396,60 @@ async function administradoPor(email: string): Promise<LoQueAdministra> {
 export async function queAdministraElDuenoDe(
   tipo: "artist" | "collective",
   slug: string
-): Promise<{ dueno: string | null; administra: LoQueAdministra } | null> {
+): Promise<{
+  dueno: string | null;
+  administra: LoQueAdministra;
+  modo: ModoTraspaso;
+  /** Lo que se va a mover DE VERDAD, ya resuelto por el modo. */
+  seMueve: LoQueAdministra;
+  /** Y lo que se queda con el dueño actual. Es lo que hay que leer. */
+  seQueda: LoQueAdministra;
+} | null> {
   const tabla = tipo === "artist" ? "artists" : "collectives";
-  const [fila] = await sql(`SELECT owner_email FROM ${tabla} WHERE slug = $1`, [limpiarTexto(slug)]);
+  const clave = limpiarTexto(slug);
+  const [fila] = await sql(
+    `SELECT owner_email, name FROM ${tabla} WHERE slug = $1`,
+    [clave]
+  );
   if (!fila) return null;
   const dueno = (fila.owner_email as string | null) ?? null;
-  if (!dueno) return { dueno: null, administra: { artistas: [], colectivos: [] } };
-  return { dueno, administra: await administradoPor(dueno) };
+  const nombre = (fila.name as string) ?? clave;
+
+  const soloEste: LoQueAdministra =
+    tipo === "artist"
+      ? { artistas: [{ slug: clave, name: nombre }], colectivos: [] }
+      : { artistas: [], colectivos: [{ slug: clave, name: nombre, esVenue: false }] };
+
+  // Sin dueño no hay nada más que mover que el perfil nombrado, y no hay
+  // cuenta que clasificar.
+  if (!dueno) {
+    return {
+      dueno: null,
+      administra: { artistas: [], colectivos: [] },
+      modo: "solo_nombrado",
+      seMueve: soloEste,
+      seQueda: { artistas: [], colectivos: [] },
+    };
+  }
+
+  const administra = await administradoPor(dueno);
+  const actividad = await actividadDeCuenta(dueno);
+  const modo: ModoTraspaso =
+    actividad && esCuentaFantasma(actividad) ? "todo" : "solo_nombrado";
+
+  if (modo === "todo") {
+    return { dueno, administra, modo, seMueve: administra, seQueda: { artistas: [], colectivos: [] } };
+  }
+  return {
+    dueno,
+    administra,
+    modo,
+    seMueve: soloEste,
+    seQueda: {
+      artistas: administra.artistas.filter((a) => !(tipo === "artist" && a.slug === clave)),
+      colectivos: administra.colectivos.filter((k) => !(tipo === "collective" && k.slug === clave)),
+    },
+  };
 }
 
 /**
@@ -414,10 +481,23 @@ export async function reasignarDueno(
   slug: unknown,
   emailDestinoCrudo: unknown,
   motivoCrudo: unknown,
-  moderadorEmail?: string | null
+  moderadorEmail?: string | null,
+  /**
+   * El modo que el formulario MOSTRÓ. No lo elige: lo declara, para que
+   * esta función pueda negarse si entre la vista previa y el confirmar la
+   * cuenta cambió de clasificación —alguien le puso contraseña, o le
+   * llegó un pedido—. Sin esto, el moderador aprieta sobre una promesa
+   * ("solo se mueve el colectivo") y se ejecuta otra.
+   *
+   * Si no se manda, no se comprueba nada: la app puede llamar sin haber
+   * mostrado una previa.
+   */
+  modoEsperado?: ModoTraspaso
 ): Promise<
   WriteResult<{
     movidos: LoQueAdministra;
+    seQueda: LoQueAdministra;
+    modo: ModoTraspaso;
     desde: string | null;
     hacia: string;
     cuentaBorrada: boolean;
@@ -472,37 +552,40 @@ export async function reasignarDueno(
   const origen = actual.dueno;
 
   /**
-   * ¿La cuenta de origen es un fantasma que se puede borrar?
+   * EL MODO SE RECALCULA ACÁ, con la cuenta como está AHORA.
    *
-   * Se pregunta ANTES de mover, con la cuenta todavía entera. Después
-   * habría que distinguir "no tiene nada porque acabamos de vaciarla" de
-   * "no tenía nada", que es la misma pregunta con más pasos.
+   * La vista previa calculó uno hace unos segundos; este es el que vale.
+   * Se relee SOLO la actividad de la cuenta —una consulta— y no el árbol
+   * entero: el árbol ya lo tenemos, y lo único que puede haber cambiado
+   * la clasificación es la cuenta.
+   * Si no coinciden, no se ejecuta ninguno de los dos: se devuelve un
+   * error que dice que mire de nuevo. Ejecutar "el modo viejo" porque el
+   * formulario lo pidió sería dejar que la UI decida cuánto se mueve, y
+   * la UI nunca es la guarda.
    */
-  let esFantasma = false;
-  if (origen) {
-    const [f] = await sql`
-      SELECT
-        (SELECT password_hash IS NULL FROM user_profiles WHERE lower(email) = lower(${origen})) AS sin_pass,
-        (SELECT COUNT(*)::int FROM artist_likes WHERE lower(user_email) = lower(${origen})) AS likes_a,
-        (SELECT COUNT(*)::int FROM collective_likes WHERE lower(user_email) = lower(${origen})) AS likes_c,
-        (SELECT COUNT(*)::int FROM orders WHERE lower(user_email) = lower(${origen})) AS pedidos,
-        (SELECT COUNT(*)::int FROM tickets WHERE lower(user_email) = lower(${origen})) AS boletas,
-        (SELECT COUNT(*)::int FROM user_roles WHERE lower(email) = lower(${origen})) AS roles
-    `;
-    esFantasma =
-      f.sin_pass === true &&
-      Number(f.likes_a) === 0 &&
-      Number(f.likes_c) === 0 &&
-      Number(f.pedidos) === 0 &&
-      Number(f.boletas) === 0 &&
-      Number(f.roles) === 0;
+  const actividadAhora = origen ? await actividadDeCuenta(origen) : null;
+  const modoAhora: ModoTraspaso =
+    origen && actividadAhora && esCuentaFantasma(actividadAhora) ? "todo" : "solo_nombrado";
+  const recalculado = {
+    modo: modoAhora,
+    seMueve: modoAhora === "todo" ? actual.administra : actual.seMueve,
+    seQueda: modoAhora === "todo" ? { artistas: [], colectivos: [] } : actual.seQueda,
+  };
+  if (modoEsperado && modoEsperado !== recalculado.modo) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "La cuenta cambió desde la vista previa, revisá de nuevo. " +
+        (recalculado.modo === "todo"
+          ? "Ahora figura sin actividad, así que el traspaso se llevaría todo."
+          : "Ahora figura activa, así que el traspaso movería solo el perfil que nombraste."),
+    };
   }
+  const modo = recalculado.modo;
+  const esFantasma = modo === "todo";
 
-  const movidos = origen
-    ? actual.administra
-    : tipo === "artist"
-      ? { artistas: [{ slug: clave, name: clave }], colectivos: [] }
-      : { artistas: [], colectivos: [{ slug: clave, name: clave, esVenue: false }] };
+  const movidos = recalculado.seMueve;
 
   /**
    * Los pasos van JUNTOS.
@@ -517,14 +600,27 @@ export async function reasignarDueno(
    * SET NULL, así que borrar primero dejaría los perfiles sin dueño y el
    * traspaso no movería nada.
    */
-  const pasos = [
-    origen
-      ? sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`
-      : sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND owner_email IS NULL`,
-    origen
-      ? sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`
-      : sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND owner_email IS NULL`,
-  ];
+  /**
+   * En modo 'todo' se mueve por DUEÑO; en 'solo_nombrado', por SLUG.
+   *
+   * Los dos WHERE nombran también el origen esperado —el dueño, o
+   * IS NULL— así que si alguien cambió la propiedad entre el recálculo y
+   * esto, el UPDATE no toca nada en vez de pisar la decisión de otro.
+   */
+  const pasos =
+    modo === "todo"
+      ? [
+          sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`,
+          sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE lower(owner_email) = lower(${origen})`,
+        ]
+      : [
+          tipo === "artist"
+            ? sql`UPDATE artists SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND (lower(owner_email) = lower(${origen ?? ""}) OR (owner_email IS NULL AND ${origen === null}))`
+            : sql`SELECT 1`,
+          tipo === "collective"
+            ? sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND (lower(owner_email) = lower(${origen ?? ""}) OR (owner_email IS NULL AND ${origen === null}))`
+            : sql`SELECT 1`,
+        ];
   if (origen && esFantasma) {
     pasos.push(sql`DELETE FROM user_profiles WHERE lower(email) = lower(${origen})`);
   }
@@ -551,6 +647,8 @@ export async function reasignarDueno(
     ok: true,
     value: {
       movidos,
+      seQueda: recalculado.seQueda,
+      modo,
       desde: origen,
       hacia: cuenta.email as string,
       cuentaBorrada: Boolean(origen && esFantasma),
