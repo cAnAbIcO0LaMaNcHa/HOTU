@@ -413,3 +413,16 @@ La forma que sí funciona es armar la barra invertida aparte, para que nunca apa
     perl -i -pe 's/\xc2\xa0/chr(92)."u00A0"/ge' <archivo>
 
 Y después verificar con el grep de arriba. Siempre, no solo cuando parezca raro: el error es invisible por definición.
+
+LAS BATERÍAS DE scripts/pruebas/ BORRAN POR PATRÓN, ASÍ QUE NO SE CORREN EN PARALELO CON NADA.
+
+restaurarSeed() no borra lo que la batería creó: borra TODO lo que matchee `email LIKE 'zz-%'` y `email LIKE '%@test.hotu.local'`, más los slugs `zz-%`. Es a propósito —una corrida que se cae a mitad tiene que poder limpiarse igual—, pero significa que cualquier otra cosa que esté usando esas convenciones al mismo tiempo desaparece bajo los pies.
+
+Y el síntoma no se parece a la causa: la cuenta que acabás de crear con rol SUPER_ADMIN empieza a recibir 403, y parece un bug de permisos. Le pasó al tester revisando la limpieza mientras yo corría las baterías contra la misma base de dev; persiguió un falso positivo hasta que entendió que otra cosa le estaba borrando los fixtures.
+
+Es la misma familia que el log congelado y que el filesystem que no distingue mayúsculas: la herramienta no falla, contesta mal.
+
+Dos reglas, entonces:
+
+1. Una sola cosa por vez contra dev. Si una revisión manual o un agente están trabajando, las baterías esperan; si las baterías corren, nadie toca dev.
+2. Si por lo que sea hay que convivir, el trabajo manual usa fixtures FUERA de las dos convenciones —otro dominio, sin prefijo zz-— y los limpia a mano. Pero eso es el parche, no la regla.
