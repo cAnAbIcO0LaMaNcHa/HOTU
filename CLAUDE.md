@@ -393,7 +393,7 @@ Y la previa grita las dos cosas que importan: la plata y los perfiles. Si esas b
 
 UN CARÁCTER INVISIBLE EN EL FUENTE ES UNA BOMBA DE TIEMPO. ESCRIBILO COMO ESCAPE.
 
-Ya pasó dos veces con el mismo: el U+00A0 de la constante BLANCOS quedó como carácter literal en vez de ` `, justo debajo de un comentario que promete "con escapes y no literales".
+Ya pasó dos veces con el mismo: el U+00A0 de la constante BLANCOS quedó como carácter literal en vez de `\u00A0`, justo debajo de un comentario que promete "con escapes y no literales".
 
 Hoy no rompe: mientras el archivo se lea como UTF-8, el string en memoria es el mismo. El problema es el día que alguien "limpie espacios" en esa línea sin ver lo que no se ve, lo retipee como espacio normal, y la migración se vuelva a correr —que es la regla del repo, se corren dos veces—. El swap DROP+ADD reemplaza el CHECK por una versión MÁS LAXA, sin NBSP en el conjunto de blancos, y un `note` hecho solo de espacios duros pasa una validación que antes lo rechazaba. Sin error en ningún lado.
 
@@ -402,6 +402,14 @@ Es la misma familia que el filesystem de Windows que no distingue mayúsculas y 
 Cómo verificarlo, que es la parte que no se puede hacer a ojo:
 
     grep -cP '\xc2\xa0' <archivo>          # tiene que dar 0
-    grep -n "BLANCOS = " <archivo> | cat -A  # tiene que mostrar  , no M-BM-
+    grep -n "BLANCOS = " <archivo> | cat -A  # tiene que mostrar \u00A0, no M-BM-
 
 Lo encontró el migration-reviewer en setup-account-removals, y vale para cualquier archivo, no solo las migraciones.
+
+POR QUÉ SE REPITE, QUE ES LO QUE FALTABA ENTENDER: la herramienta que escribe archivos en este entorno CONVIERTE la secuencia de seis caracteres en el carácter real al guardar. O sea que escribirla bien no alcanza — sale mal igual, sin aviso. Pasó una tercera vez escribiendo ESTA MISMA SECCIÓN, que quedó con dos NBSP literales adentro del párrafo que los prohíbe.
+
+La forma que sí funciona es armar la barra invertida aparte, para que nunca aparezca pegada a la u en el texto que se guarda:
+
+    perl -i -pe 's/\xc2\xa0/chr(92)."u00A0"/ge' <archivo>
+
+Y después verificar con el grep de arriba. Siempre, no solo cuando parezca raro: el error es invisible por definición.
