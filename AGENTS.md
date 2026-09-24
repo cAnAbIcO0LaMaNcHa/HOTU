@@ -17,7 +17,11 @@ dev — desarrollo. Es la que apunta el DATABASE_URL de .env.local en localhost.
 
 Orden obligatorio de toda migración: primero en dev desde localhost, verificar, y recién después en main. Nunca al revés.
 Toda migración tiene que ser idempotente: se corre dos veces seguidas y la segunda devuelve ok:true igual. Esa es la prueba de que se puede reaplicar en main sin romper nada.
-SCHEMA ACTUAL (18 tablas — post tanda 2, corrida en dev y en main)
+SCHEMA — LA FOTO DE LA TANDA 2 (18 tablas). LO QUE SIGUE ES ESA FOTO, NO EL ESTADO DE HOY.
+
+Hoy hay 34 tablas. Lo que este listado NO menciona, agregado después: collective_ownership y artist_collectives.can_edit (§8), collective_likes, account_removals (§8), y todo el sistema de géneros y tags de la tanda 4 (genre_branches, genre_tags, genre_aliases, cross_tags, artist_genres, artist_genre_tags, artist_cross_tags y sus tres equivalentes de collective_), más content_collaborators, content_placements y event_lineup.
+
+Se deja la foto vieja en vez de reescribirla porque lo que describe —las PK de texto, los FK, las decisiones y por qué— sigue siendo cierto y es lo que hace falta leer. Pero el número engañaba: decía 18 y son 34. Si necesitás el estado real, preguntale a la base, no a este archivo.
 
 Migraciones aplicadas, en orden: /api/setup-profiles (tanda 1), /api/setup-epk-content (tanda 2 parte A), /api/setup-collective-memberships (tanda 2 parte B). Las tres son idempotentes y están corridas dos veces en las dos branches.
 
@@ -353,3 +357,51 @@ mavelpoint.com — EPK puro, sin ticketing ni datos verificados. Sirve de refere
 Pendiente para otro chat
 
 Sistema de creación de eventos y reparto de dinero: organizador → DJs → promotores del DJ. Con splits configurables por evento.
+ELIMINAR UNA CUENTA: DESENGANCHA, NO DESTRUYE
+
+Es la única acción de moderación que no se deshace. El ban se levanta, la censura se levanta, un traspaso se vuelve a traspasar. Esto no.
+
+Qué pasa con cada cosa NO lo decide el código: lo decide el SCHEMA, que es donde una regla así no se puede olvidar. Medido contra la base, no supuesto:
+
+    CASCADE  — artist_likes, collective_likes, user_roles. Se van con la cuenta. Un like y un rol no significan nada sin la persona.
+    SET NULL — artists.owner_email, collectives.owner_email, collective_ownership.from_email/to_email, y TODAS las marcas de moderación (censored_by, reviewed_by, banned_by). El perfil queda DESAMPARADO y sigue en pie.
+    RESTRICT — orders y tickets. La base NIEGA borrar una cuenta que tenga pedidos o boletas.
+
+Ese RESTRICT es el que importa: una boleta es prueba de un pago. Lo que hay que hacer con esa cuenta es BANEARLA, que no borra nada y se deshace.
+
+Al eliminar se elige qué pasa con los perfiles que administraba: dejarlos DESAMPARADOS (siguen publicados, sin dueño, reclamables) u OCULTARLOS (se censuran, se puede levantar). Ocultar alcanza también a los sets y tracks del artista: esconder el perfil y dejar la discografía en /sets y /discografia es esconder a medias, que es peor que no esconder porque nadie se da cuenta. Los eventos y las noticias del colectivo NO se tocan nunca, por lo mismo que no los toca el ban: hay gente con boletas compradas.
+
+Todo borrado deja fila en account_removals, que NO TIENE FK a propósito —tiene que sobrevivir a la cuenta que registra— y guarda `plan` (lo que la vista previa dijo) y `measured` (lo que de verdad se borró, contado con RETURNING). Un measured en NULL significa algo preciso: se borró pero no se alcanzó a contar. Es información, no un hueco.
+
+LA LIMPIEZA PRE-LANZAMIENTO TIENE TRES LLAVES Y FECHA DE VENCIMIENTO
+
+/admin/limpieza y POST /api/admin/cleanup existen para una sola cosa: sacar las cuentas de prueba antes de abrir al público. Son el único camino que puede borrar pedidos y boletas.
+
+No aflojan el RESTRICT. EL MECANISMO ES EL ORDEN: ticket_attributions, tickets, order_items, orders, y recién ahí la cuenta sale sola sin que ningún constraint se entere. La guarda sigue armada todo el tiempo; lo que la limpieza hace es sacar de adelante lo que protege, a la vista y contando cada fila.
+
+Las tres llaves son independientes a propósito:
+
+    LIMPIEZA_PRELANZAMIENTO=1  — el interruptor. Si falta, la ruta y la página dan 404, no 403: lo que no existe no se prueba a ver si cede. ESTA ES LA QUE SE APAGA EL DÍA DEL LANZAMIENTO, sacando la variable del entorno, sin tocar código.
+    sesión de SUPER_ADMIN      — dice QUIÉN, y queda escrito en account_removals. Un MODERATOR recibe 404 en la página.
+    MIGRATE_SECRET en el body  — no viaja en la cookie, así que una sesión robada tampoco alcanza.
+
+Las tres se comprueban en lib/accounts-delete.ts ADEMÁS de en la ruta. "Vive en otro archivo, así que el borrado normal no puede llamarlo" es una promesa; la comprobación es una garantía. Y el borrado normal escribe borrarComercio: false en la RUTA, no lo lee del body: hay una prueba que manda borrarComercio:true a mano y verifica que igual da 409.
+
+LA SELECCIÓN DE CUENTAS A BORRAR ES EXPLÍCITA, SIEMPRE. Nunca un patrón, nunca LIKE '%test%', nunca "las que no tienen contraseña". Un filtro que parece decir "las de prueba" es la forma más común de borrar de más, y acá no hay vuelta atrás: una persona real que se llame testa@ no tiene por qué pagar el costo de un atajo. La vista previa es un paso obligatorio: el botón no se habilita hasta que llegó una previa de EXACTAMENTE la selección actual, y tocar una casilla la anula.
+
+Y la previa grita las dos cosas que importan: la plata y los perfiles. Si esas boletas le contaban como venta a un DJ, lista los slugs — borrar una compra de prueba le saca ventas del press kit a alguien que no tiene nada que ver.
+
+UN CARÁCTER INVISIBLE EN EL FUENTE ES UNA BOMBA DE TIEMPO. ESCRIBILO COMO ESCAPE.
+
+Ya pasó dos veces con el mismo: el U+00A0 de la constante BLANCOS quedó como carácter literal en vez de ` `, justo debajo de un comentario que promete "con escapes y no literales".
+
+Hoy no rompe: mientras el archivo se lea como UTF-8, el string en memoria es el mismo. El problema es el día que alguien "limpie espacios" en esa línea sin ver lo que no se ve, lo retipee como espacio normal, y la migración se vuelva a correr —que es la regla del repo, se corren dos veces—. El swap DROP+ADD reemplaza el CHECK por una versión MÁS LAXA, sin NBSP en el conjunto de blancos, y un `note` hecho solo de espacios duros pasa una validación que antes lo rechazaba. Sin error en ningún lado.
+
+Es la misma familia que el filesystem de Windows que no distingue mayúsculas y que el log congelado: la herramienta no falla, contesta mal.
+
+Cómo verificarlo, que es la parte que no se puede hacer a ojo:
+
+    grep -cP '\xc2\xa0' <archivo>          # tiene que dar 0
+    grep -n "BLANCOS = " <archivo> | cat -A  # tiene que mostrar  , no M-BM-
+
+Lo encontró el migration-reviewer en setup-account-removals, y vale para cualquier archivo, no solo las migraciones.
