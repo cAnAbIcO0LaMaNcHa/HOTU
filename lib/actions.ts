@@ -2,6 +2,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
+import { normalizeEmail } from "./accounts";
 import type { CartItem } from "./commerce-types";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -13,7 +14,17 @@ const sql = neon(process.env.DATABASE_URL!);
  */
 export async function createPendingOrder(items: CartItem[]): Promise<{ orderId: number } | { error: string }> {
   const session = await auth();
-  const email = session?.user?.email;
+  /**
+   * normalizeEmail acá TAMBIÉN, aunque el callback jwt ya lo deje
+   * normalizado. Son dos guardas para lo mismo a propósito: esta fila
+   * tiene un FK contra user_profiles(email), que compara EXACTO, y si
+   * alguna vez llega un email con otra capitalización lo que se rompe es
+   * una compra — no un dato de adorno.
+   *
+   * La de arriba evita el problema; esta lo hace imposible desde este
+   * camino, que es el único que escribe orders fuera del seed.
+   */
+  const email = session?.user?.email ? normalizeEmail(session.user.email) : null;
   if (!email) return { error: "not_authenticated" };
   if (items.length === 0) return { error: "empty_cart" };
 

@@ -62,6 +62,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token }) {
       const email = typeof token?.email === "string" ? normalizeEmail(token.email) : null;
       if (!email) return token;
+
+      /**
+       * EL EMAIL DE LA SESIÓN QUEDA NORMALIZADO ACÁ, Y NO EN CADA USO.
+       *
+       * user_profiles.email se guarda siempre en minúsculas —upsertAccount
+       * lo normaliza—, pero la sesión conservaba lo que devolviera el
+       * proveedor. Con Google eso puede venir con mayúsculas, y entonces
+       * session.user.email deja de coincidir carácter a carácter con la
+       * fila de la cuenta.
+       *
+       * Hoy eso es un desajuste callado. Con los FK de orders y tickets
+       * pasa a ser un checkout que revienta con foreign_key_violation en
+       * el momento de crear la orden, para un usuario real que no hizo
+       * nada raro: lo encontró el migration-reviewer mirando qué convertía
+       * la migración en falla dura.
+       *
+       * Se arregla acá porque es el único lugar por el que pasan los dos
+       * proveedores y del que sale session.user.email. Arreglarlo en cada
+       * consumidor sería acordarse veinte veces.
+       */
+      token.email = email;
       try {
         if (await cuentaBaneada(email)) {
           console.warn("[auth] sesión invalidada por ban:", email);
