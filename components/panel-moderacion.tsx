@@ -6,6 +6,12 @@ import Link from "next/link";
 import { ArrowRightLeft, EyeOff, RotateCcw, UserX } from "lucide-react";
 import type { CuentaBaneada, PiezaCensurada } from "@/lib/db";
 
+/** Las dos listas del traspaso tienen la misma forma. */
+type Lista = {
+  artistas: Array<{ slug: string; name: string }>;
+  colectivos: Array<{ slug: string; name: string; esVenue: boolean }>;
+};
+
 const TIPOS: Array<{ id: PiezaCensurada["tipo"]; label: string; donde: string; clave: string }> = [
   { id: "artist", label: "PERFIL DE DJ", donde: "/artistas", clave: "slug" },
   { id: "collective", label: "COLECTIVO", donde: "/colectivos", clave: "slug" },
@@ -64,7 +70,9 @@ export function PanelModeracion({
   const [tMotivo, setTMotivo] = useState("");
   const [tPreview, setTPreview] = useState<{
     dueno: string | null;
-    administra: { artistas: Array<{ slug: string; name: string }>; colectivos: Array<{ slug: string; name: string; esVenue: boolean }> };
+    modo: "todo" | "solo_nombrado";
+    seMueve: Lista;
+    seQueda: Lista;
   } | null>(null);
   /**
    * PARA QUÉ perfil es la vista previa que hay en pantalla.
@@ -473,25 +481,67 @@ export function PanelModeracion({
           botón que se aprieta una sola vez.
         */}
         {tPreview && (
-          <div className="mt-4 border border-border p-4">
+          <div
+            className={`mt-4 border p-4 ${
+              tPreview.modo === "todo" ? "border-red-400/60" : "border-border"
+            }`}
+          >
             <div className="font-mono text-[10px] tracking-widest text-muted-foreground">
               {tPreview.dueno ? `HOY ES DE ${tPreview.dueno}` : "HOY NO ES DE NADIE"}
             </div>
-            <div className="mt-2 font-mono text-[11px] leading-relaxed">
-              SE VA A MOVER:
+
+            {/*
+              EL MODO, DICHO CON PALABRAS Y NO DEDUCIBLE DE UNA LISTA.
+              El de "todo" va en rojo porque se lleva cosas que el
+              moderador no nombró.
+            */}
+            <div
+              className={`mt-2 font-mono text-[10px] tracking-[0.2em] ${
+                tPreview.modo === "todo" ? "text-red-400" : "text-primary"
+              }`}
+            >
+              {tPreview.modo === "todo"
+                ? "CUENTA SIN ACTIVIDAD — SE TRASPASA TODO LO QUE ADMINISTRA"
+                : "CUENTA ACTIVA — SOLO SE TRASPASA LO QUE NOMBRASTE"}
+            </div>
+
+            <div className="mt-3 font-mono text-[11px] leading-relaxed">
+              SE MUEVE:
               <ul className="mt-1 list-inside list-disc">
-                {tPreview.administra.artistas.map((a) => (
-                  <li key={`a:${a.slug}`}>{a.name} — perfil de DJ</li>
+                {tPreview.seMueve.artistas.map((a) => (
+                  <li key={`m-a:${a.slug}`}>{a.name} — perfil de DJ</li>
                 ))}
-                {tPreview.administra.colectivos.map((c) => (
-                  <li key={`c:${c.slug}`}>
-                    {c.name} — {c.esVenue ? "venue" : "colectivo"}
+                {tPreview.seMueve.colectivos.map((k) => (
+                  <li key={`m-c:${k.slug}`}>
+                    {k.name} — {k.esVenue ? "venue" : "colectivo"}
                   </li>
                 ))}
-                {tPreview.administra.artistas.length === 0 &&
-                  tPreview.administra.colectivos.length === 0 && <li>solo este perfil</li>}
+                {tPreview.seMueve.artistas.length === 0 &&
+                  tPreview.seMueve.colectivos.length === 0 && <li>nada</li>}
               </ul>
             </div>
+
+            {/*
+              Y LO QUE NO SE MUEVE. Es la mitad que faltaba: el moderador
+              tiene que poder leer que el perfil de artista de esa persona
+              se queda con ella, en vez de deducirlo de una ausencia.
+            */}
+            {(tPreview.seQueda.artistas.length > 0 ||
+              tPreview.seQueda.colectivos.length > 0) && (
+              <div className="mt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                SE QUEDA CON {tPreview.dueno}:
+                <ul className="mt-1 list-inside list-disc">
+                  {tPreview.seQueda.artistas.map((a) => (
+                    <li key={`q-a:${a.slug}`}>{a.name} — perfil de DJ</li>
+                  ))}
+                  {tPreview.seQueda.colectivos.map((k) => (
+                    <li key={`q-c:${k.slug}`}>
+                      {k.name} — {k.esVenue ? "venue" : "colectivo"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -542,15 +592,28 @@ export function PanelModeracion({
           onClick={async () => {
             const r = await pedir(
               "/api/admin/moderation/owner",
-              { tipo: tTipo, slug: tSlug.trim(), email: tEmail.trim(), motivo: tMotivo },
+              {
+                tipo: tTipo,
+                slug: tSlug.trim(),
+                email: tEmail.trim(),
+                motivo: tMotivo,
+                // El modo que esta pantalla MOSTRÓ. El server lo
+                // recalcula y rechaza si cambió: así el moderador nunca
+                // ejecuta una promesa distinta de la que leyó.
+                modo: tPreview?.modo,
+              },
               "Entregado."
             );
             if (r) {
               const m = r.movidos ?? { artistas: [], colectivos: [] };
               const cuantos = m.artistas.length + m.colectivos.length;
+              const q = r.seQueda ?? { artistas: [], colectivos: [] };
+              const quedan = q.artistas.length + q.colectivos.length;
               setAviso(
                 `Entregado a ${r.hacia}: ${cuantos} perfil(es).` +
-                  (r.cuentaBorrada ? " La cuenta vieja quedó vacía y se borró." : "")
+                  (quedan > 0 ? ` ${quedan} se quedaron con ${r.desde}.` : "") +
+                  (r.cuentaBorrada ? " La cuenta vieja quedó vacía y se borró." : "") +
+                  (r.cesionesCerradas > 0 ? ` ${r.cesionesCerradas} cesión(es) abierta(s) cerrada(s).` : "")
               );
               setTSlug("");
               setTEmail("");
