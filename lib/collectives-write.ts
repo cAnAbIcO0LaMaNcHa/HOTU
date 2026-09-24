@@ -495,7 +495,11 @@ export async function getCandidatosCesion(
 }
 
 /**
- * Le pasa la administración del colectivo a otra cuenta.
+ * LE OFRECE la administración del colectivo a otra cuenta.
+ *
+ * No transfiere: deja una invitación pendiente y el colectivo
+ * desamparado. Ver el bloque de abajo sobre por qué las dos cosas a la
+ * vez.
  *
  * ============================================================
  * SOLO EL DUEÑO, NO canEditCollective
@@ -535,7 +539,7 @@ export async function cederColectivo(
   collectiveSlug: string,
   emailDestinoCrudo: unknown,
   actorEmail?: string | null
-): Promise<WriteResult<{ hacia: string }>> {
+): Promise<WriteResult<{ hacia: string; cesionId: number }>> {
   if (!actorEmail) return { ok: false, status: 403, error: "Not signed in" };
 
   const [c] = await sql`
@@ -583,9 +587,142 @@ export async function cederColectivo(
     };
   }
 
-  await sql`
-    UPDATE collectives SET owner_email = ${elegido.email}
-    WHERE slug = ${collectiveSlug} AND lower(owner_email) = lower(${actorEmail})
+  /**
+   * ============================================================
+   * CEDER ES OFRECER, Y LA CESIÓN ES INMEDIATA PARA QUIEN CEDE
+   * ============================================================
+   *
+   * Las dos escrituras van juntas y dicen dos cosas distintas:
+   *
+   *   - queda una fila 'cesion' PENDIENTE, porque las obligaciones de
+   *     administrar algo no se le encajan a nadie sin que acepte. Es el
+   *     mismo principio que las membresías: entrar necesita las dos
+   *     partes.
+   *   - y owner_email se va a NULL EN EL MISMO MOVIMIENTO, porque la
+   *     decisión de ceder ya se tomó y es real. No queda en suspenso
+   *     esperando la respuesta del otro.
+   *
+   * Si el receptor NO acepta, el colectivo se queda desamparado. NO
+   * vuelve a quien lo cedió: ya lo cedió.
+   *
+   * Y van en una transacción porque el estado intermedio es el peor de
+   * los dos: una cesión ofrecida con el colectivo todavía a nombre del
+   * que cedió, o —al revés— un colectivo sin dueño y sin ninguna fila
+   * que diga a quién se le ofreció.
+   */
+  const pasos = await sql.transaction([
+    sql`
+      INSERT INTO collective_ownership (collective_slug, kind, from_email, to_email)
+      VALUES (${collectiveSlug}, 'cesion', ${dueno}, ${elegido.email})
+      RETURNING id
+    `,
+    sql`
+      UPDATE collectives SET owner_email = NULL
+      WHERE slug = ${collectiveSlug} AND lower(owner_email) = lower(${actorEmail})
+    `,
+  ]);
+  const ofrecida = Array.isArray(pasos[0]) ? (pasos[0] as Array<{ id: number }>)[0] : undefined;
+
+  return { ok: true, value: { hacia: elegido.email, cesionId: Number(ofrecida?.id ?? 0) } };
+}
+
+/**
+ * Cierra las cesiones abiertas de un colectivo, marcándolas revocadas.
+ *
+ * No la usa una persona: la usan los otros caminos por los que un
+ * colectivo cambia de dueño —un traspaso de moderación, un reclamo
+ * aprobado—. Sin esto queda una fila pendiente sobre un colectivo que ya
+ * tiene otro dueño, y el índice único la sigue contando como "la cesión
+ * abierta": el dueño nuevo no podría cederlo nunca. No falla, BLOQUEA, y
+ * es el modo de falla que el migration-reviewer encontró en el schema.
+ */
+export async function revocarCesionesAbiertas(collectiveSlug: string): Promise<number> {
+  const filas = await sql`
+    UPDATE collective_ownership SET revoked_at = now()
+    WHERE collective_slug = ${collectiveSlug} AND kind = 'cesion'
+      AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
+    RETURNING id
   `;
-  return { ok: true, value: { hacia: elegido.email } };
+  return filas.length;
+}
+
+/**
+ * El receptor responde: acepta y queda a su nombre, o rechaza y el
+ * colectivo se queda desamparado.
+ *
+ * SOLO EL DESTINATARIO. Ni quien la ofreció ni un admin: es la única
+ * decisión de esta pieza que no es del dueño, y ese es el punto.
+ *
+ * El WHERE repite que siga abierta, así que responder dos veces —dos
+ * pestañas, dos toques— no pisa la primera respuesta.
+ */
+export async function responderCesion(
+  cesionId: number,
+  accion: "accept" | "decline",
+  actorEmail?: string | null
+): Promise<WriteResult<{ colectivo: string; aceptada: boolean }>> {
+  if (!actorEmail) return { ok: false, status: 403, error: "Not signed in" };
+  if (!Number.isInteger(cesionId) || cesionId <= 0) {
+    return { ok: false, status: 404, error: "No encontré esa cesión" };
+  }
+
+  const [fila] = await sql`
+    SELECT id, collective_slug, to_email, accepted_at, declined_at, revoked_at
+    FROM collective_ownership
+    WHERE id = ${cesionId} AND kind = 'cesion'
+  `;
+  if (!fila) return { ok: false, status: 404, error: "No encontré esa cesión" };
+  if (!fila.to_email || (fila.to_email as string).toLowerCase() !== actorEmail.toLowerCase()) {
+    return { ok: false, status: 403, error: "Esa cesión no es para vos" };
+  }
+  if (fila.accepted_at || fila.declined_at || fila.revoked_at) {
+    return { ok: false, status: 409, error: "Esa cesión ya se resolvió" };
+  }
+
+  const slug = fila.collective_slug as string;
+
+  if (accion === "decline") {
+    const r = await sql`
+      UPDATE collective_ownership SET declined_at = now()
+      WHERE id = ${cesionId} AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
+      RETURNING id
+    `;
+    if (r.length === 0) return { ok: false, status: 409, error: "Esa cesión ya se resolvió" };
+    return { ok: true, value: { colectivo: slug, aceptada: false } };
+  }
+
+  /**
+   * Aceptar son dos escrituras y van juntas: marcar la fila y poner el
+   * colectivo a nombre del receptor. Si la segunda fallara sola, la
+   * cesión figuraría aceptada sobre un colectivo que sigue sin dueño —y
+   * nadie volvería a mirar esa fila, porque ya está resuelta.
+   *
+   * El UPDATE del colectivo exige owner_email IS NULL: si alguien le
+   * asignó un dueño en el medio (un moderador, un reclamo), esto no lo
+   * pisa.
+   */
+  const pasos = await sql.transaction([
+    sql`
+      UPDATE collective_ownership SET accepted_at = now()
+      WHERE id = ${cesionId} AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
+      RETURNING id
+    `,
+    sql`
+      UPDATE collectives SET owner_email = ${fila.to_email}
+      WHERE slug = ${slug} AND owner_email IS NULL
+      RETURNING slug
+    `,
+  ]);
+  const marcada = Array.isArray(pasos[0]) ? (pasos[0] as unknown[]).length : 0;
+  const puesto = Array.isArray(pasos[1]) ? (pasos[1] as unknown[]).length : 0;
+
+  if (marcada === 0) return { ok: false, status: 409, error: "Esa cesión ya se resolvió" };
+  if (puesto === 0) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Ese colectivo ya tiene dueño. La cesión quedó sin efecto.",
+    };
+  }
+  return { ok: true, value: { colectivo: slug, aceptada: true } };
 }

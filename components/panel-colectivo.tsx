@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BotonPublicar } from "@/components/boton-publicar";
 import { CederColectivo } from "@/components/ceder-colectivo";
+import { CesionInbox } from "@/components/cesion-inbox";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { FranjaCensura } from "@/components/franja-censura";
 import { MisEventos } from "@/components/mis-eventos";
@@ -18,6 +19,7 @@ import {
   getGenreTags,
   getMyArtistSlug,
   getMyMemberships,
+  getCesionesPendientes,
   getMyEvents,
   getMyNews,
   getNewsTags,
@@ -100,6 +102,20 @@ export async function PanelColectivo({
   // Sin artista no hay membresías: getMyMemberships las busca por el
   // dueño del artista. Preguntarlo sería un viaje garantizado a vacío.
   const memberships = myArtistSlug ? await getMyMemberships(email) : [];
+
+  /**
+   * Las cesiones se piden SIEMPRE, no solo si ya administra algo.
+   *
+   * Es el error que rompió los paneles en el paso 2 de la tanda 5: atar
+   * una consulta a "ya tener X" esconde justo lo que le llega a quien
+   * todavía no tiene X. Una cesión se la ofrecen a un MIEMBRO, que por
+   * definición puede no administrar nada.
+   *
+   * Solo en el panel COLECTIVO: un venue no se cede a un miembro por esta
+   * vía, y de todos modos getCesionesPendientes trae las dos y el filtro
+   * de abajo las separa.
+   */
+  const cesiones = (await getCesionesPendientes(email)).filter((c) => c.esVenue === esVenue);
 
   /**
    * Las invitaciones a colaborar DIRIGIDAS A UN COLECTIVO que administra.
@@ -250,6 +266,10 @@ export async function PanelColectivo({
       <MisEventos eventos={misEventos} />
 
       <MisNoticias noticias={misNoticias} />
+
+      {/* Te ofrecieron un colectivo. Va PRIMERO de las bandejas: es la
+          única que, si no la contestás, deja algo sin dueño. */}
+      <CesionInbox cesiones={cesiones} />
 
       {/* Invitaciones a colaborar dirigidas a un colectivo que
           administra. Esperan una respuesta, así que van arriba de lo que

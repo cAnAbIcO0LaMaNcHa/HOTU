@@ -1994,3 +1994,55 @@ export async function getMyEvents(email: string, kind?: EntityKind): Promise<MiE
     vendidas: Number(r.vendidas ?? 0),
   }));
 }
+
+/** Una cesión que alguien te ofreció y todavía no respondiste. */
+export type CesionPendiente = {
+  id: number;
+  collectiveSlug: string;
+  collectiveName: string;
+  esVenue: boolean;
+  /** Quién la ofreció. Puede ser null si esa cuenta se borró. */
+  deQuien: string | null;
+  ofrecidaEn: string;
+  /** Qué vas a heredar. Es lo que hay que saber antes de aceptar. */
+  miembros: number;
+  eventos: number;
+  noticias: number;
+};
+
+/**
+ * Las cesiones de colectivo esperando TU respuesta (§8 A).
+ *
+ * Trae con qué viene el colectivo —miembros, eventos, noticias— porque
+ * aceptar es asumir la administración de todo eso, y nadie debería
+ * decidirlo a ciegas. Es el mismo criterio que la invitación a colaborar,
+ * que dice dónde va a quedar fija la pieza antes de que aceptes.
+ */
+export async function getCesionesPendientes(email: string): Promise<CesionPendiente[]> {
+  const rows = await sql`
+    SELECT o.id, o.collective_slug, o.from_email, o.offered_at,
+           c.name, c.entity_kind,
+           (SELECT COUNT(*)::int FROM artist_collectives m
+             WHERE m.collective_slug = o.collective_slug AND m.to_date IS NULL) AS miembros,
+           (SELECT COUNT(*)::int FROM events e
+             WHERE e.organizer_slug = o.collective_slug) AS eventos,
+           (SELECT COUNT(*)::int FROM news n
+             WHERE n.author_collective_slug = o.collective_slug) AS noticias
+    FROM collective_ownership o
+    JOIN collectives c ON c.slug = o.collective_slug
+    WHERE o.kind = 'cesion' AND lower(o.to_email) = lower(${email})
+      AND o.accepted_at IS NULL AND o.declined_at IS NULL AND o.revoked_at IS NULL
+    ORDER BY o.offered_at ASC
+  `;
+  return rows.map((r) => ({
+    id: Number(r.id),
+    collectiveSlug: r.collective_slug as string,
+    collectiveName: r.name as string,
+    esVenue: (r.entity_kind as string) === "venue",
+    deQuien: (r.from_email as string | null) ?? null,
+    ofrecidaEn: new Date(r.offered_at as string).toISOString(),
+    miembros: Number(r.miembros ?? 0),
+    eventos: Number(r.eventos ?? 0),
+    noticias: Number(r.noticias ?? 0),
+  }));
+}

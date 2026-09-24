@@ -44,7 +44,7 @@
 import { neon } from "@neondatabase/serverless";
 import { isModerator } from "./roles-check";
 import { limpiarTexto, recortar } from "./texto";
-import type { WriteResult } from "./collectives-write";
+import { revocarCesionesAbiertas, type WriteResult } from "./collectives-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -421,6 +421,8 @@ export async function reasignarDueno(
     desde: string | null;
     hacia: string;
     cuentaBorrada: boolean;
+    /** Cesiones abiertas que este traspaso cerró. */
+    cesionesCerradas: number;
   }>
 > {
   if (!moderadorEmail || !(await isModerator(moderadorEmail))) {
@@ -528,6 +530,23 @@ export async function reasignarDueno(
   }
   await sql.transaction(pasos);
 
+  /**
+   * Y se cierran las cesiones que hubiera abiertas sobre lo que se movió.
+   *
+   * Sin esto queda una fila 'cesion' pendiente sobre un colectivo que ya
+   * tiene otro dueño: el índice único la sigue contando como la cesión
+   * abierta, y el dueño nuevo no podría cederlo nunca. No falla, BLOQUEA
+   * — el modo de falla que el migration-reviewer encontró en el schema.
+   *
+   * Va DESPUÉS del traspaso y fuera de su transacción a propósito: si
+   * esto fallara, lo que queda mal es una fila de registro, no la
+   * propiedad. Al revés sería peor.
+   */
+  let cesionesCerradas = 0;
+  for (const col of movidos.colectivos) {
+    cesionesCerradas += await revocarCesionesAbiertas(col.slug);
+  }
+
   return {
     ok: true,
     value: {
@@ -535,6 +554,7 @@ export async function reasignarDueno(
       desde: origen,
       hacia: cuenta.email as string,
       cuentaBorrada: Boolean(origen && esFantasma),
+      cesionesCerradas,
     },
   };
 }
