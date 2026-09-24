@@ -7,7 +7,7 @@
  * parámetro que la limpieza pre-lanzamiento sí usa.
  */
 import { neon } from "@neondatabase/serverless";
-import { estadoSeed, restaurarSeed } from "./seed.mjs";
+import { abrirCorrida } from "./seed.mjs";
 
 const sql = neon(process.env.DATABASE_URL);
 const BASE = "http://localhost:3000";
@@ -77,7 +77,7 @@ const CONPLATA = "zz-conplata@test.hotu.local"; // con boleta: NO se puede
 const ART = "zz-borrable-dj";
 const COL = "zz-borrable-col";
 
-await restaurarSeed(sql);
+const corrida = await abrirCorrida(sql, "eliminar.mjs");
 await sql`INSERT INTO user_roles (email,role,country_code) VALUES (${MOD},'MODERATOR','COL') ON CONFLICT DO NOTHING`;
 chk("el moderador entra", (await login("mod", MOD)) === MOD);
 
@@ -235,7 +235,8 @@ console.log("\n=== LA PANTALLA ===");
 
 await limpiarFixture();
 await sql`DELETE FROM user_roles WHERE email LIKE '%@test.hotu.local'`;
-await restaurarSeed(sql);
+const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+console.log("seed:", JSON.stringify(fin.estado));
 process.exit(mal === 0 ? 0 : 1);

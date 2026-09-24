@@ -27,6 +27,8 @@
  * también.
  */
 
+import { tomarCandado } from "./candado.mjs";
+
 /** artists.slug -> owner_email, según ARTISTS de /api/seed-test. */
 export const ARTISTAS_SEED = [
   ["test-camila", "artista@test.hotu.local"],
@@ -106,6 +108,124 @@ export async function restaurarSeed(sql) {
     await sql`UPDATE collectives SET owner_email = ${owner} WHERE slug = ${slug}`;
   }
   await sql`UPDATE artist_collectives SET can_edit = false WHERE can_edit`;
+}
+
+/* ===================================================================
+ * BORRAR SOLO LO QUE ESTA CORRIDA CREÓ
+ *
+ * restaurarSeed() barre por PATRÓN, y eso tiene un costo: borra filas que
+ * matchean la convención aunque no sean de esta corrida. Con el candado
+ * puesto no puede haber nadie más, pero "no puede haber" es una premisa y
+ * esto es una medición.
+ *
+ * La idea: después del barrido inicial, dev está en un estado conocido.
+ * Se saca una FOTO de las PK de todo lo que una batería puede llegar a
+ * tocar, y al final se borra la DIFERENCIA. Eso es exactamente "lo que
+ * esta corrida creó", sin un solo patrón en el medio: ni zz-, ni
+ * @test.hotu.local, ni nada que alguien pueda elegir por casualidad.
+ *
+ * Son 18 tablas y ~160 filas en dev, así que la foto entera sale en una
+ * consulta por tabla y no se nota.
+ *
+ * OJO CON LA DIVISIÓN DEL TRABAJO: esto borra lo CREADO. Lo MODIFICADO
+ * —bans, censuras, propiedad movida— lo sigue arreglando restaurarSeed(),
+ * porque una fila cambiada no aparece en ninguna diferencia de claves.
+ * Las dos hacen falta, en ese orden.
+ * =================================================================== */
+
+/**
+ * tabla -> expresión SQL que la identifica. En orden de BORRADO, de
+ * adentro hacia afuera: cada una va antes de lo que la referencia, así
+ * ningún FK se queja. Si una batería futura crea filas en una tabla que
+ * no está acá, el borrado va a fallar RUIDOSAMENTE con un FK, que es la
+ * dirección correcta del error.
+ */
+const TABLAS_VOLATILES = [
+  ["ticket_attributions", "id::text"],
+  ["tickets", "id::text"],
+  ["order_items", "id::text"],
+  ["orders", "id::text"],
+  ["account_removals", "id::text"],
+  ["collective_ownership", "id::text"],
+  ["artist_collectives", "id::text"],
+  ["artist_gigs", "id::text"],
+  ["artist_likes", "artist_slug || '|' || user_email"],
+  ["collective_likes", "collective_slug || '|' || user_email"],
+  ["dj_sets", "slug"],
+  ["tracks", "slug"],
+  ["news", "id::text"],
+  ["events", "id::text"],
+  ["user_roles", "id::text"],
+  ["artists", "slug"],
+  ["collectives", "slug"],
+  ["user_profiles", "email"],
+];
+
+/** La línea de base: qué había justo antes de que la batería empiece. */
+export async function fotoDeDev(sql) {
+  const foto = {};
+  for (const [tabla, clave] of TABLAS_VOLATILES) {
+    const filas = await sql(`SELECT ${clave} AS k FROM ${tabla}`);
+    foto[tabla] = filas.map((f) => String(f.k));
+  }
+  return foto;
+}
+
+/**
+ * Borra lo que no estaba en la foto. Devuelve el conteo por tabla, para
+ * que la batería lo pueda imprimir: un borrado que no dice cuántas filas
+ * se llevó no está auditado.
+ *
+ * Con la foto vacía borra todo lo de esa tabla, y está bien: significa
+ * que antes no había nada, así que todo lo que hay es nuevo.
+ */
+export async function limpiarLoCreado(sql, foto) {
+  const borrado = {};
+  for (const [tabla, clave] of TABLAS_VOLATILES) {
+    const previas = foto?.[tabla] ?? [];
+    const filas = await sql(
+      `DELETE FROM ${tabla} WHERE NOT (${clave} = ANY($1::text[])) RETURNING 1 AS x`,
+      [previas]
+    );
+    if (filas.length > 0) borrado[tabla] = filas.length;
+  }
+  return borrado;
+}
+
+/* ===================================================================
+ * EL PROTOCOLO DE UNA CORRIDA, EN DOS LLAMADAS
+ *
+ * Toda batería abre con abrirCorrida() y cierra con cerrar(). Existe para
+ * que el orden no se pueda equivocar: son cinco pasos al abrir y al
+ * cerrar, y cada batería que los escribiera a mano sería una oportunidad
+ * de olvidarse del candado o de sacar la foto antes del barrido.
+ * =================================================================== */
+
+/**
+ * Toma dev en exclusiva, la deja limpia, y se acuerda de cómo estaba.
+ *
+ * `quien` sale en el mensaje de error de la próxima que intente entrar,
+ * así que tiene que decir algo útil: el nombre del archivo.
+ */
+export async function abrirCorrida(sql, quien) {
+  const candado = await tomarCandado(sql, quien);
+  // El barrido por patrón va ACÁ y solo acá: con el candado puesto, lo
+  // único que puede haber de más es basura de una corrida que se cayó.
+  await restaurarSeed(sql);
+  // Y la foto se saca DESPUÉS del barrido, si no la línea de base
+  // incluiría esa basura y nunca se borraría.
+  const foto = await fotoDeDev(sql);
+
+  return {
+    /** Vuelve dev a como estaba y suelta el candado. */
+    async cerrar() {
+      const borrado = await limpiarLoCreado(sql, foto); // lo CREADO
+      await restaurarSeed(sql); // lo MODIFICADO
+      const estado = await estadoSeed(sql);
+      await candado.liberar();
+      return { borrado, estado };
+    },
+  };
 }
 
 /** Lo que una batería imprime al terminar, para que se vea de una. */

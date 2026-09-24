@@ -8,11 +8,11 @@
  * restaurar al empezar hace que no importe.
  */
 import { neon } from "@neondatabase/serverless";
-import { estadoSeed, restaurarSeed } from "./seed.mjs";
+import { abrirCorrida } from "./seed.mjs";
 const sql = neon(process.env.DATABASE_URL);
 const BASE = "http://localhost:3000";
 
-await restaurarSeed(sql);
+const corrida = await abrirCorrida(sql, "traspaso.mjs");
 
 const J = new Map();
 const g = (q, r) => {
@@ -220,6 +220,7 @@ await montar();
 }
 
 /* ---------- limpieza y seed otra vez ---------- */
-await restaurarSeed(sql);
+const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+console.log("seed:", JSON.stringify(fin.estado));

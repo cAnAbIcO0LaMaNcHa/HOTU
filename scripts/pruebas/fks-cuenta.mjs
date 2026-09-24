@@ -5,9 +5,9 @@
  * sino que la base NIEGUE lo que el código no debería poder hacer.
  */
 import { neon } from "@neondatabase/serverless";
-import { estadoSeed, restaurarSeed } from "./seed.mjs";
+import { abrirCorrida } from "./seed.mjs";
 const sql = neon(process.env.DATABASE_URL);
-await restaurarSeed(sql);
+const corrida = await abrirCorrida(sql, "fks-cuenta.mjs");
 
 let ok = 0, mal = 0;
 const chk = (n, c, d = "") => { if (c) { ok++; console.log("   OK   " + n); } else { mal++; console.log("   MAL  " + n + " -> " + d); } };
@@ -95,6 +95,7 @@ console.log("\n=== RENOMBRAR UNA CUENTA CASCADEA (ON UPDATE) ===");
 }
 
 await limpiar();
-await restaurarSeed(sql);
+const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+console.log("seed:", JSON.stringify(fin.estado));

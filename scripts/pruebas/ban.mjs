@@ -5,7 +5,7 @@
  * que se cae a mitad deja cuentas baneadas y eso envenena todo lo demás.
  */
 import { neon } from "@neondatabase/serverless";
-import { estadoSeed, restaurarSeed } from "./seed.mjs";
+import { abrirCorrida, restaurarSeed } from "./seed.mjs";
 const sql = neon(process.env.DATABASE_URL);
 const BASE = "http://localhost:3000";
 
@@ -20,7 +20,7 @@ const COMPRADOR = "usuario@test.hotu.local";
 // corrida que se cae a mitad sigue dejando bans y censuras puestos.
 const restaurar = () => restaurarSeed(sql);
 
-await restaurar();
+const corrida = await abrirCorrida(sql, "ban.mjs");
 
 const J = new Map();
 const g = (q, r) => {
@@ -210,6 +210,7 @@ console.log("=== UN NO-MODERADOR NO PUEDE BANEAR NI DESBANEAR ===");
   chk("y no quedó baneada", x.banned_at === null, String(x.banned_at));
 }
 
-await restaurar();
+const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+console.log("seed:", JSON.stringify(fin.estado));

@@ -422,7 +422,22 @@ Y el síntoma no se parece a la causa: la cuenta que acabás de crear con rol SU
 
 Es la misma familia que el log congelado y que el filesystem que no distingue mayúsculas: la herramienta no falla, contesta mal.
 
-Dos reglas, entonces:
+YA NO ES UNA REGLA QUE HAYA QUE RECORDAR: HAY UN CANDADO.
 
-1. Una sola cosa por vez contra dev. Si una revisión manual o un agente están trabajando, las baterías esperan; si las baterías corren, nadie toca dev.
-2. Si por lo que sea hay que convivir, el trabajo manual usa fixtures FUERA de las dos convenciones —otro dominio, sin prefijo zz-— y los limpia a mano. Pero eso es el parche, no la regla.
+scripts/pruebas/candado.mjs toma dev en exclusiva con una fila en zz_test_lock, y toda batería abre con abrirCorrida() y cierra con cerrar(). La segunda que intente entrar REVIENTA antes de tocar la base, con un mensaje que dice quién la tiene, desde cuándo y cómo destrabarla. Un candado abandonado se roba solo a los 45 minutos —generoso a propósito: la revisión que originó esto duró 20—, y liberar() lleva el pid en el WHERE, así que nunca suelta el de otro.
+
+No es advisory lock de Postgres porque no podría ser: los advisory locks son de SESIÓN y el driver HTTP de Neon no tiene sesión. Cada consulta es su propio request, así que pg_try_advisory_lock() tomaría el lock y lo soltaría en el mismo request — daría true siempre, que es peor que no tener candado porque parece que protege.
+
+La tabla zz_test_lock la crea candado.mjs y no una migración. Es la única excepción a que el schema entre por /api/setup-*: es infraestructura de pruebas, ningún código de la app la toca, y no tiene por qué existir en main. El prefijo zz_ es para que nadie la confunda con una tabla del producto.
+
+PARA UNA REVISIÓN A MANO, TOMALO DESDE LA TERMINAL. Es la mitad del punto: lo que se pisó fue una persona contra una batería, no dos baterías.
+
+    node scripts/pruebas/candado.mjs ver
+    node scripts/pruebas/candado.mjs tomar "revision manual de X"
+    node scripts/pruebas/candado.mjs liberar
+
+Y EL BARRIDO FINAL YA NO USA PATRONES. abrirCorrida() saca una FOTO de las PK de las 18 tablas que una batería puede tocar, justo después del barrido inicial, y cerrar() borra la DIFERENCIA. Eso es exactamente lo que la corrida creó: ni zz-, ni @test.hotu.local, ni nada que alguien pueda elegir por casualidad. Una fila que ya existía SOBREVIVE aunque su email matchee el patrón viejo, y eso está medido en arnes.mjs.
+
+El barrido POR PATRÓN sigue existiendo, pero solo al ABRIR, y ahí es legítimo: con el candado puesto, lo único que puede haber de más es basura de una corrida que se cayó. Y hay una división del trabajo que conviene tener clara: el delta borra lo CREADO; lo MODIFICADO —bans, censuras, propiedad movida— lo sigue arreglando restaurarSeed(), porque una fila cambiada no aparece en ninguna diferencia de claves. Las dos hacen falta, en ese orden.
+
+El arnés se prueba a sí mismo en scripts/pruebas/arnes.mjs, 24 chequeos: el candado, el robo del abandonado, el NO-robo del vivo, que liberar no suelte el ajeno, y que el delta borre lo nuevo y solo lo nuevo. Existe porque la primera corrida con el arnés puesto reportó un borrado vacío — que es la respuesta BUENA, cada batería ya limpia lo suyo a mano, pero deja el mecanismo sin ejercitar. Un cero puede significar "funcionó y no había nada" o "no hace nada", y esas dos cosas hay que poder distinguirlas.

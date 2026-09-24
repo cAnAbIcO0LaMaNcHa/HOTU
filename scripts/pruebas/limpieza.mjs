@@ -22,7 +22,7 @@
  * lanzamiento.
  */
 import { neon } from "@neondatabase/serverless";
-import { estadoSeed, restaurarSeed } from "./seed.mjs";
+import { abrirCorrida } from "./seed.mjs";
 
 const sql = neon(process.env.DATABASE_URL);
 const BASE = "http://localhost:3000";
@@ -77,7 +77,7 @@ const JEFE = "duena@test.hotu.local";        // será SUPER_ADMIN
 const MOD  = "aplicante@test.hotu.local";    // solo MODERATOR
 const MOTIVO = "Limpieza de prueba de la bateria automatica";
 
-await restaurarSeed(sql);
+const corrida = await abrirCorrida(sql, "limpieza.mjs");
 
 /* ===================================================================
  * EL INTERRUPTOR APAGADO
@@ -98,10 +98,11 @@ if (!ENCENDIDA) {
   chk("y sin sesión también 404 (el interruptor va primero)", anon.status === 404, String(anon.status));
 
   await sql`DELETE FROM user_roles WHERE email LIKE '%@test.hotu.local'`;
-  await restaurarSeed(sql);
+  const fin = await corrida.cerrar();
   console.log(`\n=== ${ok} OK, ${mal} MAL (interruptor apagado) ===`);
   console.log("Volvé a correrla con LIMPIEZA_PRELANZAMIENTO=1 para el resto.");
-  console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+  console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+  console.log("seed:", JSON.stringify(fin.estado));
   process.exit(mal === 0 ? 0 : 1);
 }
 
@@ -350,7 +351,8 @@ console.log("\n=== EL TOPE ===");
 
 await desmontar();
 await sql`DELETE FROM user_roles WHERE email LIKE '%@test.hotu.local'`;
-await restaurarSeed(sql);
+const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));
+console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
+console.log("seed:", JSON.stringify(fin.estado));
 process.exit(mal === 0 ? 0 : 1);
