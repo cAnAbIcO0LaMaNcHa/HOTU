@@ -11,3 +11,10 @@ tsconfig.tsbuildinfo
 # Agentes generados por otra herramienta. Los nuestros viven en
 # .claude/agents/*.md, que son los que se revisan.
 .codex/
+
+# Scripts de parche y pruebas de una sola vez, en la raíz. Las baterías
+# que SÍ se conservan viven en scripts/pruebas/. Ya se colaron dos veces
+# en un commit por un `git add -A`.
+/*.mjs
+!/next.config.mjs
+!/postcss.config.mjs
