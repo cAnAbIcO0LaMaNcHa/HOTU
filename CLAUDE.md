@@ -133,6 +133,16 @@ Los Server Actions que ya existen se pueden dejar andando, pero no se escriben n
 Nunca importar lib/db.ts en client components. Las utilidades puras (fechas, formato) van en lib/date-utils.ts. Ya hubo un bug por esto.
 Correr la migración ANTES de subir código que dependa de ella. El orden completo es: correrla en dev desde localhost, correrla una segunda vez para confirmar idempotencia, después en main, y recién ahí desplegar el código que la usa.
 
+UN FLUJO DE RECUPERAR CONTRASEÑA NUNCA PUEDE DEJAR password_hash EN NULL. Ni por un instante, ni "mientras el token está vigente". Tiene que escribir un hash nuevo, o guardar el token en su propia tabla y no tocar la columna.
+
+La razón no es la contraseña: es que "password_hash IS NULL AND auth_provider <> 'google'" es hoy el criterio de CUENTA FANTASMA —una cuenta que existe, que nadie usa y que no puede entrar por ninguna vía— y de ese criterio depende cuánto se lleva un traspaso de moderación: de un fantasma, todo lo que administra; de una persona real, solo el perfil que se nombró.
+
+Si recuperar contraseña vaciara la columna, una cuenta real y activa parecería fantasma durante esa ventana, y un traspaso en ese momento se llevaría el perfil de artista, los colectivos y los venues de alguien que solo estaba cambiando su clave.
+
+El criterio vive en UNA función pura, esCuentaFantasma() en lib/accounts.ts, usada por la vista previa y por la escritura. Si alguna vez hace falta distinguir de verdad "nunca entró" de "no puede entrar", eso es un campo de historia —un last_login_at que escriba el callback signIn— y no un truco sobre esta columna.
+
+Y OJO CON LA VERSIÓN CORTA DE ESTE CRITERIO: "sin contraseña" a secas está MAL y casi se fue así. Las cuentas de Google tienen password_hash en NULL porque entran por OAuth y nunca hubo un hash que guardar. Medido en dev: fedesubu@gmail.com, con tres pedidos, quedaba clasificada como fantasma. Hacen falta las dos condiciones.
+
 UN BACKFILL NO PUEDE USAR COMO GUARDA UN VALOR QUE LA PROPIA MIGRACIÓN ESCRIBE. Ya apareció DOS VECES —el renombre de kind en la tanda 3, y review_status en las noticias de la comunidad— así que antes de correr cualquier migración con backfill hay que buscar este patrón explícitamente.
 
 La forma es siempre la misma: se agrega una columna CON default, y después un UPDATE filtra por ese mismo default para decidir a quién tocar.
