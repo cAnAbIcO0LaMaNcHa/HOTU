@@ -422,11 +422,41 @@ export async function eliminarCuenta(
    */
   const pasos: Paso[] = [];
 
+  /**
+   * PRIMERO SE TRABA LA FILA DE LA CUENTA. Después todo lo demás.
+   *
+   * Sin esto hay una ventana chica y un daño grande: si otro moderador
+   * borra la misma cuenta entre la vista previa y esta transacción, el
+   * INSERT del registro entra igual y el DELETE de abajo no encuentra
+   * nada. La transacción commitea, y queda una fila afirmando un borrado
+   * que esta persona no hizo.
+   *
+   * El registro es lo ÚNICO que sobrevive a lo que registra. Una fila de
+   * más ahí no es ruido: es un borrado inventado que nadie puede
+   * desmentir, porque la cuenta ya no está para comparar.
+   *
+   * El FOR UPDATE toma el lock por toda la transacción: un borrado
+   * concurrente espera a que esta termine, y si ya se había ido, el
+   * WHERE EXISTS de abajo hace que el registro tampoco se escriba.
+   */
+  pasos.push({
+    clave: "traba",
+    q: sql`SELECT email FROM user_profiles WHERE lower(email) = ${email} FOR UPDATE`,
+  });
+
+  /**
+   * Y el registro se escribe SOLO si la cuenta sigue ahí.
+   *
+   * INSERT ... SELECT ... WHERE EXISTS y no VALUES: es la misma guarda
+   * que el lock, desde el otro lado. Juntas no dejan ningún camino en el
+   * que quede una fila sin su borrado.
+   */
   pasos.push({
     clave: "registro",
     q: sql`
       INSERT INTO account_removals (email, removed_by, mode, note, plan)
-      VALUES (${inv.email}, ${actor}, ${modo}, ${motivo}, ${JSON.stringify(plan)}::jsonb)
+      SELECT ${inv.email}, ${actor}, ${modo}, ${motivo}, ${JSON.stringify(plan)}::jsonb
+      WHERE EXISTS (SELECT 1 FROM user_profiles WHERE lower(email) = ${email})
       RETURNING id
     `,
   });
@@ -571,20 +601,29 @@ export async function eliminarCuenta(
     return { ok: false, status: 409, error: `No se pudo eliminar: ${msg}` };
   }
 
-  const por = (clave: string): number => {
+  const filasDe = (clave: string): unknown[] => {
     const i = pasos.findIndex((p) => p.clave === clave);
     const r = i >= 0 ? resultados[i] : null;
-    return Array.isArray(r) ? r.length : 0;
+    return Array.isArray(r) ? r : [];
   };
+  const por = (clave: string): number => filasDe(clave).length;
 
   if (por("cuenta") === 0) {
-    // No debería pasar: la transacción habría fallado. Si pasa, se dice.
-    return { ok: false, status: 409, error: "La cuenta ya no estaba cuando se fue a borrar" };
+    /**
+     * Llegar acá significa que alguien la borró primero: el lock la
+     * encontró vacía, el registro no se escribió por el WHERE EXISTS, y
+     * el DELETE no tenía nada. No quedó rastro de este intento, que es
+     * lo correcto — el borrado lo hizo otro y ya tiene su propia fila.
+     */
+    return { ok: false, status: 409, error: "Alguien la eliminó mientras tanto" };
   }
 
-  const registroId = Number(
-    (Array.isArray(resultados[0]) ? (resultados[0][0] as { id?: number })?.id : 0) ?? 0
-  );
+  /**
+   * El id sale del paso POR NOMBRE, no de resultados[0]. Con el lock
+   * adelante, el índice 0 ya no es el registro, y leer por posición es
+   * cómo se termina guardando la medición en la fila equivocada.
+   */
+  const registroId = Number((filasDe("registro")[0] as { id?: number } | undefined)?.id ?? 0);
 
   const medido: Record<string, number> = {
     cesiones_revocadas: por("cesiones_revocadas"),
