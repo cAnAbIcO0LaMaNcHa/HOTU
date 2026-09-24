@@ -8,29 +8,11 @@
  * restaurar al empezar hace que no importe.
  */
 import { neon } from "@neondatabase/serverless";
+import { estadoSeed, restaurarSeed } from "./seed.mjs";
 const sql = neon(process.env.DATABASE_URL);
 const BASE = "http://localhost:3000";
 
-/* ---------- el seed, tal como lo declara /api/seed-test ---------- */
-const SEED_ARTISTAS = [
-  ["test-camila", "artista@test.hotu.local"],
-  ["test-aplicante", "aplicante@test.hotu.local"],
-  ["test-duena", "duena@test.hotu.local"],
-];
-async function restaurarSeed() {
-  for (const [slug, owner] of SEED_ARTISTAS) {
-    await sql`UPDATE artists SET owner_email = ${owner} WHERE slug = ${slug}`;
-  }
-  await sql`UPDATE collectives SET owner_email = 'duena@test.hotu.local' WHERE slug IN ('reisen','bodega-prueba')`;
-  await sql`UPDATE collectives SET owner_email = 'colectivo@test.hotu.local' WHERE slug = 'otu'`;
-  await sql`DELETE FROM collective_ownership WHERE collective_slug LIKE 'zz-%'`;
-  await sql`DELETE FROM artist_collectives WHERE collective_slug LIKE 'zz-%'`;
-  await sql`DELETE FROM collectives WHERE slug LIKE 'zz-%'`;
-  await sql`DELETE FROM artists WHERE slug LIKE 'zz-%'`;
-  await sql`DELETE FROM user_profiles WHERE email LIKE 'zz-%'`;
-  await sql`DELETE FROM user_roles WHERE email = 'aplicante@test.hotu.local' AND role = 'MODERATOR'`;
-}
-await restaurarSeed();
+await restaurarSeed(sql);
 
 const J = new Map();
 const g = (q, r) => {
@@ -238,12 +220,6 @@ await montar();
 }
 
 /* ---------- limpieza y seed otra vez ---------- */
-await restaurarSeed();
+await restaurarSeed(sql);
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
-const fin = await sql`
-  SELECT (SELECT count(*)::int FROM collectives WHERE slug LIKE 'zz-%') c,
-         (SELECT count(*)::int FROM artists WHERE slug LIKE 'zz-%') a,
-         (SELECT count(*)::int FROM user_profiles WHERE email LIKE 'zz-%') u,
-         (SELECT count(*)::int FROM collective_ownership) o,
-         (SELECT owner_email FROM artists WHERE slug = 'test-camila') camila`;
-console.log("limpieza y seed:", JSON.stringify(fin[0]));
+console.log("limpieza y seed:", JSON.stringify(await estadoSeed(sql)));

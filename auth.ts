@@ -31,6 +31,49 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     /**
+     * ============================================================
+     * UNA CUENTA BANEADA NO TIENE SESIÓN. ACÁ, Y EN UN SOLO LADO.
+     * ============================================================
+     *
+     * Hasta acá el ban se comprobaba SOLO en signIn, y con sesiones JWT
+     * eso solo frena ingresos NUEVOS: una cuenta baneada con la cookie
+     * abierta seguía publicando, editando y comprando hasta que la cookie
+     * expirara. El ban era una puerta cerrada con la gente ya adentro.
+     *
+     * El callback jwt corre cada vez que se lee la sesión, así que
+     * devolver null acá la borra de inmediato —páginas, rutas de API y
+     * Server Actions incluidos—. Eso último importa: la compra pasa por
+     * un Server Action, que el middleware no toca.
+     *
+     * Un solo punto en vez de sembrar el chequeo en los ~20 caminos de
+     * escritura. La diferencia no es el trabajo: es que el camino nuevo
+     * que alguien agregue el mes que viene queda cubierto sin que tenga
+     * que acordarse, y el que se olvida de este tipo de chequeo no falla
+     * ruidosamente — deja pasar.
+     *
+     * CUESTA UNA CONSULTA por lectura de sesión, y es la decisión tomada:
+     * que un baneado siga adentro un rato es peor que la consulta.
+     *
+     * FALLA ABIERTO si la base no contesta, igual que el upsert de abajo
+     * y por la misma razón: un corte que invalide todas las sesiones deja
+     * a todo el mundo afuera —admins incluidos— justo cuando alguien
+     * tiene que entrar a arreglarlo.
+     */
+    async jwt({ token }) {
+      const email = typeof token?.email === "string" ? normalizeEmail(token.email) : null;
+      if (!email) return token;
+      try {
+        if (await cuentaBaneada(email)) {
+          console.warn("[auth] sesión invalidada por ban:", email);
+          return null;
+        }
+      } catch (err) {
+        console.error("[auth] no pude comprobar el ban de", email, err);
+      }
+      return token;
+    },
+
+    /**
      * Creates the user_profiles row on first sign-in, for both providers.
      * artist_likes.user_email is a foreign key to user_profiles(email), so
      * a session without this row breaks on the user's first like.
