@@ -308,15 +308,16 @@ export function PanelModeracion({
           </h2>
         </div>
         <p className="mt-3 max-w-2xl font-mono text-[11px] leading-relaxed text-muted-foreground">
-          Se cierra la CUENTA, no el perfil: no puede volver a entrar por ninguna vía.
-          Su perfil de DJ, sus sets y sus tracks dejan de verse; nada se borra y todo
-          vuelve si levantás el ban.
+          Se cierra la CUENTA, no el perfil: no puede volver a entrar por ninguna vía,
+          y si tenía la sesión abierta se le corta en el momento. Su perfil de DJ, sus
+          sets y sus tracks dejan de verse.
         </p>
         <p className="mt-2 max-w-2xl font-mono text-[11px] leading-relaxed text-muted-foreground">
-          Si era dueña de un colectivo o un venue, <strong>ese colectivo queda sin
-          dueño pero sigue en pie y sus miembros se quedan</strong>: hay gente que no
-          hizo nada y gente con boletas compradas. Lo puntual que esté mal se censura
-          arriba, de a uno.
+          <strong>No se borra ni se mueve nada.</strong> Si era dueña de un colectivo o
+          un venue, lo sigue siendo: queda congelado —nadie puede publicar a su nombre
+          mientras su dueño no pueda entrar— y al levantar el ban vuelve a funcionar
+          igual que antes. Lo puntual que esté mal se censura arriba, de a uno; y si el
+          colectivo tiene que cambiar de manos de verdad, eso es un traspaso.
         </p>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -356,12 +357,7 @@ export function PanelModeracion({
               "Cuenta cerrada."
             );
             if (r) {
-              const sueltos: string[] = r.colectivosSinDueno ?? [];
-              setAviso(
-                sueltos.length > 0
-                  ? `Cuenta cerrada. Quedaron sin dueño: ${sueltos.join(", ")}. Sus miembros siguen adentro.`
-                  : "Cuenta cerrada."
-              );
+              setAviso("Cuenta cerrada. No se movió ni se borró nada: al reabrirla queda como estaba.");
               setEmail("");
               setMotivoBan("");
             }
@@ -407,7 +403,7 @@ export function PanelModeracion({
                       pedir(
                         CUENTAS,
                         { email: b.email, accion: "levantar" },
-                        "Cuenta reabierta. El colectivo que perdió NO se devuelve solo."
+                        "Cuenta reabierta. Vuelve a ser dueña de lo mismo que antes."
                       )
                     }
                     className="inline-flex shrink-0 items-center gap-2 border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"

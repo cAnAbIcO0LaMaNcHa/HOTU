@@ -35,8 +35,26 @@
  * sets y tracks. NO alcanza a los colectivos que era dueña ni a lo que
  * esos colectivos publicaron: un colectivo es de varios, hay miembros
  * que no hicieron nada, y hay gente con boletas compradas para sus
- * fiestas. El colectivo queda SIN DUEÑO y sigue en pie. Lo puntual que
- * esté mal se censura de a uno, que es para lo que existe la censura.
+ * fiestas. Lo puntual que esté mal se censura de a uno, que es para lo
+ * que existe la censura.
+ *
+ * ============================================================
+ * Y EL BAN NO TOCA LA PROPIEDAD. NINGUNA.
+ * ============================================================
+ *
+ * Antes ponía owner_email en NULL en los colectivos de la cuenta, y
+ * levantar el ban no los devolvía. Eso contradecía las dos cosas que el
+ * ban promete: que es REVERSIBLE y que NO BORRA DATOS. Alguien baneado
+ * por error volvía sin sus colectivos, y recuperarlos dependía de que un
+ * moderador se acordara de a quién eran.
+ *
+ * Ahora el ban bloquea a la PERSONA —no entra, no publica, no compra— y
+ * deja todo lo demás intacto. Al levantarlo, queda como estaba.
+ *
+ * El colectivo de una cuenta baneada queda congelado: nadie puede
+ * publicar a su nombre, porque su dueño no puede entrar. Si hay que
+ * moverlo de verdad, eso es un traspaso de moderación, que pide motivo y
+ * deja rastro.
  *
  * Node-only. Nunca importar desde un client component.
  */
@@ -215,7 +233,7 @@ export async function banearCuenta(
   emailCrudo: unknown,
   motivoCrudo: unknown,
   moderadorEmail?: string | null
-): Promise<WriteResult<{ baneada: true; colectivosSinDueno: string[] }>> {
+): Promise<WriteResult<{ baneada: true }>> {
   if (!moderadorEmail || !(await isModerator(moderadorEmail))) {
     return { ok: false, status: 403, error: "Solo un moderador banea cuentas" };
   }
@@ -252,52 +270,34 @@ export async function banearCuenta(
   if (cuenta.banned_at) return { ok: false, status: 409, error: "Esa cuenta ya está baneada" };
 
   /**
-   * Las dos escrituras van JUNTAS en una transacción.
+   * UNA sola escritura: la marca en la cuenta. Nada más.
    *
-   * Entre el ban y el desenganche de los colectivos hay una ventana real
-   * —cada sql del driver HTTP es su propio request— y si la segunda
-   * falla queda una cuenta baneada dueña de un colectivo que nadie puede
-   * administrar: el peor de los dos estados, y el que nadie va a ir a
-   * buscar porque el ban "funcionó".
+   * Y el WHERE repite banned_at IS NULL para que dos moderadores que
+   * aprieten a la vez no pisen el motivo del primero.
    */
-  const pasos = await sql.transaction([
-    sql`
-      UPDATE user_profiles
-      SET banned_at = now(), banned_by = ${moderadorEmail}, ban_reason = ${v.motivo}
-      WHERE lower(email) = ${email} AND banned_at IS NULL
-      RETURNING email
-    `,
-    sql`
-      UPDATE collectives SET owner_email = NULL
-      WHERE lower(owner_email) = ${email}
-      RETURNING slug
-    `,
-  ]);
-
-  const baneadas = Array.isArray(pasos[0]) ? (pasos[0] as Array<{ email: string }>) : [];
+  const baneadas = await sql`
+    UPDATE user_profiles
+    SET banned_at = now(), banned_by = ${moderadorEmail}, ban_reason = ${v.motivo}
+    WHERE lower(email) = ${email} AND banned_at IS NULL
+    RETURNING email
+  `;
   if (baneadas.length === 0) {
     return { ok: false, status: 409, error: "Alguien la baneó mientras tanto" };
   }
-  const sueltos = Array.isArray(pasos[1]) ? (pasos[1] as Array<{ slug: string }>) : [];
 
-  return {
-    ok: true,
-    value: { baneada: true, colectivosSinDueno: sueltos.map((c) => c.slug) },
-  };
+  return { ok: true, value: { baneada: true } };
 }
 
 /**
  * Levanta el ban.
  *
- * El contenido vuelve solo, porque nunca se marcó: las lecturas dejan de
- * ver el ban y con eso alcanza.
+ * TODO vuelve solo, porque nada se marcó ni se movió: las lecturas dejan
+ * de ver el ban y con eso alcanza. La cuenta sigue siendo dueña de
+ * exactamente lo mismo que antes.
  *
- * LOS COLECTIVOS NO VUELVEN. Quedaron sin dueño y así se quedan: devolver
- * la propiedad automáticamente pisaría a quien se la hayan dado mientras
- * tanto, y un colectivo tiene un solo owner_email. Que lo vuelva a
- * recibir es una decisión de alguien, no un efecto secundario de esta.
- * El resultado lo dice, para que quien levanta el ban lo sepa en el
- * momento y no lo descubra por un reclamo.
+ * Eso es lo que hace que el ban sea de verdad reversible. Mientras el ban
+ * desenganchaba los colectivos, levantarlo devolvía a una persona
+ * distinta de la que se había baneado.
  */
 export async function levantarBan(
   emailCrudo: unknown,

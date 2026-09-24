@@ -147,6 +147,51 @@ console.log("=== NO PUEDE COMPRAR, CON LA SESIÓN ABIERTA ===");
   chk("al levantarlo vuelve a tener sesión", (await login("comprador", COMPRADOR)) === COMPRADOR);
 }
 
+console.log("=== EL BAN NO TOCA LA PROPIEDAD, Y DESBANEAR LA DEVUELVE ENTERA ===");
+{
+  const DUENA = "duena@test.hotu.local";
+  const antes = {
+    colectivos: (await sql`SELECT slug FROM collectives WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+    artistas: (await sql`SELECT slug FROM artists WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+  };
+  chk("antes del ban administra algo", antes.colectivos.length + antes.artistas.length > 0, JSON.stringify(antes));
+
+  const b1 = await banear(DUENA, "Prueba de que el ban no toca la propiedad.");
+  chk("banear -> 200", b1.status === 200, JSON.stringify(b1));
+
+  const durante = {
+    colectivos: (await sql`SELECT slug FROM collectives WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+    artistas: (await sql`SELECT slug FROM artists WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+  };
+  chk("BANEADA SIGUE SIENDO DUEÑA DE LO MISMO", JSON.stringify(durante) === JSON.stringify(antes), JSON.stringify(durante));
+  const [huerfanos] = await sql`SELECT count(*)::int n FROM collectives WHERE owner_email IS NULL`;
+  chk("y no quedó ningún colectivo sin dueño", huerfanos.n === 0, String(huerfanos.n));
+
+  // Su contenido sí se esconde, que es lo que el ban sí hace.
+  const publico = texto(await (await fetch(`${BASE}/artistas`)).text());
+  const [suArtista] = await sql`SELECT name FROM artists WHERE lower(owner_email) = ${DUENA} AND status='published' LIMIT 1`;
+  if (suArtista) {
+    chk("su perfil de artista SÍ se esconde del sitio", !publico.includes(suArtista.name), "sigue visible");
+  }
+
+  const l1 = await levantar(DUENA);
+  chk("levantar -> 200", l1.status === 200, JSON.stringify(l1));
+  const despues = {
+    colectivos: (await sql`SELECT slug FROM collectives WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+    artistas: (await sql`SELECT slug FROM artists WHERE lower(owner_email) = ${DUENA} ORDER BY slug`).map((x) => x.slug),
+  };
+  chk("DESPUÉS DE DESBANEAR, TODO IGUAL QUE ANTES", JSON.stringify(despues) === JSON.stringify(antes), JSON.stringify(despues));
+  const publico2 = texto(await (await fetch(`${BASE}/artistas`)).text());
+  if (suArtista) {
+    chk("y su perfil vuelve al sitio", publico2.includes(suArtista.name), "no volvió");
+  }
+  chk("y vuelve a administrar desde su panel", await (async () => {
+    await login("duena2", DUENA);
+    const t = texto(await (await fetch(`${BASE}/perfil?panel=colectivo`, { headers: { cookie: ck("duena2") } })).text());
+    return /PUBLICAR UN EVENTO/.test(t);
+  })(), "no le aparece el botón");
+}
+
 console.log("=== UN NO-MODERADOR NO PUEDE BANEAR NI DESBANEAR ===");
 {
   await login("nadie", COMPRADOR);
