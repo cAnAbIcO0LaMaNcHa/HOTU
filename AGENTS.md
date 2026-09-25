@@ -441,3 +441,35 @@ Y EL BARRIDO FINAL YA NO USA PATRONES. abrirCorrida() saca una FOTO de las PK de
 El barrido POR PATRÓN sigue existiendo, pero solo al ABRIR, y ahí es legítimo: con el candado puesto, lo único que puede haber de más es basura de una corrida que se cayó. Y hay una división del trabajo que conviene tener clara: el delta borra lo CREADO; lo MODIFICADO —bans, censuras, propiedad movida— lo sigue arreglando restaurarSeed(), porque una fila cambiada no aparece en ninguna diferencia de claves. Las dos hacen falta, en ese orden.
 
 El arnés se prueba a sí mismo en scripts/pruebas/arnes.mjs, 24 chequeos: el candado, el robo del abandonado, el NO-robo del vivo, que liberar no suelte el ajeno, y que el delta borre lo nuevo y solo lo nuevo. Existe porque la primera corrida con el arnés puesto reportó un borrado vacío — que es la respuesta BUENA, cada batería ya limpia lo suyo a mano, pero deja el mecanismo sin ejercitar. Un cero puede significar "funcionó y no había nada" o "no hace nada", y esas dos cosas hay que poder distinguirlas.
+
+EL CHEQUEO POST-DEPLOY CORRE LAS CONSULTAS. PEDIR URLs NO ALCANZA.
+
+    node scripts/post-deploy.mjs
+
+/admin estuvo 500 en producción durante 66 commits. getArtistsInReview() nombra artists.submitted_at, y esa columna no existía en main: la migración se había corrido allá en una versión ANTERIOR que todavía no la tenía, y la versión que la agrega —el mismo commit que agregó la consulta— nunca se re-corrió.
+
+Nadie lo vio porque toda la verificación post-deploy era pedir URLs, y el middleware contesta 307 a /admin/* ANTES de renderizar cuando no hay sesión. El 307 llegaba y se leía como "anda". La página no se había ejecutado ni una vez en producción. Yo mismo reporté esas ocho rutas en 307 como verificación, dos veces.
+
+UN 307 NO PRUEBA QUE UNA PÁGINA RENDERICE. Ni un 200 de una página pública prueba nada de una autenticada.
+
+Las dos piezas, en el orden en que importan:
+
+1. /api/smoke?secret=SMOKE_SECRET — LLAMA a las funciones de lectura reales de cada página, una por una, y devuelve si anduvo, cuánto tardó y CUÁNTAS filas trajo. Nunca las filas: es un chequeo de salud, no una puerta de atrás al contenido. Va con secreto y no con sesión para que se pueda correr desde una terminal; una verificación que exige abrir un navegador es una verificación que no se corre. Devuelve HTTP 500 si alguna se rompe, así que `curl -fsS` ya sirve de puerta.
+
+   Devuelve `sanas` (páginas cuyas lecturas pasaron TODAS) y `dudosas` (con algo roto u omitido). La primera versión listaba toda página con al menos una lectura buena, así que con /admin roto igual aparecía como cubierta: se podía leer "/admin está bien" mirando una línea. Está probado al revés —escondiendo artists.submitted_at en dev— y atrapa el fallo exacto, con la página y la función nombradas.
+
+   SI AGREGÁS UNA PÁGINA, AGREGÁ SUS LECTURAS. La lista es a mano, así que puede quedar incompleta, y una lista incompleta que dice "todo OK" es justo lo que este archivo existe para evitar. Por eso `sanas` es explícita: si la página que te preocupa no está ahí, ese 200 no habla de ella.
+
+2. /api/schema-fingerprint?secret=SMOKE_SECRET — tablas, columnas, constraints e índices con su definición completa. El script compara dev contra main por HTTP, así ninguna credencial de main tiene que estar en localhost: que el DATABASE_URL de main NO exista acá es lo que hace que "todo contra dev" sea una garantía y no una intención.
+
+   FALLA cuando a main le falta una COLUMNA de una tabla que existe en las dos —la forma exacta del caso de submitted_at— o cuando una columna tiene otra forma. Una tabla entera que falte solo se informa: zz_test_lock es de pruebas y no tiene por qué existir en main.
+
+Un diff de esquema NO reemplaza al smoke y no podría: no sabe qué columnas usa el código, y hay diferencias legítimas. El smoke responde la pregunta que importa; el diff dice dónde mirar cuando el smoke falla.
+
+LAS DOS RUTAS VAN CON SMOKE_SECRET, NO CON MIGRATE_SECRET. Son poderes distintos: MIGRATE_SECRET abre las rutas que ALTERAN el esquema de producción y es la segunda llave de la limpieza, que borra pedidos y boletas. Estas dos solo LEEN, y devuelven conteos y nada más.
+
+Darles la misma llave obligaría a tener la de migraciones a mano —en .env.local, en un historial de shell, en el CI— para correr una verificación que se usa después de CADA deploy. Cuanto más seguido se usa una credencial, en más lugares termina; la de migraciones se usa cuatro veces por tanda y con la mano en el freno. Rotar una no toca la otra, y filtrar la de lectura no le da a nadie una vía al esquema ni a la plata. Está medido en los dos sentidos: MIGRATE_SECRET no abre el smoke, y SMOKE_SECRET no abre setup-account-removals.
+
+En .env.local van DOS: SMOKE_SECRET (el de dev) y SMOKE_SECRET_MAIN (el que está en Vercel). El script se NIEGA a usar el de dev contra main: si difieren, reusarlo daría un 401 que se lee como "la ruta no está desplegada" — otra vez la misma familia de falla, así que no adivina, lo pide.
+
+Y el comparador de esquemas se exporta de scripts/post-deploy.mjs para poder probarlo: la rama que importa —"a main le falta una columna"— NO se puede ejercitar comparando dev contra dev, porque las dos mitades son la misma base y el diff sale vacío siempre. scripts/pruebas/comparador.mjs le pasa dos huellas adulteradas, con la deriva real de main metida a propósito, e importa la función de verdad en vez de reimplementarla: una prueba que reimplementa lo que verifica solo prueba que sabe reimplementarlo.
