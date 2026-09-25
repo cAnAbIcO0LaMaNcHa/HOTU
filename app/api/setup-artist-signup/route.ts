@@ -255,8 +255,58 @@ export async function GET(request: Request) {
       sql`ALTER TABLE artists ALTER COLUMN review_status SET DEFAULT 'borrador'`,
       sql`ALTER TABLE artists ALTER COLUMN review_status SET NOT NULL`,
     ]);
-    const aprobados = pasos[4] as unknown[];
-    const borradores = pasos[5] as unknown[];
+    /**
+     * EL LOG DEL BACKFILL ESTABA CORRIDO UN LUGAR, Y ESTA ES LA FORMA
+     * EXACTA QUE ESE COMENTARIO DE ARRIBA ADVIERTE.
+     *
+     * Leía pasos[4] y pasos[5]. Cuando la migración tenía CUATRO ADD
+     * COLUMN eso era correcto: 4 y 5 eran los dos UPDATE. El commit que
+     * agregó submitted_at lo insertó EN EL MEDIO del array —tercer
+     * lugar— y corrió todo lo de abajo un puesto, sin tocar los índices.
+     * Desde entonces el log leía el resultado de un ALTER TABLE como si
+     * fuera el conteo de los aprobados, y el conteo de los aprobados
+     * como si fuera el de los borradores. El de los borradores no lo
+     * leía nadie.
+     *
+     * No rompe nada: el DDL devuelve un array vacío, así que el log
+     * decía 0 donde tenía que decir un número. Un log que dice 0 cuando
+     * tocó 17 filas es peor que no loguear — es la regla del repo, y esta
+     * es la falla que describe.
+     *
+     * Contra main, encima, los dos conteos dan 0 de verdad —review_status
+     * ya es NOT NULL ahí, así que la guarda IS NULL no matchea nada— y el
+     * número correcto y el corrido COINCIDEN. Habría pasado inadvertido
+     * una vez más.
+     *
+     * Ahora se busca POR NOMBRE. El índice numérico se rompe callado en
+     * cuanto alguien agrega un paso en el medio, que es literalmente lo
+     * que pasó acá.
+     */
+    const NOMBRES = [
+      "add_review_status",
+      "add_review_note",
+      "add_submitted_at",
+      "add_reviewed_at",
+      "add_reviewed_by",
+      "backfill_aprobado",
+      "backfill_borrador",
+      "set_default",
+      "set_not_null",
+    ];
+    const filasDe = (nombre: string): unknown[] => {
+      const i = NOMBRES.indexOf(nombre);
+      const r = i >= 0 ? pasos[i] : null;
+      return Array.isArray(r) ? r : [];
+    };
+    if (pasos.length !== NOMBRES.length) {
+      log.push(
+        `ATENCIÓN: la transacción devolvió ${pasos.length} resultados y NOMBRES declara ` +
+          `${NOMBRES.length}. Alguien agregó o quitó un paso sin actualizar la lista, y los ` +
+          "conteos de abajo no son de lo que dicen ser."
+      );
+    }
+    const aprobados = filasDe("backfill_aprobado");
+    const borradores = filasDe("backfill_borrador");
     log.push("columnas review_status, review_note, submitted_at, reviewed_at y reviewed_by listas");
     log.push(
       `backfill: ${aprobados.length} publicados a 'aprobado', ${borradores.length} no publicados a 'borrador'`
