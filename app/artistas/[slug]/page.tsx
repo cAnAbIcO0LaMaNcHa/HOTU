@@ -96,7 +96,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
   const yaReclamado = email && puedeReclamarse?.puede
     ? await tieneReclamoAbierto(email, "artist", slug)
     : false;
-  const reclamosAbiertos = puedeReclamarse?.puede
+  const hayEnRevision = puedeReclamarse?.puede
     ? await hayReclamoAbierto("artist", slug)
     : 0;
 
@@ -127,7 +127,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
             haySesion={Boolean(email)}
             yaReclamado={yaReclamado}
             razon={puedeReclamarse.razon}
-            abiertos={reclamosAbiertos}
+            abiertos={hayEnRevision > 0}
           />
         </div>
       )}

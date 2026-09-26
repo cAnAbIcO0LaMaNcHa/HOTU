@@ -43,7 +43,7 @@ export function ReclamarPerfil({
   yaReclamado: boolean;
   razon: "sin_dueno" | "dueno_fantasma";
   /**
-   * Cuántos reclamos abiertos hay sobre este perfil, de cualquiera.
+   * ¿Hay alguna solicitud en revisión sobre este perfil? SIN el número.
    *
    * Es el EQUIVALENTE EN PANTALLA del aviso al contact_email, y se
    * muestra en público a propósito. El destinatario de ese aviso es
@@ -52,9 +52,10 @@ export function ReclamarPerfil({
    * se entere es que lo vea cualquiera que mire el perfil.
    *
    * Y no dice QUIÉN reclamó. Eso es del moderador: publicarlo invitaría
-   * a discutirlo por fuera.
+   * a discutirlo por fuera, y el número además servía para fabricar la
+   * apariencia de una disputa.
    */
-  abiertos: number;
+  abiertos: boolean;
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -94,10 +95,19 @@ export function ReclamarPerfil({
         Si {nombre} sos vos, o el colectivo es tuyo, podés reclamarlo y editarlo donde lo ves.
       </p>
 
-      {abiertos > 0 && (
-        <p className="mt-2 max-w-2xl font-mono text-[11px] leading-relaxed text-amber-400">
-          Ya hay {abiertos} reclamo(s) abierto(s) sobre este perfil, esperando que un
-          moderador decida. Si el perfil es tuyo y no fuiste vos, escribinos.
+      {/*
+        TEXTO NEUTRO Y SIN NÚMERO, a propósito.
+        La primera versión decía "ya hay N reclamos abiertos". Registrarse
+        con credenciales es gratis y no está verificado, así que ese número
+        era una herramienta: reclamos en serie para que un perfil se vea
+        disputado, y el contador lo publicaba. En singular y sin cifra, el
+        esfuerzo de abrir veinte reclamos no compra ninguna apariencia.
+        Cuántos hay y de quién es cosa del moderador.
+      */}
+      {abiertos && (
+        <p className="mt-2 max-w-2xl font-mono text-[11px] leading-relaxed text-muted-foreground">
+          Hay una solicitud de propiedad en revisión. Si el perfil es tuyo y no fuiste vos,
+          escribinos.
         </p>
       )}
 

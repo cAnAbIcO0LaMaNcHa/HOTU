@@ -55,7 +55,29 @@ export const COLECTIVOS_SEED = [
 export async function restaurarSeed(sql) {
   // Primero lo que las pruebas crean, para que los UPDATE de abajo no
   // choquen con fixtures a medio armar.
-  await sql`DELETE FROM collective_ownership WHERE collective_slug LIKE 'zz-%'`;
+  /**
+   * profile_ownership por LOS DOS slugs, no solo el de colectivo.
+   *
+   * Decía solo collective_slug —venía de cuando la tabla era
+   * collective_ownership y no existían los reclamos de artista— así que
+   * las filas con artist_slug sobrevivían para siempre. El barrido por
+   * delta tampoco las tocaba: estaban antes de la foto, o sea que para él
+   * no las creó esta corrida. Dos baterías después, un chequeo que contaba
+   * filas fallaba por acumulación.
+   */
+  await sql`DELETE FROM profile_ownership WHERE collective_slug LIKE 'zz-%' OR artist_slug LIKE 'zz-%'`;
+
+  /**
+   * Y la bandeja de salida, que no se barría en absoluto.
+   *
+   * Se limpia por DESTINATARIO y por REFERENCIA, que es lo que identifica
+   * un aviso de prueba: va a un dominio de prueba, o habla de un perfil
+   * zz-. Hoy en dev nada más escribe esta tabla, pero barrer por patrón y
+   * no entera es lo que va a seguir andando el día que algo real la use.
+   */
+  await sql`DELETE FROM mail_outbox
+            WHERE para LIKE '%@test.hotu.local' OR para LIKE '%@perfil.hotu.local'
+               OR para LIKE 'zz-%' OR referencia LIKE '%zz-%'`;
   await sql`DELETE FROM artist_collectives WHERE collective_slug LIKE 'zz-%' OR artist_slug LIKE 'zz-%'`;
   await sql`DELETE FROM order_items WHERE event_id IN (SELECT id FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%')`;
   await sql`DELETE FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%' OR title LIKE 'CEN-%' OR title LIKE 'HALL-%' OR title LIKE 'ADM-%' OR title LIKE 'PRUEBA-%'`;
@@ -146,7 +168,15 @@ const TABLAS_VOLATILES = [
   ["order_items", "id::text"],
   ["orders", "id::text"],
   ["account_removals", "id::text"],
-  ["collective_ownership", "id::text"],
+  ["profile_ownership", "id::text"],
+  /**
+   * mail_outbox FALTABA, y se notó: las filas se acumulaban entre
+   * baterías porque ninguna las borraba, y un chequeo de reclamos que
+   * contaba "cuántos avisos de este tipo hay" pasaba sola y fallaba en la
+   * suite. Un conteo global sobre una tabla que nadie limpia es una
+   * prueba que depende del orden en que se corran las demás.
+   */
+  ["mail_outbox", "id::text"],
   ["artist_collectives", "id::text"],
   ["artist_gigs", "id::text"],
   ["artist_likes", "artist_slug || '|' || user_email"],
@@ -235,7 +265,7 @@ export async function estadoSeed(sql) {
       (SELECT count(*)::int FROM collectives WHERE slug LIKE 'zz-%') basura_colectivos,
       (SELECT count(*)::int FROM artists WHERE slug LIKE 'zz-%') basura_artistas,
       (SELECT count(*)::int FROM user_profiles WHERE email LIKE 'zz-%') basura_cuentas,
-      (SELECT count(*)::int FROM collective_ownership) ownership,
+      (SELECT count(*)::int FROM profile_ownership) ownership,
       (SELECT count(*)::int FROM user_profiles WHERE banned_at IS NOT NULL) baneadas,
       (SELECT count(*)::int FROM user_roles WHERE email LIKE '%@test.hotu.local') roles_prestados,
       (SELECT owner_email FROM artists WHERE slug = 'test-camila') camila,

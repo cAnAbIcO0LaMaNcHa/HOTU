@@ -84,7 +84,7 @@ export default async function CollectivePage({
   const yaReclamado = email && puedeReclamarse?.puede
     ? await tieneReclamoAbierto(email, "collective", slug)
     : false;
-  const reclamosAbiertos = puedeReclamarse?.puede
+  const hayEnRevision = puedeReclamarse?.puede
     ? await hayReclamoAbierto("collective", slug)
     : 0;
   const genero = await getProfileGenres("collective", slug);
@@ -137,7 +137,7 @@ export default async function CollectivePage({
             haySesion={Boolean(email)}
             yaReclamado={yaReclamado}
             razon={puedeReclamarse.razon}
-            abiertos={reclamosAbiertos}
+            abiertos={hayEnRevision > 0}
           />
         </div>
       )}

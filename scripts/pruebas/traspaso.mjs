@@ -77,7 +77,7 @@ await login("mod", MOD);
 /* Fixtures propios, con prefijo zz-. */
 const FANTASMA = "zz-fant@perfil.hotu.local";
 async function montar() {
-  await sql`DELETE FROM collective_ownership WHERE collective_slug LIKE 'zz-%'`;
+  await sql`DELETE FROM profile_ownership WHERE collective_slug LIKE 'zz-%'`;
   await sql`DELETE FROM artist_collectives WHERE collective_slug LIKE 'zz-%'`;
   await sql`DELETE FROM collectives WHERE slug LIKE 'zz-%'`;
   await sql`DELETE FROM artists WHERE slug LIKE 'zz-%'`;
@@ -191,22 +191,47 @@ console.log("\n=== IDEMPOTENCIA: REPETIRLO NO DEJA NADA A MEDIAS ===");
   chk("y dice que ya es de esa cuenta", /ya es de esa cuenta/i.test(r.data.error ?? ""), r.data.error);
   const despues = await sql`SELECT slug, owner_email FROM collectives WHERE slug LIKE 'zz-%' ORDER BY slug`;
   chk("nada cambió", JSON.stringify(antes) === JSON.stringify(despues), JSON.stringify(despues));
-  const [n] = await sql`SELECT count(*)::int n FROM collective_ownership WHERE collective_slug LIKE 'zz-%'`;
-  chk("y no se duplicaron filas de registro", n.n === 0, String(n.n));
+  /**
+   * MIDE EL DELTA DEL REINTENTO, no un absoluto.
+   *
+   * Esto esperaba CERO filas de registro, y pasaba porque reasignarDueno no
+   * escribía ninguna: el rastro de kind='moderacion' no existía. Ahora el
+   * traspaso que salió bien más arriba deja UNA, legítimamente, y un
+   * absoluto la lee como duplicado.
+   *
+   * Lo que el chequeo quiere probar es que el reintento rechazado no
+   * escribió nada, así que compara antes y después de ESE reintento. Es la
+   * misma lección que el comparador de esquemas: la pregunta es cuánto
+   * cambió, no cuánto hay.
+   */
+  const [reg] = await sql`
+    SELECT count(*)::int n FROM profile_ownership
+    WHERE collective_slug LIKE 'zz-%' AND kind = 'moderacion'
+  `;
+  chk("el traspaso que SÍ salió dejó su rastro", reg.n === 1, String(reg.n));
+  const r2 = await req("mod", "PATCH", "/api/admin/moderation/owner", {
+    tipo: "collective", slug: "zz-c-fant", email: DESTINO, motivo: "Segundo reintento, tampoco.",
+  });
+  chk("un reintento más -> 409", r2.status === 409, String(r2.status));
+  const [reg2] = await sql`
+    SELECT count(*)::int n FROM profile_ownership
+    WHERE collective_slug LIKE 'zz-%' AND kind = 'moderacion'
+  `;
+  chk("y el reintento NO agregó rastro", reg2.n === reg.n, `${reg.n} -> ${reg2.n}`);
 }
 
 console.log("\n=== LAS CESIONES ABIERTAS SE CIERRAN EN LOS DOS MODOS ===");
 for (const [modo, slug, dueno] of [["solo_nombrado", "zz-c-real", REAL], ["todo", "zz-c-fant", FANTASMA]]) {
   await montar();
   if (modo === "todo") await sql`UPDATE user_profiles SET password_hash = NULL WHERE email = ${FANTASMA}`;
-  await sql`INSERT INTO collective_ownership (collective_slug, kind, from_email, to_email)
+  await sql`INSERT INTO profile_ownership (collective_slug, kind, from_email, to_email)
             VALUES (${slug}, 'cesion', ${dueno}, ${DESTINO})`;
   const r = await req("mod", "PATCH", "/api/admin/moderation/owner", {
     tipo: "collective", slug, email: DESTINO, motivo: `Traspaso con cesión abierta, modo ${modo}.`,
   });
   chk(`modo ${modo}: traspaso -> 200`, r.status === 200, JSON.stringify(r).slice(0, 140));
   chk(`modo ${modo}: cerró 1 cesión`, r.data.cesionesCerradas === 1, String(r.data.cesionesCerradas));
-  const [o] = await sql`SELECT revoked_at FROM collective_ownership WHERE collective_slug = ${slug} AND kind='cesion'`;
+  const [o] = await sql`SELECT revoked_at FROM profile_ownership WHERE collective_slug = ${slug} AND kind='cesion'`;
   chk(`modo ${modo}: con revoked_at`, o && o.revoked_at !== null, JSON.stringify(o));
 }
 
@@ -224,3 +249,11 @@ const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
 console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
 console.log("seed:", JSON.stringify(fin.estado));
+
+/**
+ * SALIR CON CÓDIGO DE ERROR. Faltaba, y no es un detalle: esta batería
+ * reportó "35 OK, 4 MAL" y salió con 0, así que el runner de la suite la
+ * contó como verde. Una prueba que falla y no lo dice por el código de
+ * salida es peor que no tenerla.
+ */
+process.exit(mal === 0 ? 0 : 1);

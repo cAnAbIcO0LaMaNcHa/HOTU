@@ -621,6 +621,66 @@ export async function reasignarDueno(
             ? sql`UPDATE collectives SET owner_email = ${cuenta.email} WHERE slug = ${clave} AND (lower(owner_email) = lower(${origen ?? ""}) OR (owner_email IS NULL AND ${origen === null}))`
             : sql`SELECT 1`,
         ];
+  /**
+   * EL RASTRO VA ADENTRO DE LA TRANSACCIÓN, y eso es deliberado.
+   *
+   * Si el registro no se puede escribir, el traspaso TIENE QUE FALLAR. Es
+   * un traspaso manual de un moderador: reintentarlo cuesta un click, y
+   * perder la auditoría de quién le dio el control de un perfil a quién no
+   * se recupera nunca. La primera versión lo escribía después, fuera de la
+   * transacción y con un catch que solo logueaba — o sea que la falla
+   * silenciosa posible era exactamente "traspaso aplicado, sin rastro",
+   * que es lo que esto existe para impedir.
+   *
+   * Y es INSERT ... SELECT, no VALUES: la fila de auditoría solo nace si
+   * el perfil DE VERDAD quedó a nombre del destino. Los UPDATE de arriba
+   * nombran el origen esperado en su WHERE, así que si alguien cambió la
+   * propiedad en el medio no mueven nada — y con VALUES el registro
+   * afirmaría un traspaso que no pasó. Acá, si no se movió, no hay fila.
+   *
+   * kind='moderacion' exige note no vacío por CHECK, y v.motivo ya se
+   * validó a 10 caracteres más arriba: si alguna vez alguien saca esa
+   * validación, esto revienta la transacción en vez de guardar un rastro
+   * sin explicación.
+   */
+  const slugsArtistas = movidos.artistas.map((a) => a.slug);
+  const slugsColectivos = movidos.colectivos.map((c) => c.slug);
+  if (slugsArtistas.length > 0) {
+    pasos.push(
+      sql`
+        INSERT INTO profile_ownership
+          (artist_slug, kind, from_email, to_email, note, decided_by, accepted_at)
+        SELECT slug, 'moderacion', ${origen}, ${cuenta.email}, ${v.motivo}, ${moderadorEmail}, now()
+        FROM artists
+        WHERE slug = ANY(${slugsArtistas}::text[]) AND lower(owner_email) = lower(${cuenta.email})
+      `
+    );
+  }
+  if (slugsColectivos.length > 0) {
+    pasos.push(
+      sql`
+        INSERT INTO profile_ownership
+          (collective_slug, kind, from_email, to_email, note, decided_by, accepted_at)
+        SELECT slug, 'moderacion', ${origen}, ${cuenta.email}, ${v.motivo}, ${moderadorEmail}, now()
+        FROM collectives
+        WHERE slug = ANY(${slugsColectivos}::text[]) AND lower(owner_email) = lower(${cuenta.email})
+      `
+    );
+  }
+
+  /**
+   * El borrado de la cuenta fantasma va AL FINAL, después del registro.
+   *
+   * CONSECUENCIA ACEPTADA Y MEDIBLE: from_email tiene FK con ON DELETE SET
+   * NULL, así que al borrar la cuenta de origen el registro pierde el
+   * "desde". No se pierde la información: el email de una cuenta fantasma
+   * es `<slug>@perfil.hotu.local`, deducible del propio artist_slug de la
+   * fila. Lo que importa —a quién se le dio, quién lo decidió y por qué—
+   * no depende de esa cuenta y sobrevive.
+   *
+   * La alternativa era borrar ANTES, y entonces el INSERT del registro
+   * violaría el FK y voltearía el traspaso entero. Peor.
+   */
   if (origen && esFantasma) {
     pasos.push(sql`DELETE FROM user_profiles WHERE lower(email) = lower(${origen})`);
   }
@@ -641,43 +701,6 @@ export async function reasignarDueno(
   let cesionesCerradas = 0;
   for (const col of movidos.colectivos) {
     cesionesCerradas += await revocarCesionesAbiertas(col.slug);
-  }
-
-  /**
-   * Y RECIÉN AHORA QUEDA EL RASTRO, que hasta hoy no quedaba en ninguna parte.
-   *
-   * kind='moderacion' existía en el CHECK de la tabla desde la migración
-   * que la creó, con su exigencia de motivo, y NINGÚN write path lo
-   * escribía. O sea que la acción más poderosa del panel —mover la
-   * propiedad de un perfil, y en modo 'todo' de VARIOS a la vez— no
-   * dejaba una fila que alguien pudiera revisar después. El vocabulario
-   * lo anticipó y el código nunca lo usó.
-   *
-   * Una fila POR PERFIL movido, no una por traspaso: un modo 'todo' que
-   * mueve un artista y dos colectivos son tres cambios de propiedad, y
-   * mirar la historia de UN perfil tiene que devolver su cambio. Una fila
-   * resumen no aparecería al consultar por slug.
-   *
-   * Va al final, fuera de la transacción del traspaso y sin poder
-   * voltearlo: si el registro falla, lo que queda mal es el registro, no
-   * la propiedad. Al revés sería peor. Por eso el catch no propaga — pero
-   * avisa, porque un traspaso sin rastro es justamente lo que se está
-   * arreglando.
-   */
-  try {
-    const filas = [
-      ...movidos.artistas.map((a) => ({ col: "artist_slug", slug: a.slug })),
-      ...movidos.colectivos.map((c) => ({ col: "collective_slug", slug: c.slug })),
-    ];
-    for (const f of filas) {
-      await sql(
-        `INSERT INTO profile_ownership (${f.col}, kind, from_email, to_email, note, decided_by, accepted_at)
-         VALUES ($1, 'moderacion', $2, $3, $4, $5, now())`,
-        [f.slug, origen, cuenta.email as string, v.motivo, moderadorEmail]
-      );
-    }
-  } catch (err) {
-    console.error("[traspaso] el traspaso se aplicó pero NO quedó registrado:", err);
   }
 
   return {

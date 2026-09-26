@@ -61,6 +61,32 @@ export function esTipoPerfil(v: unknown): v is TipoPerfil {
  *  va a tener para decidir, así que un "es mío" de siete letras no sirve. */
 const MIN_NOTA = 30;
 
+/**
+ * CUÁNTOS RECLAMOS ABIERTOS PUEDE TENER UNA CUENTA A LA VEZ.
+ *
+ * Tres, y el número está elegido contra un caso de uso real y un abuso
+ * concreto.
+ *
+ * Lo legítimo: alguien que llega y encuentra su perfil de DJ y el
+ * colectivo que armó son dos. Con un segundo colectivo, tres. Más de tres
+ * perfiles ajenos reclamados al mismo tiempo por una sola cuenta no es un
+ * caso que se nos ocurra, y si aparece, lo resuelve un moderador aprobando
+ * los primeros.
+ *
+ * El abuso: registrarse con credenciales es gratis y no está verificado
+ * —HOTU no tiene transporte de mail para verificarlo—, así que una cuenta
+ * podría abrir reclamos en serie para que muchos perfiles se vean
+ * disputados. Con el tope, molestar a N perfiles cuesta N/3 registros, y
+ * cada uno queda con su rastro y su cuenta baneable.
+ *
+ * Esto NO puede ser un índice ni un CHECK: cuenta filas de OTRAS filas de
+ * la misma tabla, y eso ninguna de las dos cosas lo puede mirar. Es la
+ * misma familia que la casa-en-venue: guarda del write path, y por eso
+ * está escrito acá con su razón, para que no se "simplifique" a un
+ * constraint que no existe.
+ */
+const MAX_RECLAMOS_ABIERTOS = 3;
+
 type FilaPerfil = {
   slug: string;
   nombre: string;
@@ -176,6 +202,26 @@ export async function reclamarPerfil(
     SELECT 1 FROM user_profiles WHERE lower(email) = ${email} AND banned_at IS NOT NULL
   `;
   if (baneada) return { ok: false, status: 403, error: "Esta cuenta está cerrada" };
+
+  /**
+   * El tope por cuenta. Ver MAX_RECLAMOS_ABIERTOS arriba: es una guarda de
+   * write path porque cuenta otras filas de la misma tabla, y eso ni un
+   * CHECK ni un índice lo pueden mirar.
+   */
+  const [abiertos] = await sql`
+    SELECT COUNT(*)::int AS n FROM profile_ownership
+    WHERE kind = 'reclamo' AND lower(to_email) = ${email}
+      AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
+  `;
+  if (Number(abiertos?.n ?? 0) >= MAX_RECLAMOS_ABIERTOS) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        `Ya tenés ${MAX_RECLAMOS_ABIERTOS} reclamos esperando respuesta, que es el máximo. ` +
+        "Esperá a que se resuelva alguno antes de abrir otro.",
+    };
+  }
 
   const p = await leerPerfil(tipo, slug);
   if (!p) return { ok: false, status: 404, error: "No encontré ese perfil" };

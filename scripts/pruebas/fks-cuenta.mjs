@@ -99,3 +99,11 @@ const fin = await corrida.cerrar();
 console.log(`\n=== ${ok} OK, ${mal} MAL ===`);
 console.log("borrado por esta corrida:", JSON.stringify(fin.borrado));
 console.log("seed:", JSON.stringify(fin.estado));
+
+/**
+ * SALIR CON CÓDIGO DE ERROR. Faltaba, y no es un detalle: esta batería
+ * reportó "35 OK, 4 MAL" y salió con 0, así que el runner de la suite la
+ * contó como verde. Una prueba que falla y no lo dice por el código de
+ * salida es peor que no tenerla.
+ */
+process.exit(mal === 0 ? 0 : 1);
