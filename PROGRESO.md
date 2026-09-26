@@ -164,6 +164,53 @@ home vuelve a existir, y de qué forma.
 
 ---
 
+## DEUDA ANOTADA EN §8 — NO URGENTE, PERO NO SE OLVIDA
+
+### Borrar `collective_ownership`
+
+`profile_ownership` es una tabla NUEVA, no un rename: la vieja sigue viva y
+congelada a propósito, para que el deploy del código nuevo no tenga una
+ventana rota. El patrón es el mismo que los tres jsonb — primero dejar de
+escribir, después borrar.
+
+**Justo después del deploy del código nuevo, verificar que
+`collective_ownership` siga en 0 filas:**
+
+    SELECT count(*) FROM collective_ownership;
+
+Si NO es 0, el código VIEJO escribió una cesión en la ventana entre la
+migración y el deploy, y esa fila hay que copiarla a `profile_ownership`
+antes de borrar nada. Si es 0 —lo esperable, main midió 0 y la cesión se
+desplegó el mismo día sin que nadie la usara— la ventana estuvo limpia y eso
+queda MEDIDO, no supuesto.
+
+Recién después: la migración que la borra. Otro día, cuando esto lleve
+tiempo andando sin sorpresas.
+
+### Cuánto tiempo se guardan las filas de `mail_outbox`
+
+**Hay que decidirlo ANTES de que haya proveedor, no después.** La tabla
+guarda direcciones de correo y el TEXTO de lo que se le dijo a cada persona.
+Hoy no envía nada, así que lo que acumula es de prueba; el día que envíe de
+verdad pasa a ser un archivo de comunicaciones con gente real.
+
+Es dato personal bajo la Ley 1581 de 2012, la misma razón por la que no se
+guarda la cédula. Y no hay una respuesta obvia, porque las dos puntas
+sirven para algo:
+
+- El `cuerpo` es lo que permite responder "¿qué le dijimos exactamente?"
+  cuando alguien reclama que nunca le avisaron.
+- Y es lo que no hace falta guardar para siempre: a los seis meses, saber
+  QUE se mandó y a quién alcanza, el texto ya no.
+
+Lo que propongo cuando se decida: conservar la fila entera un plazo corto
+—60 o 90 días—, después vaciar `cuerpo` y `asunto` dejando tipo,
+destinatario, estado y fecha. Así el registro de que el aviso salió no
+caduca nunca y el contenido sí. Va por una ruta de mantenimiento, no por un
+borrado a mano.
+
+---
+
 ## LO PRIMERO QUE TENÉS QUE HACER EN PRODUCCIÓN
 
 **Date el rol MODERATOR a vos mismo no hace falta** — sos SUPER_ADMIN y
@@ -634,7 +681,7 @@ import no lo pudo adivinar y no lo intentó.
 no se renderizan porque son solo de eventos organizados. Y es lo que va a
 permitir saber qué eventos armó cada colectivo.
 
-**Dónde:** /admin/eventos, selector ORGANIZADOR en cada evento.
+**Dónde:** HOY NO HAY DÓNDE. Acá decía `/admin/eventos` y esa página se borró en la tanda 5 §4 con el resto del CMS. Y esos eventos no tienen organizador, así que tampoco se editan desde el panel de nadie: sin dueño no hay panel. Hoy solo sale por SQL. La pieza que lo arregla está en la cola (punto 4 del orden acordado).
 
 ### De paso, si estás ahí
 
@@ -733,10 +780,11 @@ suelto con:
 **Tanda 4 pieza 3 — sacar los distritos.** Está definida como un
 *reemplazo*: el filtro 1 pasa a ser Main/Branch y el 2 pasa a ser Tag.
 Ahora que la taxonomía existe, **ya no está bloqueada por datos**: es la
-siguiente pieza natural. Hoy siguen 18 archivos importando
-`lib/districts`, el selector de distrito como filtro 1 de las seis
-páginas, y el distrito en la cabecera del perfil de colectivo y en
-"Sobre mí".
+siguiente pieza natural. CORRECCIÓN, MEDIDO: acá decía que 18 archivos importaban
+`lib/districts` y que el selector de distrito seguía siendo el filtro 1 de
+las seis páginas. **Ya no: hoy son CERO importaciones.** La pieza está
+hecha. `lib/districts.ts` se conserva porque es lo único que explica qué
+significa el `07` del `display_code` de una boleta impresa.
 
 Eso también limpia el `D00` que hoy hereda todo DJ nuevo, que está
 anotado en ALTA-DJ.md como conocido y aceptado: es el distrito T/RAP, y
