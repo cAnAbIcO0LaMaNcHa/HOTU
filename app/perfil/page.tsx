@@ -6,6 +6,7 @@ import { PanelSwitcher, panelValido } from "@/components/panel-switcher";
 import { PanelMiPerfil } from "@/components/panel-mi-perfil";
 import { PanelArtista } from "@/components/panel-artista";
 import { PanelColectivo } from "@/components/panel-colectivo";
+import { MisReclamos } from "@/components/mis-reclamos";
 
 export const revalidate = 0;
 
@@ -88,11 +89,19 @@ export default async function PerfilPage({
       <PanelSwitcher activo={activo} />
 
       {activo === "mi-perfil" && (
-        <PanelMiPerfil
-          email={email}
-          nombre={session.user.name ?? "Perfil"}
-          imagen={session.user.image}
-        />
+        <>
+          <PanelMiPerfil
+            email={email}
+            nombre={session.user.name ?? "Perfil"}
+            imagen={session.user.image}
+          />
+          {/* Los reclamos van en MI PERFIL y no en ARTISTA, porque reclamar
+              es algo que hace una CUENTA antes de tener perfil de artista:
+              ponerlos ahí los esconde de quien todavía no tiene ninguno,
+              que es exactamente quien está reclamando. Se rinde a null si
+              no hay ninguno. */}
+          <MisReclamos email={email} />
+        </>
       )}
       {activo === "artista" && <PanelArtista email={email} />}
       {activo === "colectivo" && <PanelColectivo email={email} />}

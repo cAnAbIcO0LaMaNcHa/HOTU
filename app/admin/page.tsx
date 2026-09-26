@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Check, EyeOff, ListChecks, Newspaper, UserX } from "lucide-react";
+import { AlertTriangle, Check, EyeOff, KeyRound, ListChecks, Newspaper, UserX } from "lucide-react";
 import {
   getArtistsInReview,
   getBannedAccounts,
@@ -7,6 +7,7 @@ import {
   getLineupsPendientes,
   getNewsInReview,
 } from "@/lib/db";
+import { getReclamosPendientes } from "@/lib/claims-write";
 
 export const revalidate = 0;
 
@@ -27,12 +28,13 @@ export const revalidate = 0;
  * buena noticia, no un inventario vacío.
  */
 export default async function AdminHome() {
-  const [djs, noticias, lineups, censuradas, baneadas] = await Promise.all([
+  const [djs, noticias, lineups, censuradas, baneadas, reclamos] = await Promise.all([
     getArtistsInReview(),
     getNewsInReview(),
     getLineupsPendientes(),
     getCensored(),
     getBannedAccounts(),
+    getReclamosPendientes(),
   ]);
 
   const colas = [
@@ -56,6 +58,16 @@ export default async function AdminHome() {
       href: "/admin/lineups",
       Icono: AlertTriangle,
       que: "Por enganchar con los perfiles de quienes tocan",
+    },
+    {
+      // La cuarta cola NO aprueba contenido: entrega el control de un
+      // perfil. Va con las otras porque es trabajo que espera una
+      // decisión, y el texto dice en qué se diferencia.
+      label: "RECLAMOS",
+      n: reclamos.length,
+      href: "/admin/reclamos",
+      Icono: KeyRound,
+      que: "Alguien dice que un perfil es suyo",
     },
   ];
 

@@ -60,16 +60,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         LA NAVEGACIÓN ES LA LISTA DE LO QUE ESTE PANEL HACE.
 
         Se fueron EVENTOS, ARCHIVO y COLECTIVOS: eran el CMS. Lo que
-        queda son tres colas, la moderación, y dos cosas que no son
+        queda son CUATRO colas, la moderación, y dos cosas que no son
         moderación y piden SUPER_ADMIN por su cuenta —ROLES nombra
         moderadores, PEDIDOS emite tiquetes—, separadas a la derecha
         para que se lean como lo que son.
+
+        RECLAMOS es la cuarta y no aprueba contenido como las otras
+        tres: entrega el CONTROL de un perfil. Va acá igual porque es
+        trabajo que espera una decisión, que es lo que esta barra lista.
       */}
       <nav className="mt-6 flex flex-wrap items-center gap-2">
         <Link href="/admin" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">INICIO</Link>
         <Link href="/admin/artistas" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">DJS</Link>
         <Link href="/admin/noticias" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">NOTICIAS</Link>
         <Link href="/admin/lineups" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">LINEUPS</Link>
+        <Link href="/admin/reclamos" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">RECLAMOS</Link>
         <Link href="/admin/moderacion" className="border border-border px-4 py-2 font-mono text-xs tracking-widest hover:border-primary">MODERACIÓN</Link>
         <span className="mx-2 hidden h-4 w-px bg-border sm:block" aria-hidden />
         <Link href="/admin/roles" className="border border-border/50 px-4 py-2 font-mono text-xs tracking-widest text-muted-foreground hover:border-primary hover:text-primary">ROLES</Link>

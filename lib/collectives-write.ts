@@ -612,7 +612,7 @@ export async function cederColectivo(
    */
   const pasos = await sql.transaction([
     sql`
-      INSERT INTO collective_ownership (collective_slug, kind, from_email, to_email)
+      INSERT INTO profile_ownership (collective_slug, kind, from_email, to_email)
       VALUES (${collectiveSlug}, 'cesion', ${dueno}, ${elegido.email})
       RETURNING id
     `,
@@ -638,7 +638,7 @@ export async function cederColectivo(
  */
 export async function revocarCesionesAbiertas(collectiveSlug: string): Promise<number> {
   const filas = await sql`
-    UPDATE collective_ownership SET revoked_at = now()
+    UPDATE profile_ownership SET revoked_at = now()
     WHERE collective_slug = ${collectiveSlug} AND kind = 'cesion'
       AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
     RETURNING id
@@ -668,7 +668,7 @@ export async function responderCesion(
 
   const [fila] = await sql`
     SELECT id, collective_slug, to_email, accepted_at, declined_at, revoked_at
-    FROM collective_ownership
+    FROM profile_ownership
     WHERE id = ${cesionId} AND kind = 'cesion'
   `;
   if (!fila) return { ok: false, status: 404, error: "No encontré esa cesión" };
@@ -683,7 +683,7 @@ export async function responderCesion(
 
   if (accion === "decline") {
     const r = await sql`
-      UPDATE collective_ownership SET declined_at = now()
+      UPDATE profile_ownership SET declined_at = now()
       WHERE id = ${cesionId} AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
       RETURNING id
     `;
@@ -703,7 +703,7 @@ export async function responderCesion(
    */
   const pasos = await sql.transaction([
     sql`
-      UPDATE collective_ownership SET accepted_at = now()
+      UPDATE profile_ownership SET accepted_at = now()
       WHERE id = ${cesionId} AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
       RETURNING id
     `,

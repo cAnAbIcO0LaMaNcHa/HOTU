@@ -643,6 +643,43 @@ export async function reasignarDueno(
     cesionesCerradas += await revocarCesionesAbiertas(col.slug);
   }
 
+  /**
+   * Y RECIÉN AHORA QUEDA EL RASTRO, que hasta hoy no quedaba en ninguna parte.
+   *
+   * kind='moderacion' existía en el CHECK de la tabla desde la migración
+   * que la creó, con su exigencia de motivo, y NINGÚN write path lo
+   * escribía. O sea que la acción más poderosa del panel —mover la
+   * propiedad de un perfil, y en modo 'todo' de VARIOS a la vez— no
+   * dejaba una fila que alguien pudiera revisar después. El vocabulario
+   * lo anticipó y el código nunca lo usó.
+   *
+   * Una fila POR PERFIL movido, no una por traspaso: un modo 'todo' que
+   * mueve un artista y dos colectivos son tres cambios de propiedad, y
+   * mirar la historia de UN perfil tiene que devolver su cambio. Una fila
+   * resumen no aparecería al consultar por slug.
+   *
+   * Va al final, fuera de la transacción del traspaso y sin poder
+   * voltearlo: si el registro falla, lo que queda mal es el registro, no
+   * la propiedad. Al revés sería peor. Por eso el catch no propaga — pero
+   * avisa, porque un traspaso sin rastro es justamente lo que se está
+   * arreglando.
+   */
+  try {
+    const filas = [
+      ...movidos.artistas.map((a) => ({ col: "artist_slug", slug: a.slug })),
+      ...movidos.colectivos.map((c) => ({ col: "collective_slug", slug: c.slug })),
+    ];
+    for (const f of filas) {
+      await sql(
+        `INSERT INTO profile_ownership (${f.col}, kind, from_email, to_email, note, decided_by, accepted_at)
+         VALUES ($1, 'moderacion', $2, $3, $4, $5, now())`,
+        [f.slug, origen, cuenta.email as string, v.motivo, moderadorEmail]
+      );
+    }
+  } catch (err) {
+    console.error("[traspaso] el traspaso se aplicó pero NO quedó registrado:", err);
+  }
+
   return {
     ok: true,
     value: {

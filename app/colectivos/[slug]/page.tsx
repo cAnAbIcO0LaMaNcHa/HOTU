@@ -10,6 +10,8 @@ import { CollectiveContent } from "@/components/collective-content";
 import { CollectiveMetrics } from "@/components/collective-metrics";
 import { LikeButton } from "@/components/like-button";
 import { canEditCollective } from "@/lib/collectives-write";
+import { hayReclamoAbierto, reclamabilidad, tieneReclamoAbierto } from "@/lib/claims-write";
+import { ReclamarPerfil } from "@/components/reclamar-perfil";
 import {
   countCollectiveLikes,
   getCollectiveBySlug,
@@ -71,6 +73,20 @@ export default async function CollectivePage({
   // El dueño edita desde su propio perfil (§4.2), pero el género se
   // edita acá, que es donde se ve. Misma regla que el press kit del DJ.
   const puedeEditar = await canEditCollective(slug, email);
+
+  /**
+   * Reclamable incluye "tiene dueño pero es cuenta fantasma", no solo
+   * "sin dueño": los 6 colectivos de producción TIENEN dueño y es una
+   * cuenta con la que no se puede entrar. Preguntar por owner_email IS
+   * NULL dejaría afuera justo a los que hacen falta.
+   */
+  const puedeReclamarse = puedeEditar ? null : await reclamabilidad("collective", slug);
+  const yaReclamado = email && puedeReclamarse?.puede
+    ? await tieneReclamoAbierto(email, "collective", slug)
+    : false;
+  const reclamosAbiertos = puedeReclamarse?.puede
+    ? await hayReclamoAbierto("collective", slug)
+    : 0;
   const genero = await getProfileGenres("collective", slug);
   const [branches, allTags] = puedeEditar
     ? await Promise.all([getGenreBranches(), getGenreTags()])
@@ -110,6 +126,22 @@ export default async function CollectivePage({
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-16 md:py-24">
+      {/* Arriba de todo para quien no lo administra: es lo único que esa
+          persona puede hacer con este perfil. */}
+      {puedeReclamarse?.puede && (
+        <div className="mb-8">
+          <ReclamarPerfil
+            tipo="collective"
+            slug={slug}
+            nombre={collective.name}
+            haySesion={Boolean(email)}
+            yaReclamado={yaReclamado}
+            razon={puedeReclamarse.razon}
+            abiertos={reclamosAbiertos}
+          />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-4xl font-bold leading-[0.95] md:text-6xl">{collective.name}</h1>
         <span

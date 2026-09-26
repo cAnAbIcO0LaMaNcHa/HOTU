@@ -2028,7 +2028,7 @@ export async function getCesionesPendientes(email: string): Promise<CesionPendie
              WHERE e.organizer_slug = o.collective_slug) AS eventos,
            (SELECT COUNT(*)::int FROM news n
              WHERE n.author_collective_slug = o.collective_slug) AS noticias
-    FROM collective_ownership o
+    FROM profile_ownership o
     JOIN collectives c ON c.slug = o.collective_slug
     WHERE o.kind = 'cesion' AND lower(o.to_email) = lower(${email})
       AND o.accepted_at IS NULL AND o.declined_at IS NULL AND o.revoked_at IS NULL

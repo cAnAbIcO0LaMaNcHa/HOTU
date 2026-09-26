@@ -94,6 +94,8 @@ import {
 import { getAllOrdersAdmin, getMerchCatalog } from "@/lib/orders";
 import { getAllRoleAssignments } from "@/lib/roles";
 import { getEliminaciones, listarCuentas } from "@/lib/accounts-delete";
+import { getReclamosPendientes } from "@/lib/claims-write";
+import { getMailOutbox } from "@/lib/mail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -201,7 +203,9 @@ export async function GET(request: Request) {
   await correr("/admin", "getLineupsPendientes", () => getLineupsPendientes());
   await correr("/admin", "getCensored", () => getCensored());
   await correr("/admin", "getBannedAccounts", () => getBannedAccounts());
+  await correr("/admin/reclamos", "getReclamosPendientes", () => getReclamosPendientes());
   await correr("/admin/moderacion", "getEliminaciones", () => getEliminaciones());
+  await correr("/admin/moderacion", "getMailOutbox", () => getMailOutbox());
   await correr("/admin/roles", "getAllRoleAssignments", () => getAllRoleAssignments());
   await correr("/admin/pedidos", "getAllOrdersAdmin", () => getAllOrdersAdmin());
   await correr("/admin/limpieza", "listarCuentas", () => listarCuentas());

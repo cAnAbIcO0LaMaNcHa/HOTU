@@ -10,7 +10,9 @@ import { LikeButton } from "@/components/like-button";
 import { FranjaCensura } from "@/components/franja-censura";
 import { FranjaRevision } from "@/components/franja-revision";
 import { GeneroEditable } from "@/components/genero-editable";
+import { ReclamarPerfil } from "@/components/reclamar-perfil";
 import { canEditArtist, loQueFalta } from "@/lib/artists-write";
+import { hayReclamoAbierto, reclamabilidad, tieneReclamoAbierto } from "@/lib/claims-write";
 import { casaActual } from "@/lib/collaborators-write";
 import {
   countArtistLikes,
@@ -79,6 +81,25 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
     : [[], null];
   const sinCasa = casa === null;
 
+  /**
+   * ¿Se puede reclamar, y este visitante ya lo reclamó?
+   *
+   * Se consulta SIEMPRE y no solo cuando no hay dueño, porque
+   * "reclamable" incluye "tiene dueño pero es una cuenta fantasma" —
+   * que es el caso de los 18 perfiles de producción. Preguntar solo por
+   * owner_email IS NULL dejaría afuera justo a los que hacen falta.
+   *
+   * El botón no se le muestra a quien ya lo puede editar: no tiene nada
+   * que reclamar.
+   */
+  const puedeReclamarse = canEdit ? null : await reclamabilidad("artist", slug);
+  const yaReclamado = email && puedeReclamarse?.puede
+    ? await tieneReclamoAbierto(email, "artist", slug)
+    : false;
+  const reclamosAbiertos = puedeReclamarse?.puede
+    ? await hayReclamoAbierto("artist", slug)
+    : 0;
+
   // El género declarado, y el vocabulario SOLO si puede editarlo: los 719
   // tags son para el selector, y un visitante no lo abre nunca.
   const genero = await getProfileGenres("artist", slug);
@@ -94,6 +115,23 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
           perfil, eso manda sobre en qué punto de la cola esté. Mandarlo
           a completar campos cuando lo que pasó fue otra cosa sería
           hacerle perder el tiempo. */}
+      {/* El reclamo va ARRIBA de todo para quien NO es el dueño: es lo
+          único que esa persona puede hacer con este perfil, y abajo del
+          press kit entero no lo encuentra nadie. */}
+      {puedeReclamarse?.puede && (
+        <div className="mb-8">
+          <ReclamarPerfil
+            tipo="artist"
+            slug={slug}
+            nombre={artist.name}
+            haySesion={Boolean(email)}
+            yaReclamado={yaReclamado}
+            razon={puedeReclamarse.razon}
+            abiertos={reclamosAbiertos}
+          />
+        </div>
+      )}
+
       {canEdit && (
         <FranjaCensura
           que="Tu perfil"

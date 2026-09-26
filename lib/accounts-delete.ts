@@ -20,7 +20,7 @@
  *   CASCADE  — artist_likes, collective_likes, user_roles. Se van.
  *   SET NULL — artists.owner_email, collectives.owner_email, y todas las
  *              marcas de moderación (censored_by, reviewed_by,
- *              banned_by) y collective_ownership.from_email/to_email.
+ *              banned_by) y profile_ownership.from_email/to_email.
  *              El perfil queda DESAMPARADO y sigue en pie.
  *   RESTRICT — orders y tickets. La base NIEGA borrar una cuenta que
  *              tenga pedidos o boletas.
@@ -175,7 +175,7 @@ export async function inventarioDeCuenta(emailCrudo: unknown): Promise<Inventari
       (SELECT COUNT(*)::int FROM ticket_attributions ta
         JOIN tickets t ON t.id = ta.ticket_id WHERE lower(t.user_email) = ${email}) AS atribuciones,
       (SELECT COALESCE(SUM(amount_cop), 0)::bigint FROM orders WHERE lower(user_email) = ${email}) AS monto,
-      (SELECT COUNT(*)::int FROM collective_ownership
+      (SELECT COUNT(*)::int FROM profile_ownership
         WHERE (lower(to_email) = ${email} OR lower(from_email) = ${email})
           AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL) AS cesiones
   `;
@@ -520,14 +520,14 @@ export async function eliminarCuenta(
    * Sin esto queda una cesión pendiente sin nadie a quien aceptarle —el
    * SET NULL le saca el to_email pero la deja abierta— y el colectivo no
    * se puede volver a ceder nunca. No falla: BLOQUEA. Es el mismo modo
-   * de falla que encontró el reviewer en el schema de collective_ownership,
+   * de falla que encontró el reviewer en el schema de profile_ownership,
    * y el predicado del índice ya lo cubre; esto además deja la fila
    * diciendo la verdad sobre por qué se cerró.
    */
   pasos.push({
     clave: "cesiones_revocadas",
     q: sql`
-      UPDATE collective_ownership SET revoked_at = now()
+      UPDATE profile_ownership SET revoked_at = now()
       WHERE (lower(to_email) = ${email} OR lower(from_email) = ${email})
         AND accepted_at IS NULL AND declined_at IS NULL AND revoked_at IS NULL
       RETURNING id
