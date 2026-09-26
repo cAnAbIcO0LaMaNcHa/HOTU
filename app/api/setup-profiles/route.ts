@@ -225,14 +225,34 @@ export async function GET(request: Request) {
     `;
     log.push("table artist_collectives ready");
 
-    // "Residente de — UNO SOLO." Enforced here rather than only in the
-    // invite flow, so a race between two invites cannot produce a DJ with
-    // two active residencies and split their sales history in half.
-    await sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS artist_collectives_one_active_residency_idx
-      ON artist_collectives (artist_slug)
-      WHERE kind = 'residente' AND to_date IS NULL
-    `;
+    /**
+     * ============================================================
+     * ESTE ÍNDICE YA NO SE CREA. NO SE BORRA EL CÓDIGO PORQUE EXPLICA POR QUÉ.
+     * ============================================================
+     *
+     * Acá se creaba artist_collectives_one_active_residency_idx, único
+     * sobre (artist_slug) con predicado kind = 'residente', para que un DJ
+     * no pudiera tener dos residencias activas.
+     *
+     * Quedó superseded dos veces. Primero setup-membership-kinds lo dropeó
+     * y lo recreó sobre kind='casa', porque el renombre de la tanda 3 movió
+     * el significado de 'residente'. Y después setup-miembros renombró
+     * 'residente' a 'miembro', así que su predicado dejó de matchear nada.
+     *
+     * El problema era que ESTA migración se re-corre —es el protocolo— y lo
+     * volvía a crear cada vez, muerto. Medido: después de correr
+     * setup-miembros, una re-corrida de acá lo resucitaba.
+     *
+     * Y muerto hoy no significa inofensivo mañana: la fase 2 del renombre
+     * hace que 'residente' pase a ser el núcleo del colectivo, y en ese
+     * momento este índice se ACTIVARÍA SOLO, imponiendo una regla real
+     * desde una migración de otra tanda, con un nombre que nadie está
+     * mirando y en paralelo al índice que de verdad la impone. Dos guardas
+     * para lo mismo, una de ellas fantasma.
+     *
+     * La regla no se perdió: la impone artist_collectives_one_active_casa_idx,
+     * que setup-membership-kinds creó y que la fase 2 renombra.
+     */
 
     // Same active link cannot be recorded twice.
     await sql`

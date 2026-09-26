@@ -162,13 +162,37 @@ export async function GET(request: Request) {
       renombradas = (updated as unknown[]).length;
       log.push(`renombradas ${renombradas} filas en una sola sentencia`);
     } else {
-      // Already migrated. Only make sure the constraint ended up right —
-      // a run that died between steps would leave the old one behind.
-      await sql(`ALTER TABLE artist_collectives DROP CONSTRAINT IF EXISTS ${OLD_CHECK}`);
-      await sql(
-        `DO $$ BEGIN ALTER TABLE artist_collectives ADD CONSTRAINT ${NEW_CHECK} CHECK (kind IN ('casa','residente')); EXCEPTION WHEN duplicate_object THEN NULL; END $$`
+      /**
+       * ============================================================
+       * NEUTRALIZADA: ESTA MIGRACIÓN YA NO TOCA EL CHECK DE kind.
+       * ============================================================
+       *
+       * Acá había un DROP del OLD_CHECK y un ADD del NEW_CHECK con
+       * CHECK (kind IN ('casa','residente')), en dos requests SUELTOS.
+       *
+       * Eso se volvió peligroso el día que setup-miembros renombró
+       * 'residente' a 'miembro': el ADD habría fallado con check_violation
+       * contra las filas nuevas, y como el DROP ya había pasado y no hay
+       * transacción que los una, la tabla se quedaba SIN NINGÚN CHECK
+       * sobre kind. El repo tiene escrito que ese estado es peor que no
+       * haber corrido nada, y acá se llegaba a él solo por re-correr una
+       * migración vieja, que es lo que el protocolo manda hacer.
+       *
+       * El trabajo de renombre de ESTA migración está hecho para siempre:
+       * su guarda es la cantidad de filas 'toca_con', y ese valor no
+       * existe más ni puede volver a nacer. Así que esta rama no tiene
+       * nada que hacer, y sobre todo no tiene nada que AFIRMAR: la guarda
+       * de kind la maneja ahora setup-miembros, con su propio nombre de
+       * constraint y su propia verificación de forma.
+       *
+       * No se borra el archivo porque es el registro de cómo se movieron
+       * esos datos, y porque la rama de arriba —la que sí renombra— tiene
+       * que seguir funcionando si alguna vez se parte de una base vieja.
+       */
+      log.push(
+        "guarda activa: no había filas 'toca_con', no se renombró nada. " +
+          "El CHECK de kind lo maneja setup-miembros: esta migración no lo toca."
       );
-      log.push("guarda activa: no había filas 'toca_con', no se renombró nada");
     }
 
     // --- the index, recreated on its new meaning -------------------
