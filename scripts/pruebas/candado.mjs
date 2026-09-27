@@ -55,6 +55,7 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -193,6 +194,42 @@ export async function tomarCandado(sql, quien) {
  * =================================================================== */
 const esteArchivo = fileURLToPath(import.meta.url);
 if (process.argv[1] && process.argv[1].replace(/\\/g, "/") === esteArchivo.replace(/\\/g, "/")) {
+  /**
+   * Las baterías se corren con --env-file=.env.local, pero este CLI lo teclea
+   * una persona, y el comando que documenta AGENTS.md es `node
+   * scripts/pruebas/candado.mjs ver`, sin la bandera. Sin este respaldo revienta
+   * con un stack de @neondatabase/serverless que no nombra .env.local ni el
+   * candado, así que el que lo lea no sabe qué le falta.
+   *
+   * Importa más que un papercut: si tomar el candado a mano es más incómodo que
+   * saltearlo, se saltea, y el candado existe porque saltearlo ya costó una
+   * revisión entera persiguiendo 403 que no eran de permisos.
+   */
+  if (!process.env.DATABASE_URL) {
+    try {
+      const texto = readFileSync(new URL("../../.env.local", import.meta.url), "utf8");
+      for (const linea of texto.split("\n")) {
+        const i = linea.indexOf("=");
+        if (i < 0 || linea.trim().startsWith("#")) continue;
+        if (linea.slice(0, i).trim() !== "DATABASE_URL") continue;
+        process.env.DATABASE_URL = linea
+          .slice(i + 1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
+        break;
+      }
+    } catch {
+      /* Si no hay .env.local, el mensaje de abajo es más útil que el error de lectura. */
+    }
+  }
+  if (!process.env.DATABASE_URL) {
+    console.error(
+      "[candado] No hay DATABASE_URL. Ponela en .env.local (es la de la branch dev de Neon) " +
+        "o corré esto con --env-file=.env.local."
+    );
+    process.exit(1);
+  }
+
   const sql = neon(process.env.DATABASE_URL);
   const accion = process.argv[2];
 
