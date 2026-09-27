@@ -1,24 +1,34 @@
 /**
- * PATCH /api/memberships/[id] — answer or adjust one membership.
+ * PATCH /api/memberships/[id] — responder o ajustar UNA membresía.
  *
- * Body: { action, kind?, decision?, previous? }
+ * Body: { action, kind? }
  *
- *   accept   the side that did NOT open the conversation says yes. When
- *            that side is the DJ they also send the kind they chose.
- *   reject   the same side says no. The row closes; the pair can try again.
- *   cancel   the side that DID open it withdraws while still pending.
- *   kind     the DJ sets or changes casa/miembro on an accepted link.
- *   casa     the DJ's explicit answer to a home conflict.
+ *   accept   el lado que NO abrió la conversación dice que sí.
+ *   reject   el mismo lado dice que no. La fila se cierra y el par puede
+ *            volver a intentar.
+ *   cancel   el lado que SÍ la abrió se arrepiente mientras sigue pendiente.
+ *   kind     el DJ RENUNCIA a su residencia y queda de miembro.
  *
- * ASKING FOR 'casa' NEVER MOVES ANYTHING BY ITSELF. When the DJ already
- * has a home, accept and kind both answer 200 with a `conflict` payload
- * listing the options and change nothing. Only a second call — action
- * "casa", carrying decision and previous — actually writes. Closing
- * somebody's home is not a side effect of another request.
+ * ============================================================
+ * LO QUE ESTA RUTA YA NO PUEDE HACER
+ * ============================================================
  *
- * Who may do what lives in lib/membership-write.ts: an invitation is
- * answered by the artist, an application by the collective, a withdrawal
- * by whoever started it, and only ever the DJ decides about their home.
+ * Hasta §8 fase 2 había una acción "casa" y accept aceptaba un kind:'casa':
+ * el DJ elegía su propio núcleo. Las dos se fueron, y no por limpieza.
+ *
+ * 'residente' ahora es PERMISO PARA EDITAR el colectivo. Si esta ruta siguiera
+ * dejando elegirlo, cualquier miembro de cualquier colectivo se ascendía solo
+ * y salía con permiso de editar un perfil ajeno, con una llamada y sin que el
+ * dueño se enterara. El renombre por sí solo no habría tocado este archivo
+ * —la palabra queda igual— y ahí estaba el agujero.
+ *
+ * La residencia se concede: el dueño ofrece y el DJ acepta, en
+ * /api/residency-offers. Por acá el DJ solo puede DEJARLA, que no necesita
+ * permiso de nadie.
+ *
+ * Quién puede qué vive en lib/membership-write.ts: una invitación la responde
+ * el artista, una postulación el colectivo, un retiro quien lo empezó, y sobre
+ * sus propios vínculos decide siempre el DJ.
  */
 
 import { NextResponse } from "next/server";
@@ -28,8 +38,6 @@ import {
   cancelMembership,
   chooseKind,
   rejectMembership,
-  resolveCasa,
-  type CasaDecision,
 } from "@/lib/membership-write";
 import type { MembershipKind } from "@/lib/collectives-write";
 
@@ -50,7 +58,7 @@ export async function PATCH(
   const email = session?.user?.email;
   if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  let body: { action?: unknown; kind?: unknown; decision?: unknown; previous?: unknown };
+  let body: { action?: unknown; kind?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -64,6 +72,12 @@ export async function PATCH(
 
   switch (body.action) {
     case "accept": {
+      /**
+       * El kind se pasa tal cual y lo rechaza el lib, en vez de filtrarlo acá.
+       * Es a propósito: si la ruta lo descartara en silencio, el DJ recibiría
+       * 200 creyendo que quedó residente y se enteraría al no poder editar. El
+       * lib contesta 403 explicando dónde está la puerta.
+       */
       const result = await acceptMembership(id, kind, email);
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
       return NextResponse.json({ ok: true, ...result.value });
@@ -79,28 +93,25 @@ export async function PATCH(
       return NextResponse.json({ ok: true });
     }
     case "kind": {
-      if (kind !== "casa" && kind !== "miembro") {
+      if (kind !== "residente" && kind !== "miembro") {
         return NextResponse.json(
-          { error: "kind must be 'casa' or 'miembro'" },
+          { error: "kind must be 'residente' or 'miembro'" },
           { status: 400 }
         );
       }
+      /**
+       * 'residente' pasa la validación de forma y lo rechaza chooseKind con
+       * 403. No se atrapa acá con un 400 porque los dos códigos dicen cosas
+       * distintas: 400 es "no entendí", y esto se entendió perfecto y no se
+       * permite.
+       */
       const result = await chooseKind(id, kind, email);
-      if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-      return NextResponse.json({ ok: true, ...(result.value ?? {}) });
-    }
-    case "casa": {
-      const result = await resolveCasa(
-        id,
-        { decision: body.decision, previous: body.previous } as CasaDecision,
-        email
-      );
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
       return NextResponse.json({ ok: true });
     }
     default:
       return NextResponse.json(
-        { error: "action must be 'accept', 'reject', 'cancel', 'kind' or 'casa'" },
+        { error: "action must be 'accept', 'reject', 'cancel' or 'kind'" },
         { status: 400 }
       );
   }

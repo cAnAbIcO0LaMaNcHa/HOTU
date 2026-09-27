@@ -25,14 +25,18 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { canEditCollective, type MembershipKind, type WriteResult } from "./collectives-write";
+import {
+  puedeAdministrarColectivo,
+  type MembershipKind,
+  type WriteResult,
+} from "./collectives-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 export type RequestedBy = "artist" | "collective";
 
 /**
- * A pending row always carries kind 'miembro', never 'casa'.
+ * A pending row always carries kind 'miembro', never 'residente'.
  *
  * The DJ picks the kind at step 3, on acceptance — before that there is no
  * answer to store. 'miembro' is the safe placeholder precisely because
@@ -79,7 +83,7 @@ export async function requestMembership(
   const allowed =
     requestedBy === "artist"
       ? await isArtistOwner(artistSlug, actorEmail)
-      : await canEditCollective(collectiveSlug, actorEmail);
+      : await puedeAdministrarColectivo(collectiveSlug, actorEmail);
   if (!allowed) {
     return {
       ok: false,
@@ -127,43 +131,21 @@ async function loadPending(id: number) {
   return rows[0];
 }
 
-/**
- * UN VENUE NO ES LA CASA DE NADIE.
+/*
+ * rechazarCasaEnVenue SE MUDÓ, no se dejó sin uso.
  *
- * Un DJ es miembro de un venue —toca ahí, aparece en su roster— pero su
- * casa es su colectivo. Es la regla de §5 y de AGENTS.md.
+ * Vive en lib/residency-offers-write.ts como rechazarResidenciaEnVenue, porque
+ * ahí está ahora el único camino que puede escribir kind='residente' y una
+ * guarda vale donde está la escritura. Borrada y no dejada acá por lo mismo que
+ * recalcMembership y addMember: una función que sigue existiendo es una función
+ * que alguien vuelve a llamar, y esta llamada desde este archivo ya no querría
+ * decir nada.
  *
- * POR QUÉ NO ALCANZA CON LA BASE, y por eso vive acá:
- *
- * El índice único parcial artist_collectives_one_active_casa_idx garantiza
- * UNA sola casa activa por artista. No garantiza DÓNDE. El índice está
- * sobre artist_collectives y no puede ver entity_kind, que es una columna
- * de otra tabla.
- *
- * Un CHECK tampoco: un CHECK evalúa una fila contra sí misma y no puede
- * consultar collectives. Y un FK compuesto contra (slug, entity_kind)
- * obligaría a duplicar entity_kind dentro de artist_collectives, donde se
- * desincronizaría el día que un venue pase a colectivo o al revés.
- *
- * Así que la base acepta feliz una casa en un venue, y el único lugar
- * donde se puede impedir es el camino de escritura. Los tres caminos que
- * pueden escribir 'casa' —aceptar una invitación eligiendo casa, resolver
- * un conflicto de casa, y cambiar el kind de un vínculo ya aceptado—
- * pasan por acá antes de escribir.
- *
- * Si esto faltara, el daño no sería solo una etiqueta mal puesta: §6 dice
- * que los sets y tracks republicados siguen a la casa, así que la
- * discografía del DJ se mudaría al venue, y devolver el kind no deshace
- * la republicación.
+ * loadPending sigue trayendo collective_entity_kind. Queda a propósito: es la
+ * columna que decide si una residencia es posible, y el día que algo de acá
+ * vuelva a necesitarla, que esté.
  */
-function rechazarCasaEnVenue(row: Record<string, unknown>): WriteResult<never> | null {
-  if ((row.collective_entity_kind as string) !== "venue") return null;
-  return {
-    ok: false,
-    status: 400,
-    error: `${row.collective_name} es un venue. Podés ser miembro, pero tu casa va en un colectivo.`,
-  };
-}
+
 
 /**
  * Accepts a pending membership, and — when the DJ is the one accepting —
@@ -177,20 +159,16 @@ function rechazarCasaEnVenue(row: Record<string, unknown>): WriteResult<never> |
  * explicit that the DJ chooses. When a collective accepts an application,
  * the link stays 'miembro' and the DJ sets it afterwards with chooseKind.
  *
- * Asking for 'casa' while already having one does NOT move anything. It
+ * Asking for 'residente' while already having one does NOT move anything. It
  * comes back as a conflict carrying the options, the row stays pending,
- * and resolveCasa applies whatever the DJ then picks. Closing someone's
+ * and resolverResidencia applies whatever the DJ then picks. Closing someone's
  * home is never a side effect of another request.
  */
 export async function acceptMembership(
   id: number,
   kind: MembershipKind | undefined,
   actorEmail?: string | null
-): Promise<
-  WriteResult<
-    { kind: MembershipKind; needsKindChoice: boolean } | CasaConflict
-  >
-> {
+): Promise<WriteResult<{ kind: MembershipKind; needsKindChoice: boolean }>> {
   const row = await loadPending(id);
   if (!row) return { ok: false, status: 404, error: "Esa solicitud no existe" };
   if (row.to_date) return { ok: false, status: 409, error: "Esa solicitud ya está cerrada" };
@@ -200,7 +178,7 @@ export async function acceptMembership(
   const artistAnswers = row.requested_by === "collective";
   const allowed = artistAnswers
     ? await isArtistOwner(row.artist_slug as string, actorEmail)
-    : await canEditCollective(row.collective_slug as string, actorEmail);
+    : await puedeAdministrarColectivo(row.collective_slug as string, actorEmail);
   if (!allowed) {
     return {
       ok: false,
@@ -211,221 +189,67 @@ export async function acceptMembership(
     };
   }
 
-  // Only the artist gets to pick, and only at their own acceptance.
-  if (!artistAnswers) {
-    await sql`UPDATE artist_collectives SET accepted_at = now() WHERE id = ${id}`;
-    return { ok: true, value: { kind: PENDING_KIND, needsKindChoice: true } };
-  }
-
-  const chosen: MembershipKind = kind === "casa" ? "casa" : "miembro";
-  if (chosen === "miembro") {
-    await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'miembro' WHERE id = ${id}`;
-    return { ok: true, value: { kind: "miembro", needsKindChoice: false } };
-  }
-
-  // Pidió casa. Antes que nada: ¿se puede tener casa acá? Un venue no.
-  // Va ANTES del conflicto, porque si el destino no admite casa no hay
-  // nada que decidir: no tiene sentido ofrecerle mover su casa a un lugar
-  // donde no puede estar.
-  const enVenue = rechazarCasaEnVenue(row);
-  if (enVenue) return enVenue;
-
-  // If one already exists, hand back the options and leave the row
-  // pending — the DJ has to say which way explicitly.
-  const conflict = await casaConflict(
-    row.artist_slug as string,
-    id,
-    row.collective_slug as string,
-    row.collective_name as string
-  );
-  if (conflict) return { ok: true, value: conflict };
-
-  await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'casa' WHERE id = ${id}`;
-  return { ok: true, value: { kind: "casa", needsKindChoice: false } };
-}
-
-/**
- * The DJ's explicit answer to a casa conflict, and the only path that ever
- * closes a previous home.
- *
- * Works for a row that is still pending (accepting and deciding in one go)
- * and for one already accepted (just changing the link), because the DJ
- * reaches this from both places and the decision means the same thing.
- */
-export async function resolveCasa(
-  id: number,
-  choice: CasaDecision,
-  actorEmail?: string | null
-): Promise<WriteResult> {
-  if (choice?.decision !== "keep" && choice?.decision !== "move") {
-    return { ok: false, status: 400, error: "decision must be 'keep' or 'move'" };
-  }
-  if (choice.decision === "move" && choice.previous !== "stay" && choice.previous !== "leave") {
+  /**
+   * ACEPTAR UNA MEMBRESÍA SIEMPRE DA 'miembro', VENGA DE DONDE VENGA.
+   *
+   * Antes de la fase 2 el DJ elegía acá mismo si el vínculo era su núcleo. Ya
+   * no: 'residente' es permiso de edición, y un permiso no se toma, se
+   * concede. El dueño lo ofrece por residency_offers y el DJ responde ahí.
+   *
+   * Un kind:'residente' en el body se RECHAZA en vez de ignorarse. Ignorarlo
+   * devolvería 200 diciendo "listo" con el DJ convencido de que quedó
+   * residente, y la diferencia recién aparecería al intentar editar. Un error
+   * que explica dónde está la puerta es mejor que un éxito que miente.
+   */
+  if (kind === "residente") {
     return {
       ok: false,
-      status: 400,
-      error: "Al mover la casa hay que decir qué pasa con la anterior: 'stay' o 'leave'",
+      status: 403,
+      error:
+        "La residencia no se elige al aceptar: la ofrece quien administra el colectivo y " +
+        "después la aceptás. Esto te suma como miembro.",
     };
   }
 
-  const row = await loadPending(id);
-  if (!row) return { ok: false, status: 404, error: "Ese vínculo no existe" };
-  if (row.to_date) return { ok: false, status: 409, error: "Ese vínculo está cerrado" };
-  if (row.rejected_at) return { ok: false, status: 409, error: "Esa solicitud fue rechazada" };
-  if (!(await isArtistOwner(row.artist_slug as string, actorEmail))) {
-    return { ok: false, status: 403, error: "Solo el DJ decide dónde está su casa" };
-  }
-
-  // Toda rama de esta decisión termina poniendo la casa ACÁ, así que si
-  // este destino es un venue la decisión entera es inválida, incluso la
-  // que sale de un conflicto legítimo abierto antes.
-  const enVenue = rechazarCasaEnVenue(row);
-  if (enVenue) return enVenue;
-
-  // Still pending means this call also accepts it.
-  const alsoAccept = !row.accepted_at;
-  if (alsoAccept && row.requested_by !== "collective") {
-    return {
-      ok: false,
-      status: 409,
-      error: "Esa postulación todavía no fue aceptada por el colectivo",
-    };
-  }
-
-  return await applyCasaDecision(row.artist_slug as string, id, choice, alsoAccept);
-}
-
-/** The home the artist holds right now, if any. */
-async function currentCasa(artistSlug: string, exceptId: number) {
-  const rows = await sql`
-    SELECT ac.id, ac.collective_slug, c.name
-    FROM artist_collectives ac
-    JOIN collectives c ON c.slug = ac.collective_slug
-    WHERE ac.artist_slug = ${artistSlug} AND ac.kind = 'casa'
-      AND ac.to_date IS NULL AND ac.id <> ${exceptId}
-  `;
-  return rows[0];
+  await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'miembro' WHERE id = ${id}`;
+  return { ok: true, value: { kind: PENDING_KIND, needsKindChoice: false } };
 }
 
 /**
- * Returned instead of acting when the DJ asks for 'casa' and already has
- * one. The endpoint's job at that point is to lay out the options, not to
- * pick one — see resolveCasa.
- */
-export type CasaConflict = {
-  conflict: "casa";
-  current: { slug: string; name: string };
-  target: { slug: string; name: string };
-  options: Array<{ decision: "keep" } | { decision: "move"; previous: "stay" | "leave" }>;
-};
-
-export type CasaDecision =
-  | { decision: "keep" }
-  | { decision: "move"; previous: "stay" | "leave" };
-
-/**
- * Applies a casa decision the DJ made EXPLICITLY.
+ * EL DJ CAMBIA EL TIPO DE UN VÍNCULO YA ACEPTADO — Y LA PUERTA ESTÁ INVERTIDA.
  *
- * Nothing here runs off the back of a plain "kind: casa" request. Closing
- * somebody's home is not an implementation detail of changing a field, and
- * the previous collective is not ours to leave on their behalf — §3.1 says
- * the DJ picks between staying there as miembro and walking out, and
- * until they say which, neither happens.
+ * ============================================================
+ * BAJAR SÍ, SUBIR NO
+ * ============================================================
  *
- * Every branch that writes does so in ONE transaction. Halfway through a
- * move the artist would hold two active casas, which the unique index
- * refuses, so the ordering is not a preference — it is the only order that
- * works at all.
- */
-async function applyCasaDecision(
-  artistSlug: string,
-  id: number,
-  choice: CasaDecision,
-  alsoAccept: boolean
-): Promise<WriteResult> {
-  const current = await currentCasa(artistSlug, id);
-
-  // "keep": the home stays where it is and this link is a pertenencia.
-  if (choice.decision === "keep") {
-    if (alsoAccept) {
-      await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'miembro' WHERE id = ${id}`;
-    } else {
-      await sql`UPDATE artist_collectives SET kind = 'miembro' WHERE id = ${id}`;
-    }
-    return { ok: true, value: undefined };
-  }
-
-  if (!current) {
-    // The conflict evaporated between the two calls — somebody closed the
-    // old home meanwhile. Nothing to move; just take the new one.
-    if (alsoAccept) {
-      await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'casa' WHERE id = ${id}`;
-    } else {
-      await sql`UPDATE artist_collectives SET kind = 'casa' WHERE id = ${id}`;
-    }
-    return { ok: true, value: undefined };
-  }
-
-  const oldId = current.id as number;
-  const oldCollective = current.collective_slug as string;
-
-  const steps = [sql`UPDATE artist_collectives SET to_date = CURRENT_DATE WHERE id = ${oldId}`];
-
-  // "stay" keeps the link to the old collective, demoted. "leave" closes
-  // it outright — which is why it has to be asked for, never assumed.
-  if (choice.previous === "stay") {
-    steps.push(sql`
-      INSERT INTO artist_collectives
-        (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-      VALUES (${artistSlug}, ${oldCollective}, 'miembro', CURRENT_DATE, now(), 'artist')
-    `);
-  }
-
-  steps.push(
-    alsoAccept
-      ? sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'casa' WHERE id = ${id}`
-      : sql`UPDATE artist_collectives SET kind = 'casa' WHERE id = ${id}`
-  );
-
-  await sql.transaction(steps);
-  return { ok: true, value: undefined };
-}
-
-/** Builds the options payload for a home the DJ already has. */
-async function casaConflict(
-  artistSlug: string,
-  id: number,
-  targetSlug: string,
-  targetName: string
-): Promise<CasaConflict | null> {
-  const current = await currentCasa(artistSlug, id);
-  if (!current) return null;
-  return {
-    conflict: "casa",
-    current: { slug: current.collective_slug as string, name: current.name as string },
-    target: { slug: targetSlug, name: targetName },
-    options: [
-      { decision: "keep" },
-      { decision: "move", previous: "stay" },
-      { decision: "move", previous: "leave" },
-    ],
-  };
-}
-
-/**
- * The DJ changes their mind about an accepted link, or sets the kind after
- * a collective accepted their application. Only the artist decides.
+ * Hasta la fase 2 esta función iba en los dos sentidos, y solo pedía
+ * isArtistOwner. Su mensaje lo decía entero: "Solo el DJ elige si un colectivo
+ * es su casa". Con 'residente' de etiqueta, eso era correcto.
  *
- * Same rule as accepting: asking for 'casa' with one already in place
- * returns the options rather than acting on them.
+ * Con 'residente' de PERMISO DE EDICIÓN, ese mismo camino es una escalada de
+ * privilegios: cualquier miembro de cualquier colectivo llamaba acá y salía
+ * con permiso de editar un perfil ajeno, sin que el dueño se enterara. El
+ * renombre solo no la habría tocado —la palabra queda igual, el poder cambia—,
+ * y por eso la inversión va en el mismo tramo que el renombre y no después.
+ *
+ * Entonces:
+ *
+ *   'miembro'   — SIEMPRE se puede. Es RENUNCIAR, y nadie necesita permiso
+ *                 para dejar de tener un permiso. Vale incluso en un venue,
+ *                 porque miembro es justamente lo único que un venue admite.
+ *   'residente' — NUNCA por acá. Se concede: el dueño ofrece por
+ *                 residency_offers y el DJ responde. Ver lib/residency-offers-write.ts.
+ *
+ * La asimetría es el punto. Un permiso se toma con el consentimiento de quien
+ * lo da, y se suelta con el de quien lo tiene.
  */
 export async function chooseKind(
   id: number,
   kind: MembershipKind,
   actorEmail?: string | null
-): Promise<WriteResult<undefined | CasaConflict>> {
-  if (kind !== "casa" && kind !== "miembro") {
-    return { ok: false, status: 400, error: "kind must be 'casa' or 'miembro'" };
+): Promise<WriteResult> {
+  if (kind !== "residente" && kind !== "miembro") {
+    return { ok: false, status: 400, error: "kind must be 'residente' or 'miembro'" };
   }
 
   const row = await loadPending(id);
@@ -435,33 +259,31 @@ export async function chooseKind(
     return { ok: false, status: 409, error: "Ese vínculo todavía no fue aceptado" };
   }
   if (!(await isArtistOwner(row.artist_slug as string, actorEmail))) {
-    return { ok: false, status: 403, error: "Solo el DJ elige si un colectivo es su casa" };
+    return { ok: false, status: 403, error: "Solo el DJ decide sobre sus propios vínculos" };
   }
+
+  /**
+   * EL RECHAZO VA ANTES DEL no-op DE row.kind === kind, Y NO ES INDIFERENTE.
+   *
+   * Con el orden al revés, un residente pidiendo 'residente' recibiría 200 y
+   * un miembro pidiendo lo mismo recibiría 403 — la misma llamada contestando
+   * distinto según lo que el llamador ya tenga. Eso es un oráculo: sirve para
+   * averiguar quién es residente de qué sin poder verlo. Un 403 para todos no
+   * dice nada de nadie.
+   */
+  if (kind === "residente") {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "La residencia no se elige: la ofrece quien administra el colectivo y vos la aceptás. " +
+        "Por acá solo podés dejarla.",
+    };
+  }
+
   if (row.kind === kind) return { ok: true, value: undefined };
 
-  // Pasar a miembro siempre se puede, incluso en un venue: miembro es
-  // justamente lo único que un venue admite.
-  if (kind === "miembro") {
-    await sql`UPDATE artist_collectives SET kind = 'miembro' WHERE id = ${id}`;
-    return { ok: true, value: undefined };
-  }
-
-  // Pasar a casa, no. Este es el camino por el que un miembro de un
-  // venue podría convertir ese vínculo en su casa sin que ningún índice
-  // ni CHECK lo note: si no tiene otra casa, casaConflict no encuentra
-  // conflicto y el UPDATE pasa limpio.
-  const enVenue = rechazarCasaEnVenue(row);
-  if (enVenue) return enVenue;
-
-  const conflict = await casaConflict(
-    row.artist_slug as string,
-    id,
-    row.collective_slug as string,
-    row.collective_name as string
-  );
-  if (conflict) return { ok: true, value: conflict };
-
-  await sql`UPDATE artist_collectives SET kind = 'casa' WHERE id = ${id}`;
+  await sql`UPDATE artist_collectives SET kind = 'miembro' WHERE id = ${id}`;
   return { ok: true, value: undefined };
 }
 
@@ -491,7 +313,7 @@ export async function cancelMembership(
   const startedByArtist = row.requested_by === "artist";
   const allowed = startedByArtist
     ? await isArtistOwner(row.artist_slug as string, actorEmail)
-    : await canEditCollective(row.collective_slug as string, actorEmail);
+    : await puedeAdministrarColectivo(row.collective_slug as string, actorEmail);
   if (!allowed) {
     return {
       ok: false,
@@ -527,7 +349,7 @@ export async function rejectMembership(
   const artistAnswers = row.requested_by === "collective";
   const allowed = artistAnswers
     ? await isArtistOwner(row.artist_slug as string, actorEmail)
-    : await canEditCollective(row.collective_slug as string, actorEmail);
+    : await puedeAdministrarColectivo(row.collective_slug as string, actorEmail);
   if (!allowed) {
     return {
       ok: false,

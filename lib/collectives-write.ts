@@ -25,37 +25,37 @@ import { isSuperAdmin } from "./roles-check";
 // conexión de lib/db.ts a ningún lado.
 import type { EntityKind } from "./db";
 import { validateGenreSelection, type GenreSelectionOk } from "./genres-write";
+import {
+  canEditCollective,
+  puedeAdministrarColectivo,
+  type MembershipKind,
+  type WriteResult,
+} from "./collectives-gate";
+import { concederResidenciaAlFundador } from "./residency-offers-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 /**
- * casa      — the DJ's main collective. ONE only, and only ever a
- *             collective: a venue is somewhere you are member, not home.
- * miembro — the general link. Several at a time, collectives or venues.
+ * LA PUERTA SE MUDÓ A lib/collectives-gate.ts, y se re-exporta desde acá.
  *
- * Careful reading anything written before tanda 3: "miembro" used to be
- * the exclusive one. The word kept its spelling and swapped its meaning.
- */
-export type MembershipKind = "casa" | "miembro";
-
-export type WriteResult<T = undefined> =
-  | { ok: true; value: T }
-  | { ok: false; status: 400 | 403 | 404 | 409; error: string };
-
-/**
- * Who may change a collective's membership: its owner, or a SUPER_ADMIN.
+ * El motivo es un ciclo de imports, no una preferencia: este archivo necesita
+ * concederResidenciaAlFundador de residency-offers-write, y ese archivo
+ * necesita puedeAdministrarColectivo. Con la puerta acá, cada uno le pide algo
+ * al otro, y un ciclo en ESM a veces anda y a veces deja un export en
+ * undefined según el orden de carga — una falla que no dice su causa.
  *
- * Mirrors canEditArtist. Used by the API route to authorise and by the
- * admin page to decide what to render, so both run the same check.
+ * Se re-exporta y no se movieron los imports de los diez llamadores porque lo
+ * que había que arreglar era el ciclo, no de dónde se trae el nombre.
  */
-export async function canEditCollective(slug: string, email?: string | null): Promise<boolean> {
-  if (!email) return false;
-  const rows = await sql`SELECT owner_email FROM collectives WHERE slug = ${slug}`;
-  if (rows.length === 0) return false;
-  const owner = rows[0].owner_email as string | null;
-  if (owner && owner.toLowerCase() === email.toLowerCase()) return true;
-  return await isSuperAdmin(email);
-}
+export {
+  type RolSobreColectivo,
+  type MembershipKind,
+  type WriteResult,
+  rolSobreColectivo,
+  canEditCollective,
+  puedeAdministrarColectivo,
+  esDuenoDelColectivo,
+} from "./collectives-gate";
 
 /*
  * addMember was removed in tanda 3, pieza 3. A collective can no longer
@@ -99,8 +99,14 @@ export async function removeMember(
    * permiso para desvincularte, ni vos el suyo para irte.
    *
    * El histórico se respeta igual: se cierra con to_date, no se borra.
+   *
+   * DESDE §8 FASE 2 VA POR puedeAdministrarColectivo Y NO POR
+   * canEditCollective. Quitar a alguien del colectivo es administrar
+   * membresías, no editar contenido, y con la puerta vieja un residente
+   * podría echar a los demás residentes —incluido el que lo invitó— sin
+   * pasar nunca por el dueño.
    */
-  const esElColectivo = await canEditCollective(collectiveSlug, actorEmail);
+  const esElColectivo = await puedeAdministrarColectivo(collectiveSlug, actorEmail);
   const esElArtista = actorEmail
     ? (
         await sql`
@@ -267,7 +273,18 @@ export async function createCollective(
     tags?: unknown;
   }
 ): Promise<
-  WriteResult<{ slug: string; kind: MembershipKind; casaTaken: { slug: string; name: string } | null }>
+  WriteResult<{
+    slug: string;
+    kind: MembershipKind;
+    /**
+     * La residencia que el fundador YA tenía en otro colectivo, si tenía. No es
+     * un error: el colectivo se creó igual y el fundador entró como miembro.
+     * La UI lo usa para decirle que su residencia sigue donde estaba, en vez de
+     * moverla sola — cerrar la residencia de alguien no es un efecto secundario
+     * de crear un colectivo.
+     */
+    residenciaTomada: { slug: string; name: string } | null;
+  }>
 > {
   if (typeof name !== "string" || name.trim() === "") {
     return { ok: false, status: 400, error: "Poné un nombre para el colectivo" };
@@ -369,33 +386,49 @@ export async function createCollective(
     ]);
   }
 
-  // Does the founder already have a home elsewhere? The partial unique
-  // index would refuse a second active casa, so ask before, not after.
-  const [casa] = await sql`
+  // ¿El fundador ya tiene residencia en otro lado? El índice único parcial
+  // rechazaría una segunda activa, así que se pregunta antes y no después.
+  const [residencia] = await sql`
     SELECT ac.collective_slug, c.name
     FROM artist_collectives ac
     JOIN collectives c ON c.slug = ac.collective_slug
     WHERE ac.artist_slug = ${artist.slug}
-      AND ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+      AND ac.kind = 'residente' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
     LIMIT 1
   `;
-  // En un venue el fundador entra como miembro SIEMPRE, tenga casa o
-  // no: un venue no es la casa de nadie, ni siquiera de quien lo abrió.
-  const kind: MembershipKind =
-    entityKind === "venue" ? "miembro" : casa ? "miembro" : "casa";
 
+  /**
+   * ENTRA COMO 'miembro' Y LA RESIDENCIA LA CONCEDE EL OTRO ARCHIVO.
+   *
+   * Este archivo NO escribe kind='residente', y no es puntillosidad: desde la
+   * fase 2 ese valor es permiso de edición, y que lo escriba un solo archivo
+   * es lo que vuelve comprobable que no hay ningún camino sin revisar para
+   * ganarlo. Acá se crea la membresía; concederResidenciaAlFundador la asciende
+   * y deja la fila en residency_offers que dice quién la concedió.
+   *
+   * El fundador queda residente igual que antes. Lo que cambia es que ahora
+   * queda escrito.
+   */
   await sql`
     INSERT INTO artist_collectives
       (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-    VALUES (${artist.slug}, ${slug}, ${kind}, CURRENT_DATE, now(), 'artist')
+    VALUES (${artist.slug}, ${slug}, 'miembro', CURRENT_DATE, now(), 'artist')
   `;
+
+  let kind: MembershipKind = "miembro";
+  if (entityKind !== "venue" && !residencia) {
+    const concedida = await concederResidenciaAlFundador(slug, artist.slug as string, email!);
+    if (concedida.ok && concedida.value.concedida) kind = "residente";
+  }
 
   return {
     ok: true,
     value: {
       slug,
       kind,
-      casaTaken: casa ? { slug: casa.collective_slug as string, name: casa.name as string } : null,
+      residenciaTomada: residencia
+        ? { slug: residencia.collective_slug as string, name: residencia.name as string }
+        : null,
     },
   };
 }
