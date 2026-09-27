@@ -13,9 +13,9 @@ import type { MyMembership, PendingMembership } from "@/lib/db";
  *   - a collective invited them  -> theirs to answer, with the kind
  *   - they applied somewhere     -> waiting, nothing to click
  *
- * Accepting is where the DJ chooses casa or residente, because that choice
+ * Accepting is where the DJ chooses casa or miembro, because that choice
  * is theirs alone (§3). Picking "casa" while already having one runs the
- * change-of-home flow server-side: the old home is demoted to residente
+ * change-of-home flow server-side: the old home is demoted to miembro
  * and the new one takes over, in one transaction, so there is never a
  * moment with two casas.
  */
@@ -25,7 +25,7 @@ export function MembershipInbox({
   currentCasa,
 }: {
   pending: PendingMembership[];
-  /** Accepted, live links — where the casa/residente choice happens. */
+  /** Accepted, live links — where the casa/miembro choice happens. */
   memberships: MyMembership[];
   /** The collective that is currently home, if any — so the warning about
    *  replacing it can name it instead of being abstract. */
@@ -103,7 +103,7 @@ export function MembershipInbox({
                 key: "keep",
                 body: { action: "casa", decision: "keep" },
                 titulo: `Mi casa sigue siendo ${conflict.current.name}`,
-                aqui: `Entro a ${conflict.target.name} como residente.`,
+                aqui: `Entro a ${conflict.target.name} como miembro.`,
                 alla: `${conflict.current.name} no cambia: sigue siendo mi casa.`,
                 fuerte: false,
               },
@@ -112,7 +112,7 @@ export function MembershipInbox({
                 body: { action: "casa", decision: "move", previous: "stay" },
                 titulo: `Mi casa pasa a ser ${conflict.target.name}`,
                 aqui: `${conflict.target.name} queda como mi casa.`,
-                alla: `Sigo en ${conflict.current.name}, pero como residente. No pierdo el vínculo.`,
+                alla: `Sigo en ${conflict.current.name}, pero como miembro. No pierdo el vínculo.`,
                 fuerte: true,
               },
               {
@@ -183,11 +183,11 @@ export function MembershipInbox({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => act(p.id, { action: "accept", kind: "residente" })}
+                    onClick={() => act(p.id, { action: "accept", kind: "miembro" })}
                     disabled={busy}
                     className="inline-flex items-center gap-1.5 border border-primary px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-primary disabled:opacity-50"
                   >
-                    <Users className="h-3 w-3" /> ENTRAR COMO RESIDENTE
+                    <Users className="h-3 w-3" /> ENTRAR COMO MIEMBRO
                   </button>
                   <button
                     type="button"
@@ -210,7 +210,7 @@ export function MembershipInbox({
                 {currentCasa && (
                   <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
                     Hoy tu casa es <strong>{currentCasa.name}</strong>. Si hacés tu casa acá,
-                    allá pasás a residente — no te vas, cambiás de vínculo.
+                    allá pasás a miembro — no te vas, cambiás de vínculo.
                   </p>
                 )}
               </li>
@@ -260,7 +260,7 @@ export function MembershipInbox({
                 <span className="min-w-0">
                   <span className="block truncate font-bold">{m.collectiveName}</span>
                   <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {m.kind === "casa" ? "TU CASA" : "RESIDENTE"}
+                    {m.kind === "casa" ? "TU CASA" : "MIEMBRO"}
                     {m.entityKind === "venue" ? " · VENUE" : ""} · desde{" "}
                     {m.fromDate.slice(0, 10)}
                   </span>
@@ -275,14 +275,14 @@ export function MembershipInbox({
                     siempre falla al tocarlo es peor que no tenerlo. */}
                 {m.entityKind === "venue" ? (
                   <span className="shrink-0 font-mono text-[10px] leading-relaxed text-muted-foreground">
-                    Acá sos residente.
+                    Acá sos miembro.
                     <br />
                     Tu casa va en un colectivo.
                   </span>
                 ) : m.kind === "casa" ? (
                   <button
                     type="button"
-                    onClick={() => act(m.id, { action: "kind", kind: "residente" })}
+                    onClick={() => act(m.id, { action: "kind", kind: "miembro" })}
                     disabled={busy}
                     className="shrink-0 border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary disabled:opacity-50"
                   >
@@ -305,7 +305,7 @@ export function MembershipInbox({
             memberships.some((m) => m.kind !== "casa" && m.entityKind !== "venue") && (
             <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
               Hacer tu casa en otro lado mueve la de <strong>{currentCasa.name}</strong>, que
-              pasa a residente. Nunca tenés dos casas.
+              pasa a miembro. Nunca tenés dos casas.
             </p>
           )}
         </div>

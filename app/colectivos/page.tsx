@@ -4,7 +4,7 @@ import { uniqueSorted } from "@/lib/listing-options";
 import { ColectivosList } from "@/components/colectivos-list";
 import {
   getAllCollectives,
-  getCollectiveMembers,
+  getVinculos,
   getFilterOptions,
   getGenreIndex,
   pickGenreIndex,
@@ -19,9 +19,9 @@ export const metadata: Metadata = {
 };
 
 export default async function ColectivosPage() {
-  const [collectives, members, todos] = await Promise.all([
+  const [collectives, vinculos, todos] = await Promise.all([
     getAllCollectives(),
-    getCollectiveMembers(),
+    getVinculos(),
     getGenreIndex("collective"),
   ]);
   const genreIndex = pickGenreIndex(todos, collectives.map((c) => c.slug));
@@ -43,7 +43,7 @@ export default async function ColectivosPage() {
           over as a plain object. */}
       <ColectivosList
         collectives={collectives}
-        members={Object.fromEntries(members)}
+        vinculos={Object.fromEntries(vinculos)}
         genreIndex={genreIndex}
       />
     </ListingLayout>

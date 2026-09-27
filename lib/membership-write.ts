@@ -7,7 +7,7 @@
  *
  *   1. the DJ applies, OR the collective invites        -> pendiente
  *   2. the other side accepts or rejects
- *   3. THE DJ chooses whether the link is casa or residente
+ *   3. THE DJ chooses whether the link is casa or miembro
  *   4. confirmed. Only now does the membership count.
  *
  * States are read off timestamps, not a status column:
@@ -32,15 +32,15 @@ const sql = neon(process.env.DATABASE_URL!);
 export type RequestedBy = "artist" | "collective";
 
 /**
- * A pending row always carries kind 'residente', never 'casa'.
+ * A pending row always carries kind 'miembro', never 'casa'.
  *
  * The DJ picks the kind at step 3, on acceptance — before that there is no
- * answer to store. 'residente' is the safe placeholder precisely because
+ * answer to store. 'miembro' is the safe placeholder precisely because
  * it is the non-exclusive one: a pending row can never collide with the
  * one-active-casa index, so an invitation cannot be blocked by a home the
  * DJ has somewhere else.
  */
-const PENDING_KIND: MembershipKind = "residente";
+const PENDING_KIND: MembershipKind = "miembro";
 
 /** Does this email own the artist profile, i.e. speak for the DJ? */
 async function isArtistOwner(artistSlug: string, email?: string | null): Promise<boolean> {
@@ -130,7 +130,7 @@ async function loadPending(id: number) {
 /**
  * UN VENUE NO ES LA CASA DE NADIE.
  *
- * Un DJ es residente de un venue —toca ahí, aparece en su roster— pero su
+ * Un DJ es miembro de un venue —toca ahí, aparece en su roster— pero su
  * casa es su colectivo. Es la regla de §5 y de AGENTS.md.
  *
  * POR QUÉ NO ALCANZA CON LA BASE, y por eso vive acá:
@@ -161,7 +161,7 @@ function rechazarCasaEnVenue(row: Record<string, unknown>): WriteResult<never> |
   return {
     ok: false,
     status: 400,
-    error: `${row.collective_name} es un venue. Podés ser residente, pero tu casa va en un colectivo.`,
+    error: `${row.collective_name} es un venue. Podés ser miembro, pero tu casa va en un colectivo.`,
   };
 }
 
@@ -175,7 +175,7 @@ function rechazarCasaEnVenue(row: Record<string, unknown>): WriteResult<never> |
  *
  * `kind` only means something coming from the artist's side. The spec is
  * explicit that the DJ chooses. When a collective accepts an application,
- * the link stays 'residente' and the DJ sets it afterwards with chooseKind.
+ * the link stays 'miembro' and the DJ sets it afterwards with chooseKind.
  *
  * Asking for 'casa' while already having one does NOT move anything. It
  * comes back as a conflict carrying the options, the row stays pending,
@@ -217,10 +217,10 @@ export async function acceptMembership(
     return { ok: true, value: { kind: PENDING_KIND, needsKindChoice: true } };
   }
 
-  const chosen: MembershipKind = kind === "casa" ? "casa" : "residente";
-  if (chosen === "residente") {
-    await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'residente' WHERE id = ${id}`;
-    return { ok: true, value: { kind: "residente", needsKindChoice: false } };
+  const chosen: MembershipKind = kind === "casa" ? "casa" : "miembro";
+  if (chosen === "miembro") {
+    await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'miembro' WHERE id = ${id}`;
+    return { ok: true, value: { kind: "miembro", needsKindChoice: false } };
   }
 
   // Pidió casa. Antes que nada: ¿se puede tener casa acá? Un venue no.
@@ -329,7 +329,7 @@ export type CasaDecision =
  * Nothing here runs off the back of a plain "kind: casa" request. Closing
  * somebody's home is not an implementation detail of changing a field, and
  * the previous collective is not ours to leave on their behalf — §3.1 says
- * the DJ picks between staying there as residente and walking out, and
+ * the DJ picks between staying there as miembro and walking out, and
  * until they say which, neither happens.
  *
  * Every branch that writes does so in ONE transaction. Halfway through a
@@ -345,12 +345,12 @@ async function applyCasaDecision(
 ): Promise<WriteResult> {
   const current = await currentCasa(artistSlug, id);
 
-  // "keep": the home stays where it is and this link is a residencia.
+  // "keep": the home stays where it is and this link is a pertenencia.
   if (choice.decision === "keep") {
     if (alsoAccept) {
-      await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'residente' WHERE id = ${id}`;
+      await sql`UPDATE artist_collectives SET accepted_at = now(), kind = 'miembro' WHERE id = ${id}`;
     } else {
-      await sql`UPDATE artist_collectives SET kind = 'residente' WHERE id = ${id}`;
+      await sql`UPDATE artist_collectives SET kind = 'miembro' WHERE id = ${id}`;
     }
     return { ok: true, value: undefined };
   }
@@ -377,7 +377,7 @@ async function applyCasaDecision(
     steps.push(sql`
       INSERT INTO artist_collectives
         (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-      VALUES (${artistSlug}, ${oldCollective}, 'residente', CURRENT_DATE, now(), 'artist')
+      VALUES (${artistSlug}, ${oldCollective}, 'miembro', CURRENT_DATE, now(), 'artist')
     `);
   }
 
@@ -424,8 +424,8 @@ export async function chooseKind(
   kind: MembershipKind,
   actorEmail?: string | null
 ): Promise<WriteResult<undefined | CasaConflict>> {
-  if (kind !== "casa" && kind !== "residente") {
-    return { ok: false, status: 400, error: "kind must be 'casa' or 'residente'" };
+  if (kind !== "casa" && kind !== "miembro") {
+    return { ok: false, status: 400, error: "kind must be 'casa' or 'miembro'" };
   }
 
   const row = await loadPending(id);
@@ -439,14 +439,14 @@ export async function chooseKind(
   }
   if (row.kind === kind) return { ok: true, value: undefined };
 
-  // Pasar a residente siempre se puede, incluso en un venue: residente es
+  // Pasar a miembro siempre se puede, incluso en un venue: miembro es
   // justamente lo único que un venue admite.
-  if (kind === "residente") {
-    await sql`UPDATE artist_collectives SET kind = 'residente' WHERE id = ${id}`;
+  if (kind === "miembro") {
+    await sql`UPDATE artist_collectives SET kind = 'miembro' WHERE id = ${id}`;
     return { ok: true, value: undefined };
   }
 
-  // Pasar a casa, no. Este es el camino por el que un residente de un
+  // Pasar a casa, no. Este es el camino por el que un miembro de un
   // venue podría convertir ese vínculo en su casa sin que ningún índice
   // ni CHECK lo note: si no tiene otra casa, casaConflict no encuentra
   // conflicto y el UPDATE pasa limpio.

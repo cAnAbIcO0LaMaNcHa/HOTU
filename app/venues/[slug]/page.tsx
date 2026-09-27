@@ -10,7 +10,7 @@ import { LikeButton } from "@/components/like-button";
 import { VenueContactButton } from "@/components/venue-contact-button";
 import {
   countCollectiveLikes,
-  getCollectiveMembers,
+  getVinculos,
   getMetricasColectivo,
   getMyArtistSlug,
   getPendingForCollective,
@@ -35,7 +35,7 @@ export async function generateMetadata({
  * El press kit de un venue (§5).
  *
  * Es el del colectivo más dirección y aforo, y con una diferencia que no
- * es cosmética: un venue tiene RESIDENTES y no tiene casa. Por eso hay un
+ * es cosmética: un venue tiene MIEMBROS y no tiene casa. Por eso hay un
  * solo carrusel y no dos. Un DJ toca acá, no vive acá.
  *
  * getVenueBySlug filtra por tipo, así que /venues/<slug-de-colectivo> da
@@ -55,7 +55,7 @@ export default async function VenuePage({
   const email = session?.user?.email ?? null;
 
   const [membersByVenue, pending, myArtistSlug, likeCount, liked, metricas] = await Promise.all([
-    getCollectiveMembers("venue"),
+    getVinculos("venue"),
     getPendingForCollective(slug),
     email ? getMyArtistSlug(email) : Promise.resolve(null),
     countCollectiveLikes(slug),
@@ -76,7 +76,7 @@ export default async function VenuePage({
     : !myArtistSlug
       ? "no-artist"
       : alreadyMember
-        ? "member"
+        ? "vinculo"
         : alreadyPending
           ? "pending"
           : "can-apply";
@@ -126,11 +126,11 @@ export default async function VenuePage({
           entrada de quien quiere armar una fiesta acá. */}
       <VenueContactButton venueName={venue.name} />
 
-      {/* Un solo carrusel: RESIDENTES. Un venue no tiene artistas de la
+      {/* Un solo carrusel: MIEMBROS. Un venue no tiene artistas de la
           casa, porque no es la casa de nadie. */}
       {roster.length > 0 && (
         <div className="mt-12">
-          <h2 className="text-xl font-bold">RESIDENTES</h2>
+          <h2 className="text-xl font-bold">MIEMBROS</h2>
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             {roster.map((m) => (
               <Link

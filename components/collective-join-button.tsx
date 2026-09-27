@@ -27,9 +27,9 @@ export function CollectiveJoinButton({
   /** The viewer's own artist profile, if they have one. */
   artistSlug: string | null;
   /** Why the button is not actionable, when it is not. */
-  state: "can-apply" | "signed-out" | "no-artist" | "pending" | "member";
+  state: "can-apply" | "signed-out" | "no-artist" | "pending" | "vinculo";
   /**
-   * Un venue admite residentes y nada más. Cambia el texto —no se ofrece
+   * Un venue admite miembros y nada más. Cambia el texto —no se ofrece
    * elegir casa— y el enlace de vuelta después de iniciar sesión.
    */
   entityKind?: "collective" | "venue";
@@ -66,7 +66,7 @@ export function CollectiveJoinButton({
     }
   }
 
-  if (state === "member") return null;
+  if (state === "vinculo") return null;
 
   if (state === "pending" || sent) {
     return (
@@ -132,13 +132,13 @@ export function CollectiveJoinButton({
         {esVenue ? (
           <>
             Enviás una postulación: {collectiveName} la acepta o la rechaza. Si te
-            aceptan, entrás como residente. Tu casa sigue siendo tu colectivo — un
+            aceptan, entrás como miembro. Tu casa sigue siendo tu colectivo — un
             venue no es la casa de nadie.
           </>
         ) : (
           <>
             Enviás una postulación: {collectiveName} la acepta o la rechaza. Si te
-            aceptan, vos elegís si es tu casa o si entrás como residente.
+            aceptan, vos elegís si es tu casa o si entrás como miembro.
           </>
         )}
       </p>

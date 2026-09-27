@@ -1,7 +1,7 @@
 /**
  * DEV-ONLY SEED — the fixture the tanda 1 features are developed against:
  * three accounts with real password hashes, the OTU collective with two
- * residents and one ally, and a set of sales on event 4 whose attributions
+ * members and one ally, and a set of sales on event 4 whose attributions
  * cover every shape the rules allow.
  *
  * Call it as: /api/seed-test?secret=YOUR_SECRET
@@ -95,7 +95,7 @@ const VENUE = {
 /**
  * The membership fixture, declared rather than accumulated.
  *
- * Every DJ gets one casa and at least one residencia somewhere else, spread
+ * Every DJ gets one casa and at least one pertenencia somewhere else, spread
  * across the collectives that exist, so the two carousels of a press kit
  * both have something in them.
  *
@@ -108,19 +108,19 @@ const VENUE = {
  */
 const MEMBERSHIPS = [
   { artist: "test-camila", collective: "otu", kind: "casa" as const },
-  { artist: "test-camila", collective: "hotu-138", kind: "residente" as const },
+  { artist: "test-camila", collective: "hotu-138", kind: "miembro" as const },
   { artist: "test-pedro", collective: "paramo-club", kind: "casa" as const },
-  { artist: "test-pedro", collective: "otu", kind: "residente" as const },
+  { artist: "test-pedro", collective: "otu", kind: "miembro" as const },
   { artist: "test-luna", collective: "subsuelo-djs", kind: "casa" as const },
-  { artist: "test-luna", collective: "otu", kind: "residente" as const },
+  { artist: "test-luna", collective: "otu", kind: "miembro" as const },
   { artist: "test-duena", collective: REISEN.slug, kind: "casa" as const },
-  { artist: "test-duena", collective: "chia-underground", kind: "residente" as const },
-  // Residencias en el VENUE. Nunca 'casa': un venue no es la casa de
+  { artist: "test-duena", collective: "chia-underground", kind: "miembro" as const },
+  // Pertenencias en el VENUE. Nunca 'casa': un venue no es la casa de
   // nadie, y el write path rechaza los tres caminos que podrían ponerla
   // ahí. Poner 'casa' acá crearía a mano justo el estado que el código
   // impide, y el fixture dejaría de representar algo alcanzable.
-  { artist: "test-duena", collective: VENUE.slug, kind: "residente" as const },
-  { artist: "test-camila", collective: VENUE.slug, kind: "residente" as const },
+  { artist: "test-duena", collective: VENUE.slug, kind: "miembro" as const },
+  { artist: "test-camila", collective: VENUE.slug, kind: "miembro" as const },
 ];
 
 /**
@@ -129,7 +129,7 @@ const MEMBERSHIPS = [
  * is exactly what the ticket_attributions CHECK enforces.
  *
  * The last entry is the interesting one: Luna sells, but she is only an
- * ally of OTU, never a resident. "Toca con" carries no money, so her sale
+ * ally of OTU, never a member. "Toca con" carries no money, so her sale
  * is attributed to her and to no collective at all.
  */
 /**
@@ -465,7 +465,7 @@ export async function GET(request: Request) {
     );
 
     // No status_membership recalculation any more: tanda 3 (§1.1) removed
-    // the 3-DJs/2-residents minimum, so there is no publishable flag left
+    // the 3-DJs/2-members minimum, so there is no publishable flag left
     // to keep in sync.
 
     // --- likes ----------------------------------------------------

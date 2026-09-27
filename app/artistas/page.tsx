@@ -8,7 +8,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: "Artistas de la escena Bogotá",
-  description: "DJs y productores residentes de la escena techno y electrónica de Bogotá.",
+  description: "DJs y productores miembros de la escena techno y electrónica de Bogotá.",
 };
 
 export default async function ArtistasPage({

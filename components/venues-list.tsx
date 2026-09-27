@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { MapPin, Users } from "lucide-react";
-import type { Collective, CollectiveMember } from "@/lib/db";
+import type { Collective, Vinculo } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
@@ -12,16 +12,16 @@ import { EmptyResult } from "@/components/listing-empty";
  *
  * Muy parecidas a las de /colectivos, y no compartidas con ellas a
  * propósito: un venue muestra dirección y aforo, que un colectivo no
- * tiene, y la etiqueta de sus miembros es "RESIDENTES" y no "ARTISTAS DE
+ * tiene, y la etiqueta de sus miembros es "MIEMBROS" y no "ARTISTAS DE
  * LA MARCA" porque en un venue nadie tiene su casa. Unificarlas sería
  * meter condicionales en el render para ahorrar un archivo.
  */
 export function VenuesList({
   venues,
-  members,
+  vinculos,
 }: {
   venues: Collective[];
-  members: Record<string, CollectiveMember[]>;
+  vinculos: Record<string, Vinculo[]>;
 }) {
   const { active } = useListingFilters();
   const sorted = useFilteredList(venues, {
@@ -30,7 +30,7 @@ export function VenuesList({
       v.sector,
       v.bio,
       v.address,
-      ...(members[v.slug] ?? []).map((m) => m.artistName),
+      ...(vinculos[v.slug] ?? []).map((m) => m.artistName),
     ],
     secondaryOf: (v) => v.sector,
   });
@@ -39,7 +39,7 @@ export function VenuesList({
     <div className="mt-16">
       <div className="grid gap-6 md:grid-cols-2">
         {sorted.map((v) => {
-          const roster = members[v.slug] ?? [];
+          const roster = vinculos[v.slug] ?? [];
           return (
             <article
               key={v.slug}
@@ -47,7 +47,7 @@ export function VenuesList({
             >
               <h3 className="text-xl font-bold">
                 {/* Overlay estirado, no un <a> envolviendo la tarjeta: los
-                    residentes de adentro son enlaces y anidarlos es HTML
+                    miembros de adentro son enlaces y anidarlos es HTML
                     inválido. */}
                 <Link
                   href={`/venues/${v.slug}`}
@@ -86,7 +86,7 @@ export function VenuesList({
               {roster.length > 0 && (
                 <div className="mt-4">
                   <div className="font-mono text-[9px] tracking-widest text-primary">
-                    <AutoTranslate text="RESIDENTES" />
+                    <AutoTranslate text="MIEMBROS" />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {roster.map((m) => (

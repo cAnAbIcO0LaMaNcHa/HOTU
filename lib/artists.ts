@@ -36,7 +36,7 @@ export const ARTISTS: Artist[] = [
     name: "Nina Acid",
     genre: "Hard Tech",
     city: "Bogotá",
-    bio: "Productora y DJ bogotana referente del sonido acid techno en la sabana. Residente de HOTU desde sus inicios, su sonido cruza líneas ácidas del 303 con groove industrial.",
+    bio: "Productora y DJ bogotana referente del sonido acid techno en la sabana. Miembro de HOTU desde sus inicios, su sonido cruza líneas ácidas del 303 con groove industrial.",
     joinedAt: "2026-05-28",
     sets: [
       { title: "HOTU PRIME · Raw Hard Set", url: "#", duration: "2H 14M" },
@@ -52,7 +52,7 @@ export const ARTISTS: Artist[] = [
     name: "Bloq Klok",
     genre: "Hard Groove",
     city: "Chía",
-    bio: "Dúo de Chía especializado en hard groove con influencias de percusión latinoamericana. HOTU Resident desde 2025.",
+    bio: "Dúo de Chía especializado en hard groove con influencias de percusión latinoamericana. HOTU Member desde 2025.",
     joinedAt: "2026-05-30",
     sets: [{ title: "HOTU Ritual Open Air", url: "#", duration: "1H 45M" }],
     topTracks: [

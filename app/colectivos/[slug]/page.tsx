@@ -21,7 +21,7 @@ import {
   getGenreBranches,
   getGenreTags,
   getProfileGenres,
-  getCollectiveMembers,
+  getVinculos,
   getMyArtistSlug,
   getPendingForCollective,
   hasLikedCollective,
@@ -31,7 +31,7 @@ export const revalidate = 0;
 
 /**
  * The collective's page — the MINIMUM of §4.3 that the membership flow
- * needs to be usable: header, the two member carousels, and the join
+ * needs to be usable: header, the two vinculo carousels, and the join
  * button that starts the conversation.
  *
  * Sets, tracks, events and metrics are the rest of that section and belong
@@ -64,8 +64,8 @@ export default async function CollectivePage({
   const collective = await getCollectiveBySlug(slug, "collective", email);
   if (!collective) notFound();
 
-  const [membersByCollective, pending, myArtistSlug] = await Promise.all([
-    getCollectiveMembers(),
+  const [vinculosPorColectivo, pending, myArtistSlug] = await Promise.all([
+    getVinculos(),
     getPendingForCollective(slug),
     email ? getMyArtistSlug(email) : Promise.resolve(null),
   ]);
@@ -102,9 +102,9 @@ export default async function CollectivePage({
     getMetricasColectivo(slug),
   ]);
 
-  const roster = membersByCollective.get(slug) ?? [];
+  const roster = vinculosPorColectivo.get(slug) ?? [];
   const casa = roster.filter((m) => m.kind === "casa");
-  const residentes = roster.filter((m) => m.kind === "residente");
+  const miembros = roster.filter((m) => m.kind === "miembro");
 
   // Why the join button is or is not actionable, decided here so the
   // button itself never has to guess.
@@ -119,7 +119,7 @@ export default async function CollectivePage({
     : !myArtistSlug
       ? "no-artist"
       : alreadyMember
-        ? "member"
+        ? "vinculo"
         : alreadyPending
           ? "pending"
           : "can-apply";
@@ -192,8 +192,8 @@ export default async function CollectivePage({
         canEdit={puedeEditar}
       />
 
-      <Roster title="ARTISTAS DE LA CASA" members={casa} />
-      <Roster title="ARTISTAS RESIDENTES" members={residentes} />
+      <Roster title="ARTISTAS DE LA CASA" vinculos={casa} />
+      <Roster title="MIEMBROS" vinculos={miembros} />
 
       {/* SETS y TRACKS (§6). Van DESPUÉS de los rosters a propósito:
           primero quién es el colectivo, después qué suena. Lo que se ve
@@ -221,17 +221,17 @@ export default async function CollectivePage({
 /** An empty carousel is not rendered — the profile grows with the crew. */
 function Roster({
   title,
-  members,
+  vinculos,
 }: {
   title: string;
-  members: { artistSlug: string; artistName: string }[];
+  vinculos: { artistSlug: string; artistName: string }[];
 }) {
-  if (members.length === 0) return null;
+  if (vinculos.length === 0) return null;
   return (
     <div className="mt-12">
       <h2 className="text-xl font-bold">{title}</h2>
       <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-        {members.map((m) => (
+        {vinculos.map((m) => (
           <Link
             key={m.artistSlug}
             href={`/artistas/${m.artistSlug}`}

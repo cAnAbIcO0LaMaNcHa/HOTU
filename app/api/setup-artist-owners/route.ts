@@ -120,7 +120,7 @@ type Plan = {
   email: string;
   /** El colectivo del que queda dueño, o null si es residente. */
   colectivo: string | null;
-  rol: "dueño y casa" | "residente";
+  rol: "dueño y casa" | "miembro";
   /** De dónde salió la asignación, para poder auditarla. */
   motivo: string;
   /** Si ya hay una cuenta con ese email. true = NO se toca ese artista. */
@@ -288,11 +288,11 @@ export async function GET(request: Request) {
         artistName: r.name as string,
         email: `${slug}${DOMINIO}`,
         colectivo: d ? d.colectivo : (suyos[0] ?? null),
-        rol: d ? "dueño y casa" : "residente",
+        rol: d ? "dueño y casa" : "miembro",
         motivo: d
           ? d.motivo
           : suyos.length > 0
-            ? `ya es residente de ${suyos.join(", ")}; se queda como está`
+            ? `ya es miembro de ${suyos.join(", ")}; se queda como está`
             : "no está en ningún colectivo y no quedó ninguno sin dueño para asignarle",
         cuentaYaExiste: yaExisten.has(`${slug}${DOMINIO}`),
       };
@@ -334,7 +334,7 @@ export async function GET(request: Request) {
         `SIMULACIÓN: ${plan.length} artistas sin dueño, ${colectivosSinDuenio.length} colectivos sin dueño.`
       );
       log.push(
-        `SIMULACIÓN: quedarían ${plan.filter((p) => p.rol === "dueño y casa").length} dueños y ${plan.filter((p) => p.rol === "residente").length} residentes.`
+        `SIMULACIÓN: quedarían ${plan.filter((p) => p.rol === "dueño y casa").length} dueños y ${plan.filter((p) => p.rol === "miembro").length} miembros.`
       );
       if (conflictivos.length > 0) {
         log.push(

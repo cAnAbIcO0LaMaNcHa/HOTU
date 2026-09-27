@@ -142,9 +142,9 @@ export type Collective = ContentMeta & {
 };
 
 /*
- * status_membership is no longer mapped. The 3-DJs/2-residents minimum was
+ * status_membership is no longer mapped. The 3-DJs/2-vinculos minimum was
  * removed in tanda 3 (§1.1): there is no publishable/incomplete state, and
- * a collective with one member can publish. The column still exists in the
+ * a collective with one vinculo can publish. The column still exists in the
  * table, frozen — a column is never dropped in the same migration that
  * stops using it — but it is not read, not written, and not on the type,
  * so nothing can start depending on it again by accident.
@@ -701,11 +701,11 @@ export async function getAllVenues(opts: ReadOptions = {}): Promise<Collective[]
 }
 
 /** One active membership, with the artist's display name resolved. */
-export type CollectiveMember = {
+export type Vinculo = {
   collectiveSlug: string;
   artistSlug: string;
   artistName: string;
-  kind: "casa" | "residente";
+  kind: "casa" | "miembro";
   fromDate: string;
 };
 
@@ -720,14 +720,14 @@ export type CollectiveMember = {
  * joins artists so the caller does not need a second lookup table just to
  * print names.
  *
- * Casa first, then residentes, each alphabetically — a stable order that
+ * Casa first, then miembros, each alphabetically — a stable order that
  * does not shuffle as rows are added.
  */
-export async function getCollectiveMembers(
+export async function getVinculos(
   kind: EntityKind = "collective"
-): Promise<Map<string, CollectiveMember[]>> {
+): Promise<Map<string, Vinculo[]>> {
   // El JOIN contra collectives es lo que separa los dos rosters. Sin él,
-  // los residentes de un venue saldrían listados bajo el venue en
+  // los miembros de un venue saldrían listados bajo el venue en
   // /colectivos, que es la mezcla que §5 dice que no se negocia.
   const rows = await sql`
     SELECT ac.collective_slug, ac.artist_slug, ac.kind, ac.from_date, a.name AS artist_name
@@ -740,7 +740,7 @@ export async function getCollectiveMembers(
              CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END,
              a.name
   `;
-  const byCollective = new Map<string, CollectiveMember[]>();
+  const byCollective = new Map<string, Vinculo[]>();
   for (const r of rows) {
     const slug = r.collective_slug as string;
     if (!byCollective.has(slug)) byCollective.set(slug, []);
@@ -748,7 +748,7 @@ export async function getCollectiveMembers(
       collectiveSlug: slug,
       artistSlug: r.artist_slug as string,
       artistName: r.artist_name as string,
-      kind: r.kind as "casa" | "residente",
+      kind: r.kind as "casa" | "miembro",
       fromDate: toISODate(r.from_date as string),
     });
   }
@@ -916,7 +916,7 @@ export type MyMembership = {
   id: number;
   collectiveSlug: string;
   collectiveName: string;
-  kind: "casa" | "residente";
+  kind: "casa" | "miembro";
   fromDate: string;
   /**
    * Colectivo o venue. Acá NO se filtra por tipo, a diferencia de los
@@ -951,7 +951,7 @@ export async function getMyMemberships(email: string): Promise<MyMembership[]> {
     id: Number(r.id),
     collectiveSlug: r.collective_slug as string,
     collectiveName: r.collective_name as string,
-    kind: r.kind as "casa" | "residente",
+    kind: r.kind as "casa" | "miembro",
     fromDate: toISODate(r.from_date as string),
     entityKind: (r.entity_kind as EntityKind) ?? "collective",
   }));

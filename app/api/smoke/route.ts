@@ -84,7 +84,7 @@ import {
   getBannedAccounts,
   getBranchesWithContent,
   getCensored,
-  getCollectiveMembers,
+  getVinculos,
   getFilterOptions,
   getGenreIndex,
   getLineupsByEvent,
@@ -181,10 +181,10 @@ export async function GET(request: Request) {
   }
 
   await correr("/colectivos", "getAllCollectives", () => getAllCollectives());
-  await correr("/colectivos", "getCollectiveMembers", () => getCollectiveMembers("collective"));
+  await correr("/colectivos", "getVinculos", () => getVinculos("collective"));
   await correr("/colectivos", "getGenreIndex(collective)", () => getGenreIndex("collective"));
   await correr("/venues", "getAllVenues", () => getAllVenues());
-  await correr("/venues", "getCollectiveMembers(venue)", () => getCollectiveMembers("venue"));
+  await correr("/venues", "getVinculos(venue)", () => getVinculos("venue"));
   await correr("/artistas", "getGenreIndex(artist)", () => getGenreIndex("artist"));
   if (indiceArtistas) {
     await correr("/artistas", "getFilterOptions", () => getFilterOptions(indiceArtistas));

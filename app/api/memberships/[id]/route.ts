@@ -7,7 +7,7 @@
  *            that side is the DJ they also send the kind they chose.
  *   reject   the same side says no. The row closes; the pair can try again.
  *   cancel   the side that DID open it withdraws while still pending.
- *   kind     the DJ sets or changes casa/residente on an accepted link.
+ *   kind     the DJ sets or changes casa/miembro on an accepted link.
  *   casa     the DJ's explicit answer to a home conflict.
  *
  * ASKING FOR 'casa' NEVER MOVES ANYTHING BY ITSELF. When the DJ already
@@ -79,9 +79,9 @@ export async function PATCH(
       return NextResponse.json({ ok: true });
     }
     case "kind": {
-      if (kind !== "casa" && kind !== "residente") {
+      if (kind !== "casa" && kind !== "miembro") {
         return NextResponse.json(
-          { error: "kind must be 'casa' or 'residente'" },
+          { error: "kind must be 'casa' or 'miembro'" },
           { status: 400 }
         );
       }

@@ -10,7 +10,7 @@ import type { LineupEntry } from "@/lib/db";
  * ============================================================
  *
  * Hasta ahora esto era una sola frase de texto libre — "Nina Acid ·
- * Subsuelo DJs · HOTU Residents"— y así se sigue viendo: los mismos
+ * Subsuelo DJs · HOTU Members"— y así se sigue viendo: los mismos
  * nombres, en el mismo orden. Lo único que cambia es que algunos ahora se
  * pueden tocar.
  *

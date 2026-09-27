@@ -28,13 +28,13 @@ export const dynamic = "force-dynamic";
 const DISTRITO_CONGELADO = "D00";
 
 const EVENTS = [
-  { date: "2026-06-14", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Residents" },
+  { date: "2026-06-14", city: "BOGOTÁ", venue: "Bodega 38", title: "HOTU PRIME · NOCHE 01", lineup: "Nina Acid · Subsuelo DJs · HOTU Members" },
   { date: "2026-06-22", city: "LA CALERA", venue: "Cerro Verde", title: "HOTU RITUAL OPEN AIR", lineup: "Páramo Club · Monte Negro · HOTU 138" },
   { date: "2026-07-05", city: "CHÍA", venue: "Finca Norte", title: "CHÍA UNDERGROUND VOL.12", lineup: "Chía Underground · HOTU Crew" },
 ];
 
 const NEWS = [
-  { tag: "RELEASE", date: "2026-05-02", title: "HOTU Records anuncia compilatorio de aniversario", excerpt: "12 tracks inéditos de productores residentes de Bogotá, Chía y La Calera." },
+  { tag: "RELEASE", date: "2026-05-02", title: "HOTU Records anuncia compilatorio de aniversario", excerpt: "12 tracks inéditos de productores miembros de Bogotá, Chía y La Calera." },
   { tag: "GEAR", date: "2026-04-29", title: "Llega a Bogotá el primer lote del Analog Rytm MKIII", excerpt: "La nueva drum machine aterriza en tiendas locales para los productores de la sabana." },
   { tag: "CLUB", date: "2026-04-27", title: "Subterráneo reabre con sistema Funktion-One", excerpt: "El club bogotano vuelve con un line-up de apertura HOTU de 24 horas continuas." },
 ];

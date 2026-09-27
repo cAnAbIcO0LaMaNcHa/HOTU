@@ -32,7 +32,7 @@
  *
  * EL COSTO REAL DE COMPARTIR SON ONCE PUNTOS DE CONTACTO, no "un puñado".
  * La revisión los contó uno por uno: getAllCollectives, getCollectiveBySlug,
- * getCollectivesOwnedBy, getCollectiveMembers, getMyMemberships,
+ * getCollectivesOwnedBy, getVinculos, getMyMemberships,
  * getMyCurrentCasa, createCollective, canEditCollective, deleteCollective,
  * y los tres caminos de membership-write que pueden escribir 'casa'.
  * Cinco de ellos son un AND en un WHERE; los otros son guardas nuevas.

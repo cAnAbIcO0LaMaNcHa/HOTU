@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, Clock, UserMinus } from "lucide-react";
-import type { CollectiveMember, PendingMembership } from "@/lib/db";
+import type { Vinculo, PendingMembership } from "@/lib/db";
 
 /**
  * Membership management for one collective, in the admin.
@@ -18,13 +18,13 @@ import type { CollectiveMember, PendingMembership } from "@/lib/db";
  */
 export function CollectiveMembersEditor({
   collectiveSlug,
-  members,
+  vinculos,
   pending,
   departures,
   artists,
 }: {
   collectiveSlug: string;
-  members: CollectiveMember[];
+  vinculos: Vinculo[];
   pending: PendingMembership[];
   /** §3.2 — the owner always finds out when they lose somebody. */
   departures: { artistSlug: string; artistName: string; kind: string; toDate: string }[];
@@ -86,7 +86,7 @@ export function CollectiveMembersEditor({
   const remove = (slug: string) =>
     busyWrap(async () => {
       const res = await fetch(
-        `/api/collectives/${encodeURIComponent(collectiveSlug)}/members/${encodeURIComponent(slug)}`,
+        `/api/collectives/${encodeURIComponent(collectiveSlug)}/vinculos/${encodeURIComponent(slug)}`,
         { method: "DELETE" }
       );
       const data = await res.json().catch(() => ({}));
@@ -98,7 +98,7 @@ export function CollectiveMembersEditor({
     });
 
   const alreadyLinked = new Set([
-    ...members.map((m) => m.artistSlug),
+    ...vinculos.map((m) => m.artistSlug),
     ...pending.map((p) => p.artistSlug),
   ]);
 
@@ -106,16 +106,16 @@ export function CollectiveMembersEditor({
     <div className="sm:col-span-2 space-y-4 border border-border p-4">
       <div>
         <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-          MIEMBROS ({members.length})
+          MIEMBROS ({vinculos.length})
         </span>
 
-        {members.length === 0 ? (
+        {vinculos.length === 0 ? (
           <p className="mt-2 font-mono text-[11px] text-muted-foreground">
             Sin miembros todavía.
           </p>
         ) : (
           <ul className="mt-2 space-y-2">
-            {members.map((m) => (
+            {vinculos.map((m) => (
               <li key={m.artistSlug} className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate font-mono text-xs">
                   {m.artistName}
@@ -126,7 +126,7 @@ export function CollectiveMembersEditor({
                         : "border-border text-muted-foreground"
                     }`}
                   >
-                    {m.kind === "casa" ? "CASA" : "RESIDENTE"}
+                    {m.kind === "casa" ? "CASA" : "MIEMBRO"}
                   </span>
                   <span className="ml-2 text-[10px] text-muted-foreground">
                     desde {m.fromDate.slice(0, 10)}
@@ -209,7 +209,7 @@ export function CollectiveMembersEditor({
           <ul className="mt-2 space-y-1">
             {departures.map((d) => (
               <li key={`${d.artistSlug}-${d.toDate}`} className="font-mono text-[11px] text-muted-foreground">
-                {d.artistName} · {d.kind === "casa" ? "era su casa" : "era residente"} · {d.toDate.slice(0, 10)}
+                {d.artistName} · {d.kind === "casa" ? "era su casa" : "era miembro"} · {d.toDate.slice(0, 10)}
               </li>
             ))}
           </ul>
@@ -256,7 +256,7 @@ export function CollectiveMembersEditor({
 
       <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
         Invitar no suma a nadie: el DJ tiene que aceptar, y es él quien elige si este
-        colectivo es su casa o si entra como residente. Quitar cierra el vínculo con fecha,
+        colectivo es su casa o si entra como miembro. Quitar cierra el vínculo con fecha,
         no borra el histórico.
       </p>
     </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { MapPin } from "lucide-react";
-import type { Collective, CollectiveMember, GenreIndexEntry } from "@/lib/db";
+import type { Collective, Vinculo, GenreIndexEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
@@ -12,7 +12,7 @@ import { EmptyResult } from "@/components/listing-empty";
  * jsonb, passed in already grouped and name-resolved so this component
  * does not need the whole artist catalogue just to print a few names.
  *
- * The casa/residente distinction is deliberately NOT shown yet. Every
+ * The casa/miembro distinction is deliberately NOT shown yet. Every
  * pre-existing link came out of the jsonb, which never recorded which
  * collective was anyone's home, so surfacing it today would tell every
  * visitor that no collective has a single casa. It goes in once the
@@ -20,11 +20,11 @@ import { EmptyResult } from "@/components/listing-empty";
  */
 export function ColectivosList({
   collectives: all,
-  members,
+  vinculos,
   genreIndex,
 }: {
   collectives: Collective[];
-  members: Record<string, CollectiveMember[]>;
+  vinculos: Record<string, Vinculo[]>;
   genreIndex: Record<string, GenreIndexEntry>;
 }) {
   const { active } = useListingFilters();
@@ -38,7 +38,7 @@ export function ColectivosList({
       c.name,
       c.sector,
       c.bio,
-      ...(members[c.slug] ?? []).map((m) => m.artistName),
+      ...(vinculos[c.slug] ?? []).map((m) => m.artistName),
     ],
     genreOf: (c) => genreIndex[c.slug],
     // El suplente del tag. El layout renderiza uno de los dos, nunca los
@@ -50,7 +50,7 @@ export function ColectivosList({
     <div className="mt-16">
       <div className="grid gap-6 md:grid-cols-2">
         {sorted.map((c) => {
-          const roster = members[c.slug] ?? [];
+          const roster = vinculos[c.slug] ?? [];
           const badge =
             c.type === "HOTU"
               ? "border-primary text-primary"

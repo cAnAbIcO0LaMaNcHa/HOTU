@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Inbox, UserMinus } from "lucide-react";
-import type { CollectiveMember, PendingMembership } from "@/lib/db";
+import type { Vinculo, PendingMembership } from "@/lib/db";
 import { CollectiveInfoEditor } from "./collective-info-editor";
 
 /**
@@ -24,7 +24,7 @@ export function CollectiveInbox({
   collectiveBio,
   collectiveSector,
   pending,
-  members,
+  vinculos,
   departures,
   entityKind = "collective",
   address,
@@ -35,7 +35,7 @@ export function CollectiveInbox({
   collectiveBio: string;
   collectiveSector: string | null;
   pending: PendingMembership[];
-  members: CollectiveMember[];
+  vinculos: Vinculo[];
   departures: { artistSlug: string; artistName: string; kind: string; toDate: string }[];
   /** El mismo panel sirve a los dos; cambian el enlace y el texto. */
   entityKind?: "collective" | "venue";
@@ -83,7 +83,7 @@ export function CollectiveInbox({
         </Link>
       </h3>
       <p className="mt-1 font-mono text-[10px] tracking-widest text-muted-foreground">
-        {members.length} {members.length === 1 ? "MIEMBRO" : "MIEMBROS"}
+        {vinculos.length} {vinculos.length === 1 ? "MIEMBRO" : "MIEMBROS"}
       </p>
 
       {/* Editar la info del colectivo, en el mismo panel donde se
@@ -114,8 +114,8 @@ export function CollectiveInbox({
                 </Link>
                 <p className="mt-1 font-mono text-[10px] text-muted-foreground">
                   {esVenue
-                    ? "Quiere sumarse. Si aceptás, entra como residente: un venue no es la casa de nadie."
-                    : "Quiere sumarse. Si aceptás, elige después si sos su casa o entra como residente."}
+                    ? "Quiere sumarse. Si aceptás, entra como miembro: un venue no es la casa de nadie."
+                    : "Quiere sumarse. Si aceptás, elige después si sos su casa o entra como miembro."}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
@@ -183,7 +183,7 @@ export function CollectiveInbox({
                 key={`${d.artistSlug}-${d.toDate}`}
                 className="font-mono text-[11px] text-muted-foreground"
               >
-                {d.artistName} · {d.kind === "casa" ? "era su casa" : "era residente"} ·{" "}
+                {d.artistName} · {d.kind === "casa" ? "era su casa" : "era miembro"} ·{" "}
                 {d.toDate.slice(0, 10)}
               </li>
             ))}

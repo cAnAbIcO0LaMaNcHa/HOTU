@@ -18,7 +18,7 @@ import {
  * and the page decides that, so this component never has to.
  *
  * If the founder already has a casa somewhere, the new collective opens as
- * a residencia and says so plainly instead of moving their home behind
+ * a pertenencia and says so plainly instead of moving their home behind
  * their back. Changing it is then the ordinary casa conversation, with its
  * three explicit options, in the panel right above.
  */
@@ -91,11 +91,11 @@ export function CreateCollectiveButton({
       }
       if (esVenue) {
         setNote(
-          "Venue creado. Entraste como residente, que es el único vínculo que un venue tiene: tu casa sigue siendo tu colectivo."
+          "Venue creado. Entraste como miembro, que es el único vínculo que un venue tiene: tu casa sigue siendo tu colectivo."
         );
-      } else if (data.kind === "residente") {
+      } else if (data.kind === "miembro") {
         setNote(
-          "Creado. Como ya tenés casa en otro colectivo, entraste a este como residente. Si querés que sea tu casa, cambialo desde COLECTIVOS, acá arriba."
+          "Creado. Como ya tenés casa en otro colectivo, entraste a este como miembro. Si querés que sea tu casa, cambialo desde COLECTIVOS, acá arriba."
         );
       }
       setOpen(false);

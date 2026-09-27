@@ -5,7 +5,7 @@
  * The membership is CLOSED with a to_date, never deleted: the history is
  * immutable, and a removed row would take the context of its sales with
  * it. Closes every active link the artist holds here, because "sacar del
- * colectivo" means that and not "leave the residency behind".
+ * colectivo" means that and not "leave the membership behind".
  */
 
 import { NextResponse } from "next/server";

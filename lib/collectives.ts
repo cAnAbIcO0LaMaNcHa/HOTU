@@ -13,8 +13,8 @@ export type Collective = {
 
 export const COLLECTIVES: Collective[] = [
   {
-    slug: "hotu-residents",
-    name: "HOTU Residents",
+    slug: "hotu-members",
+    name: "HOTU Members",
     type: "HOTU",
     sector: "Bogotá",
     bio: "El núcleo oficial de HOTU. Artistas de la casa que definen el sonido y el estándar de cada fiesta HOTU.",

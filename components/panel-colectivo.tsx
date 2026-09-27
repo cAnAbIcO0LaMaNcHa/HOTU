@@ -12,7 +12,7 @@ import { SalirDelColectivo } from "@/components/salir-del-colectivo";
 import { PanelVacio } from "@/components/panel-switcher";
 import type { EntityKind } from "@/lib/db";
 import {
-  getCollectiveMembers,
+  getVinculos,
   getCollectivesOwnedBy,
   getGenreBranches,
   getInvitacionesColab,
@@ -85,7 +85,7 @@ export async function PanelColectivo({
         titulo={esVenue ? "REGISTRÁ TU VENUE" : "CREÁ TU COLECTIVO"}
         explicacion={
           esVenue
-            ? "Un venue tiene su página, sus residentes, sus eventos y sus métricas. Pero primero necesitás un perfil de DJ: los venues se registran desde una cuenta de artista."
+            ? "Un venue tiene su página, sus miembros, sus eventos y sus métricas. Pero primero necesitás un perfil de DJ: los venues se registran desde una cuenta de artista."
             : "Un colectivo tiene su página, sus artistas, el contenido de su casa y sus métricas. Pero primero necesitás un perfil de DJ: los colectivos se fundan desde una cuenta de artista."
         }
       >
@@ -138,12 +138,12 @@ export async function PanelColectivo({
     (m) => (m.entityKind ?? "collective") === kind && !propiosSlugs.has(m.collectiveSlug)
   );
 
-  const miembros = propios.length > 0 ? await getCollectiveMembers(kind) : new Map();
+  const miembros = propios.length > 0 ? await getVinculos(kind) : new Map();
   const paneles = await Promise.all(
     propios.map(async (c) => ({
       collective: c,
       pending: await getPendingForCollective(c.slug),
-      members: miembros.get(c.slug) ?? [],
+      vinculos: miembros.get(c.slug) ?? [],
       departures: await getRecentDepartures(c.slug, 5),
     }))
   );
@@ -190,7 +190,7 @@ export async function PanelColectivo({
           titulo={esVenue ? "REGISTRÁ TU VENUE" : "CREÁ TU COLECTIVO O UNITE A UNO"}
           explicacion={
             esVenue
-              ? "Si tenés un lugar donde suena música, registralo: va a tener su página, sus residentes, sus eventos y sus métricas. Uno por cuenta."
+              ? "Si tenés un lugar donde suena música, registralo: va a tener su página, sus miembros, sus eventos y sus métricas. Uno por cuenta."
               : "Un colectivo es tu crew: su página, sus artistas, el contenido de quienes lo tienen como casa, y sus métricas. Podés fundar uno —uno por cuenta— o pedir entrar a uno que ya exista desde su página."
           }
         >
@@ -286,7 +286,7 @@ export async function PanelColectivo({
           collectiveBio={o.collective.bio}
           collectiveSector={o.collective.sector ?? null}
           pending={o.pending}
-          members={o.members}
+          vinculos={o.vinculos}
           departures={o.departures}
           {...(esVenue
             ? {
@@ -335,7 +335,7 @@ export async function PanelColectivo({
                     {m.collectiveName}
                   </Link>
                   <div className="mt-1 font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {m.kind === "casa" ? "MI CASA" : "RESIDENTE"}
+                    {m.kind === "casa" ? "MI CASA" : "MIEMBRO"}
                   </div>
                 </div>
                 {/* Solo hay algo de lo que salirse si hay artista: las

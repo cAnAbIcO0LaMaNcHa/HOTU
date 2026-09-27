@@ -6,7 +6,7 @@
  * caller passes the acting email in, so the mobile app can use the same
  * functions through the same endpoints.
  *
- * The 3-DJs/2-residents minimum is GONE (tanda 3, §1.1). There is no
+ * The 3-DJs/2-members minimum is GONE (tanda 3, §1.1). There is no
  * publishable/incomplete state and nothing recomputes one: a collective
  * with a single member can publish. recalcMembership() and its constants
  * were removed from here rather than left unused, because a rule that
@@ -30,13 +30,13 @@ const sql = neon(process.env.DATABASE_URL!);
 
 /**
  * casa      — the DJ's main collective. ONE only, and only ever a
- *             collective: a venue is somewhere you are resident, not home.
- * residente — the general link. Several at a time, collectives or venues.
+ *             collective: a venue is somewhere you are member, not home.
+ * miembro — the general link. Several at a time, collectives or venues.
  *
- * Careful reading anything written before tanda 3: "residente" used to be
+ * Careful reading anything written before tanda 3: "miembro" used to be
  * the exclusive one. The word kept its spelling and swapped its meaning.
  */
-export type MembershipKind = "casa" | "residente";
+export type MembershipKind = "casa" | "miembro";
 
 export type WriteResult<T = undefined> =
   | { ok: true; value: T }
@@ -74,7 +74,7 @@ export async function canEditCollective(slug: string, email?: string | null): Pr
  *
  * Closes every active link the artist holds in this collective, because
  * "sacar del colectivo" means exactly that — not "sacar como aliado but
- * leave the residency".
+ * leave the membership".
  */
 export async function removeMember(
   collectiveSlug: string,
@@ -240,7 +240,7 @@ export async function updateCollectiveInfo(
  *
  * §4.1 says the new collective is the founder's casa, and it is, UNLESS
  * they already have one somewhere else. In that case the link opens as
- * residente and the caller is handed the usual casa conflict, so the DJ
+ * miembro and the caller is handed the usual casa conflict, so the DJ
  * decides explicitly what happens to their old home. Moving it silently
  * here would be the exact thing the membership rules forbid, and founding
  * a collective is no more of an excuse than any other route.
@@ -257,7 +257,7 @@ export async function createCollective(
    *
    * Lo único que cambia es el tipo y, con él, el vínculo: en un colectivo
    * el fundador entra como casa si no tiene otra; en un VENUE entra
-   * siempre como residente, porque un venue no es la casa de nadie.
+   * siempre como miembro, porque un venue no es la casa de nadie.
    */
   entityKind: EntityKind = "collective",
   /** El género, obligatorio para un colectivo e ignorado para un venue. */
@@ -379,10 +379,10 @@ export async function createCollective(
       AND ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
     LIMIT 1
   `;
-  // En un venue el fundador entra como residente SIEMPRE, tenga casa o
+  // En un venue el fundador entra como miembro SIEMPRE, tenga casa o
   // no: un venue no es la casa de nadie, ni siquiera de quien lo abrió.
   const kind: MembershipKind =
-    entityKind === "venue" ? "residente" : casa ? "residente" : "casa";
+    entityKind === "venue" ? "miembro" : casa ? "miembro" : "casa";
 
   await sql`
     INSERT INTO artist_collectives
