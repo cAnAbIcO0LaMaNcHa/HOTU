@@ -438,7 +438,7 @@ PARA UNA REVISIÓN A MANO, TOMALO DESDE LA TERMINAL. Es la mitad del punto: lo q
     node scripts/pruebas/candado.mjs tomar "revision manual de X"
     node scripts/pruebas/candado.mjs liberar
 
-Y EL BARRIDO FINAL YA NO USA PATRONES. abrirCorrida() saca una FOTO de las PK de las 18 tablas que una batería puede tocar, justo después del barrido inicial, y cerrar() borra la DIFERENCIA. Eso es exactamente lo que la corrida creó: ni zz-, ni @test.hotu.local, ni nada que alguien pueda elegir por casualidad. Una fila que ya existía SOBREVIVE aunque su email matchee el patrón viejo, y eso está medido en arnes.mjs.
+Y EL BARRIDO FINAL YA NO USA PATRONES. abrirCorrida() saca una FOTO de las PK de las tablas que una batería puede tocar —las de TABLAS_VOLATILES, hoy 19—, justo después del barrido inicial, y cerrar() borra la DIFERENCIA. Eso es exactamente lo que la corrida creó: ni zz-, ni @test.hotu.local, ni nada que alguien pueda elegir por casualidad. Una fila que ya existía SOBREVIVE aunque su email matchee el patrón viejo, y eso está medido en arnes.mjs.
 
 El barrido POR PATRÓN sigue existiendo, pero solo al ABRIR, y ahí es legítimo: con el candado puesto, lo único que puede haber de más es basura de una corrida que se cayó. Y hay una división del trabajo que conviene tener clara: el delta borra lo CREADO; lo MODIFICADO —bans, censuras, propiedad movida— lo sigue arreglando restaurarSeed(), porque una fila cambiada no aparece en ninguna diferencia de claves. Las dos hacen falta, en ese orden.
 

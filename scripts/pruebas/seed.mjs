@@ -157,8 +157,9 @@ export async function restaurarSeed(sql) {
  * esta corrida creó", sin un solo patrón en el medio: ni zz-, ni
  * @test.hotu.local, ni nada que alguien pueda elegir por casualidad.
  *
- * Son 18 tablas y ~160 filas en dev, así que la foto entera sale en una
- * consulta por tabla y no se nota.
+ * Son las de TABLAS_VOLATILES —hoy 19— y ~160 filas en dev, así que la foto
+ * entera sale en una consulta por tabla y no se nota. El número va acá de
+ * referencia y no de contrato: la lista manda, y ya se desactualizó una vez.
  *
  * OJO CON LA DIVISIÓN DEL TRABAJO: esto borra lo CREADO. Lo MODIFICADO
  * —bans, censuras, propiedad movida— lo sigue arreglando restaurarSeed(),
@@ -188,6 +189,15 @@ const TABLAS_VOLATILES = [
    * prueba que depende del orden en que se corran las demás.
    */
   ["mail_outbox", "id::text"],
+  /**
+   * edit_log entra por lo mismo que mail_outbox, y antes de que vuelva a
+   * pasar: es una tabla que solo crece, que ninguna batería borra a mano, y
+   * cuyo contenido se va a contar. Un chequeo de "cuántas ediciones registró
+   * este residente" pasa solo y falla en la suite si las filas de las
+   * baterías anteriores siguen ahí — y el síntoma culpa a la batería que
+   * corrió última.
+   */
+  ["edit_log", "id::text"],
   ["artist_collectives", "id::text"],
   ["artist_gigs", "id::text"],
   ["artist_likes", "artist_slug || '|' || user_email"],
