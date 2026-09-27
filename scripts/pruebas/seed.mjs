@@ -129,7 +129,18 @@ export async function restaurarSeed(sql) {
   for (const [slug, owner] of COLECTIVOS_SEED) {
     await sql`UPDATE collectives SET owner_email = ${owner} WHERE slug = ${slug}`;
   }
-  await sql`UPDATE artist_collectives SET can_edit = false WHERE can_edit`;
+  /**
+   * can_edit YA NO EXISTE, y por eso no se restaura.
+   *
+   * La creó la migración de ownership y nunca la leyó nadie: cero filas en
+   * true, medido. setup-residentes la borró en la fase 2, porque el permiso
+   * de editar se deriva de kind='residente' y una columna aparte permitía un
+   * estado que las reglas prohíben — un residente que no edita.
+   *
+   * Se deja la nota en vez de borrar la línea en silencio porque esta es la
+   * función que define "cómo debería estar dev", y un lector futuro merece
+   * saber que acá había algo y por qué dejó de estar.
+   */
 }
 
 /* ===================================================================
