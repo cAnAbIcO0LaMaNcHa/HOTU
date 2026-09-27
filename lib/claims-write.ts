@@ -81,7 +81,7 @@ const MIN_NOTA = 30;
  *
  * Esto NO puede ser un índice ni un CHECK: cuenta filas de OTRAS filas de
  * la misma tabla, y eso ninguna de las dos cosas lo puede mirar. Es la
- * misma familia que la casa-en-venue: guarda del write path, y por eso
+ * misma familia que la residencia-en-venue: guarda del write path, y por eso
  * está escrito acá con su razón, para que no se "simplifique" a un
  * constraint que no existe.
  */

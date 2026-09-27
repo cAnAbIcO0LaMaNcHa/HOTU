@@ -54,11 +54,12 @@
  *    contraseña y con auth_provider 'credentials'.
  * 2. artists.owner_email de cada uno.
  * 3. collectives.owner_email de los colectivos sin dueño.
- * 4. La membresía del dueño pasa a 'casa'. Si no tenía ninguna —el caso
- *    de monte-negro— se crea.
+ * 4. La membresía del dueño se asegura como 'miembro'. Si no tenía ninguna
+ *    —el caso de monte-negro— se crea. NO escribe 'residente': ver el
+ *    comentario largo abajo, junto al UPDATE.
  *
- * Los que no quedan de dueños se quedan como estaban: residentes, sin
- * casa. No hace falta crearles membresías porque YA LAS TIENEN, y
+ * Los que no quedan de dueños se quedan EXACTAMENTE como estaban. No hace
+ * falta crearles membresías porque YA LAS TIENEN, y
  * repartirlos de nuevo sería reescribir datos reales con un criterio
  * inventado.
  *
@@ -120,7 +121,7 @@ type Plan = {
   email: string;
   /** El colectivo del que queda dueño, o null si es residente. */
   colectivo: string | null;
-  rol: "dueño y casa" | "miembro";
+  rol: "dueño y miembro" | "miembro";
   /** De dónde salió la asignación, para poder auditarla. */
   motivo: string;
   /** Si ya hay una cuenta con ese email. true = NO se toca ese artista. */
@@ -154,7 +155,7 @@ export async function GET(request: Request) {
     // JOIN contra collectives filtrando entity_kind: sin eso, alguien
     // cuya única residencia activa es un VENUE cuenta como "ya está en un
     // colectivo" y queda fuera de los sueltos — justo quien más necesita
-    // una casa.
+    // un colectivo.
     const membresias = await sql`
       SELECT ac.artist_slug, ac.collective_slug
       FROM artist_collectives ac
@@ -164,29 +165,45 @@ export async function GET(request: Request) {
     `;
 
     /**
-     * Quién YA tiene una casa activa. No pueden quedar de dueños.
+     * Quién YA tiene una residencia activa en otro lado.
      *
-     * El índice artist_collectives_one_active_casa_idx es UNIQUE
-     * (artist_slug) WHERE kind='casa' AND to_date IS NULL: una sola casa
-     * activa por artista, y NO mira accepted_at. Poner a alguien de dueño
-     * de un colectivo teniendo casa en otro haría que el UPDATE a 'casa'
-     * violara ese índice, la transacción de ESE artista revertiría, la
-     * excepción saldría del bucle, y los artistas siguientes nunca se
-     * procesarían. Peor: re-correr elegiría al mismo y volvería a
-     * explotar. Determinísticamente irrecuperable sin tocar la base.
+     * OJO: EL MOTIVO ORIGINAL DE ESTA EXCLUSIÓN YA NO EXISTE, y decirlo
+     * importa más que la exclusión misma.
      *
-     * Hoy en dev no dispara por casualidad —los dos que tienen casa son
-     * fixtures y sus colectivos ya tienen dueño— pero AGENTS.md dice que
-     * asignar las casas a mano es trabajo pendiente. Si eso se hace
-     * primero, este es el caso NORMAL y no el borde.
+     * Decía —correctamente, hasta la fase 2— que poner de dueño a alguien con
+     * casa en otro colectivo haría que el UPDATE a 'casa' violara el índice
+     * único de una-sola-activa, que la transacción de ESE artista revertiría,
+     * que la excepción saldría del bucle y que re-correr elegiría al mismo y
+     * volvería a explotar: irrecuperable sin tocar la base.
+     *
+     * Eso se terminó cuando esta migración pasó a escribir 'miembro'. 'miembro'
+     * no tiene índice de exclusividad, así que YA NO PUEDE CHOCAR con nada.
+     *
+     * La exclusión se deja, y ahora dice otra cosa: quien ya tiene su residencia
+     * en OTRO colectivo probablemente no sea la persona indicada para quedar de
+     * dueño de este. Es una regla de criterio y no una protección técnica, y la
+     * próxima persona tiene derecho a saber que puede sacarla sin que nada
+     * explote.
+     *
+     * PERO AHORA ES UN MAPA Y NO UN CONJUNTO, y eso arregla un bug que el
+     * renombre dejó a la vista. Como conjunto, la exclusión sacaba a cualquiera
+     * con residencia activa EN CUALQUIER PARTE, incluida la de este mismo
+     * colectivo. Un colectivo cuyo único miembro es su residente se quedaba sin
+     * ningún candidato y sin dueño PARA SIEMPRE — justo lo que esta migración
+     * existe para evitar. Medido con un fixture plantado, no razonado.
+     *
+     * Ya estaba mal antes, por lo mismo: si la casa de alguien era ESTE
+     * colectivo, el UPDATE a 'casa' era un no-op y no violaba ningún índice, así
+     * que excluirlo no protegía de nada. No se notaba porque en producción
+     * ningún colectivo tenía casa asignada.
      */
-    const conCasa = new Set(
+    const residenciaDe = new Map<string, string>(
       (
         await sql`
-          SELECT artist_slug FROM artist_collectives
-          WHERE kind = 'casa' AND to_date IS NULL
+          SELECT artist_slug, collective_slug FROM artist_collectives
+          WHERE kind = 'residente' AND to_date IS NULL
         `
-      ).map((r) => r.artist_slug as string)
+      ).map((r) => [r.artist_slug as string, r.collective_slug as string])
     );
 
     /**
@@ -220,7 +237,11 @@ export async function GET(request: Request) {
     for (const m of membresias) {
       const c = m.collective_slug as string;
       const a = m.artist_slug as string;
-      if (!disponibles.has(a) || conCasa.has(a)) continue;
+      if (!disponibles.has(a)) continue;
+      // Su residencia en ESTE colectivo no lo descalifica de administrarlo:
+      // es justamente quien más cerca está de ser su dueño.
+      const residencia = residenciaDe.get(a);
+      if (residencia && residencia !== c) continue;
       if (!miembros.has(c)) miembros.set(c, []);
       miembros.get(c)!.push(a);
     }
@@ -252,7 +273,7 @@ export async function GET(request: Request) {
       membresias.map((m) => m.artist_slug as string).filter((a) => disponibles.has(a))
     );
     const sueltos = sinDuenio.filter(
-      (a) => !enAlgunColectivo.has(a) && !yaElegidos.has(a) && !conCasa.has(a)
+      (a) => !enAlgunColectivo.has(a) && !yaElegidos.has(a) && !residenciaDe.has(a)
     );
     for (const c of colectivosSinDuenio) {
       const slug = c.slug as string;
@@ -288,7 +309,7 @@ export async function GET(request: Request) {
         artistName: r.name as string,
         email: `${slug}${DOMINIO}`,
         colectivo: d ? d.colectivo : (suyos[0] ?? null),
-        rol: d ? "dueño y casa" : "miembro",
+        rol: d ? "dueño y miembro" : "miembro",
         motivo: d
           ? d.motivo
           : suyos.length > 0
@@ -311,19 +332,19 @@ export async function GET(request: Request) {
       const [u] = await sql`
         SELECT COUNT(*)::int AS n FROM user_profiles WHERE email LIKE ${"%" + DOMINIO}
       `;
-      const [casas] = await sql`
+      const [vinculos] = await sql`
         SELECT COUNT(*)::int AS n FROM collectives c
         JOIN artists a ON lower(a.owner_email) = lower(c.owner_email)
         JOIN artist_collectives ac
           ON ac.artist_slug = a.slug AND ac.collective_slug = c.slug
-         AND ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+         AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
         WHERE c.entity_kind = 'collective' AND c.owner_email IS NOT NULL
       `;
       return {
         artistasSinDuenio: a.n as number,
         colectivosSinDuenio: c.n as number,
         cuentasDelDominio: u.n as number,
-        colectivosConDuenioYCasa: casas.n as number,
+        colectivosConDuenioYVinculo: vinculos.n as number,
       };
     };
 
@@ -334,7 +355,7 @@ export async function GET(request: Request) {
         `SIMULACIÓN: ${plan.length} artistas sin dueño, ${colectivosSinDuenio.length} colectivos sin dueño.`
       );
       log.push(
-        `SIMULACIÓN: quedarían ${plan.filter((p) => p.rol === "dueño y casa").length} dueños y ${plan.filter((p) => p.rol === "miembro").length} miembros.`
+        `SIMULACIÓN: quedarían ${plan.filter((p) => p.rol === "dueño y miembro").length} dueños y ${plan.filter((p) => p.rol === "miembro").length} miembros.`
       );
       if (conflictivos.length > 0) {
         log.push(
@@ -379,31 +400,53 @@ export async function GET(request: Request) {
         `,
       ];
 
-      if (p.rol === "dueño y casa" && p.colectivo) {
+      if (p.rol === "dueño y miembro" && p.colectivo) {
         queries.push(
           sql`
             UPDATE collectives SET owner_email = ${p.email}
             WHERE slug = ${p.colectivo} AND owner_email IS NULL
           `,
-          // El vínculo pasa a casa si ya existía; si no, se crea. Cambiar
-          // el kind de un vínculo aceptado con UPDATE es el patrón que ya
-          // usa chooseKind en membership-write, no una invención de acá.
-          // accepted_at IS NOT NULL: una fila PENDIENTE lleva siempre
-          // kind 'residente' —membership-write lo documenta como
-          // invariante, justamente para que no pueda chocar con el índice
-          // de una sola casa activa—. Sin este filtro, esto convertiría
-          // una invitación sin responder en casa, y como el índice no mira
-          // accepted_at, esa casa fantasma le ocuparía el cupo al DJ
-          // cuando quisiera elegir la suya de verdad.
+          /**
+           * ESCRIBE 'miembro', Y ANTES ESCRIBÍA 'casa'. EL CAMBIO NO ES DE
+           * NOMBRE: ES DE ALCANCE.
+           *
+           * Desde §8 fase 2, el valor que aquí era 'casa' se llama 'residente'
+           * y ya no es una etiqueta: es PERMISO PARA EDITAR el colectivo. Y hay
+           * un invariante del que depende que eso sea revisable —UN SOLO
+           * archivo escribe kind='residente', lib/residency-offers-write.ts—
+           * porque un segundo escritor es un camino para ganar permisos que
+           * nadie auditó. Una migración escribiéndolo sería exactamente ese
+           * segundo escritor.
+           *
+           * Y no hace falta: el dueño edita su colectivo PORQUE ES EL DUEÑO.
+           * rolSobreColectivo le contesta "dueno" sin mirar artist_collectives
+           * para nada. Lo único que se pierde escribiendo 'miembro' es que
+           * aparezca en el carrusel de RESIDENTES, y eso se concede aparte,
+           * a mano o con una oferta.
+           *
+           * HISTORIA DEL COMENTARIO QUE ESTABA ACÁ, porque decía algo que hoy
+           * es falso y alguien lo va a volver a leer: afirmaba que "una fila
+           * PENDIENTE lleva siempre kind 'residente'". Era verdad en la tanda
+           * 3, cuando 'residente' era el vínculo GENERAL. Desde la fase 1 de §8
+           * el vínculo general se llama 'miembro' y PENDING_KIND es 'miembro',
+           * así que la frase quedó diciendo lo contrario de lo que pasa. Es el
+           * riesgo que AGENTS.md advierte sobre esta palabra: cambió de
+           * significado tres veces.
+           *
+           * accepted_at IS NOT NULL SIGUE HACIENDO FALTA igual. Sin ese filtro
+           * esto tocaría invitaciones sin responder, y cambiarle el kind a algo
+           * que el DJ todavía no aceptó es decidir por él.
+           */
           sql`
-            UPDATE artist_collectives SET kind = 'casa'
+            UPDATE artist_collectives SET kind = 'miembro'
             WHERE artist_slug = ${p.artistSlug} AND collective_slug = ${p.colectivo}
               AND to_date IS NULL AND accepted_at IS NOT NULL
+              AND kind <> 'residente'
           `,
           sql`
             INSERT INTO artist_collectives
               (artist_slug, collective_slug, kind, from_date, accepted_at)
-            SELECT ${p.artistSlug}, ${p.colectivo}, 'casa', CURRENT_DATE, now()
+            SELECT ${p.artistSlug}, ${p.colectivo}, 'miembro', CURRENT_DATE, now()
             WHERE NOT EXISTS (
               SELECT 1 FROM artist_collectives
               WHERE artist_slug = ${p.artistSlug} AND collective_slug = ${p.colectivo}
@@ -432,16 +475,16 @@ export async function GET(request: Request) {
       problemas.push(`quedan ${despues.colectivosSinDuenio} colectivos publicados sin dueño`);
     }
     // POR DELTA Y NO POR ABSOLUTO. Contra el total, un colectivo que YA
-    // tenía dueño y casa antes de esta corrida tapaba una casa que no se
+    // tenía dueño y vínculo antes de esta corrida tapaba uno que no se
     // escribió: con 1 preexistente alcanzaba con 5 de 6 nuevas para que
     // el número diera y el log dijera "VERIFICADO" mintiendo.
-    const esperadosConCasa = plan.filter(
-      (p) => p.rol === "dueño y casa" && !p.cuentaYaExiste
+    const esperadosConVinculo = plan.filter(
+      (p) => p.rol === "dueño y miembro" && !p.cuentaYaExiste
     ).length;
-    const nuevasCasas = despues.colectivosConDuenioYCasa - antes.colectivosConDuenioYCasa;
-    if (nuevasCasas < esperadosConCasa) {
+    const nuevosVinculos = despues.colectivosConDuenioYVinculo - antes.colectivosConDuenioYVinculo;
+    if (nuevosVinculos < esperadosConVinculo) {
       problemas.push(
-        `se escribieron ${nuevasCasas} casas nuevas de dueño y se esperaban ${esperadosConCasa}`
+        `se escribieron ${nuevosVinculos} vínculos nuevos de dueño y se esperaban ${esperadosConVinculo}`
       );
     }
     if (conflictivos.length > 0) {
@@ -453,7 +496,7 @@ export async function GET(request: Request) {
     const verificado = problemas.length === 0;
     log.push(
       verificado
-        ? `VERIFICADO: 0 artistas y 0 colectivos publicados sin dueño, y cada dueño tiene su casa en el colectivo que administra.`
+        ? `VERIFICADO: 0 artistas y 0 colectivos publicados sin dueño, y cada dueño tiene su vínculo en el colectivo que administra.`
         : `NO VERIFICADO: ${problemas.length} problema(s).`
     );
     for (const p of problemas) log.push(`  - ${p}`);

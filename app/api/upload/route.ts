@@ -19,6 +19,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { canEditArtist } from "@/lib/artists-write";
 import { canEditCollective } from "@/lib/collectives-write";
+import { registrarEdicion } from "@/lib/edit-log-write";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -104,6 +105,26 @@ export async function POST(request: Request) {
     const carpeta =
       kind === "flyer" ? `collectives/${slug}/flyer` : `artists/${slug}/${kind}`;
     const url = await uploadImage(carpeta, file);
+
+    /**
+     * Solo el flyer se registra, porque es lo único que sube al perfil de un
+     * COLECTIVO — y por lo tanto lo único donde puede haber varias manos. Una
+     * foto del EPK va al perfil del artista, que edita su dueño y nadie más.
+     *
+     * No se guarda la URL, ni acá ni en el detalle: edit_log guarda nombres de
+     * campo y no valores, y una URL de blob es un valor.
+     */
+    if (kind === "flyer") {
+      await registrarEdicion({
+        collectiveSlug: slug,
+        actorEmail: email,
+        entidad: "imagen",
+        entidadId: slug,
+        accion: "crear",
+        campos: ["flyer"],
+      });
+    }
+
     return NextResponse.json({ ok: true, url }, { status: 201 });
   } catch (err) {
     console.error("[upload] put() failed", err);

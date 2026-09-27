@@ -16,20 +16,20 @@ import { LogOut } from "lucide-react";
  * que salirte cierra el vínculo con to_date y volver a entrar exige que
  * el colectivo te acepte de nuevo. No es un interruptor, es una puerta.
  *
- * Si el que dejás es tu CASA lo dice explícitamente, porque eso además
- * te deja sin casa: tu contenido propio deja de aparecer en ningún
+ * Si el que dejás es donde sos RESIDENTE lo dice explícitamente, porque eso
+ * además te deja sin residencia: tu contenido propio deja de aparecer en ningún
  * colectivo hasta que tengas otra.
  */
 export function SalirDelColectivo({
   collectiveSlug,
   collectiveName,
   artistSlug,
-  esCasa,
+  esResidente,
 }: {
   collectiveSlug: string;
   collectiveName: string;
   artistSlug: string;
-  esCasa: boolean;
+  esResidente: boolean;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
@@ -73,11 +73,11 @@ export function SalirDelColectivo({
     <div className="w-full">
       <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
         ¿Salir de <strong className="text-foreground">{collectiveName}</strong>?
-        {esCasa && (
+        {esResidente && (
           <>
             {" "}
-            <strong className="text-primary">Es tu casa</strong>, así que además vas a quedarte
-            sin casa: tus sets y tracks propios dejan de aparecer en ningún colectivo hasta que
+            <strong className="text-primary">Sos residente acá</strong>, así que además vas a
+            quedarte sin residencia: tus sets y tracks propios dejan de aparecer en ningún colectivo hasta que
             tengas otra.
           </>
         )}{" "}

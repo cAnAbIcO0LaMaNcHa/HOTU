@@ -103,7 +103,7 @@ export default async function CollectivePage({
   ]);
 
   const roster = vinculosPorColectivo.get(slug) ?? [];
-  const casa = roster.filter((m) => m.kind === "casa");
+  const residentes = roster.filter((m) => m.kind === "residente");
   const miembros = roster.filter((m) => m.kind === "miembro");
 
   // Why the join button is or is not actionable, decided here so the
@@ -192,12 +192,12 @@ export default async function CollectivePage({
         canEdit={puedeEditar}
       />
 
-      <Roster title="ARTISTAS DE LA CASA" vinculos={casa} />
+      <Roster title="RESIDENTES" vinculos={residentes} />
       <Roster title="MIEMBROS" vinculos={miembros} />
 
       {/* SETS y TRACKS (§6). Van DESPUÉS de los rosters a propósito:
           primero quién es el colectivo, después qué suena. Lo que se ve
-          acá sale de dos orígenes —la casa actual de cada autor y los
+          acá sale de dos orígenes —la residencia actual de cada autor y los
           placements congelados— y la consulta los une, así que esta
           sección no sabe ni tiene por qué saber de cuál vino cada pieza. */}
       <CollectiveContent sets={sets} tracks={tracks} collectiveName={collective.name} />
@@ -229,7 +229,12 @@ function Roster({
   if (vinculos.length === 0) return null;
   return (
     <div className="mt-12">
-      <h2 className="text-xl font-bold">{title}</h2>
+      {/* AutoTranslate acá para que RESIDENTES sea RESIDENTS en inglés. No
+          estaba, así que estos dos títulos eran lo único del bloque que no se
+          traducía — venues-list ya envolvía su "MIEMBROS" y este no. */}
+      <h2 className="text-xl font-bold">
+        <AutoTranslate text={title} />
+      </h2>
       <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
         {vinculos.map((m) => (
           <Link

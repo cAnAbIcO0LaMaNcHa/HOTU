@@ -510,10 +510,10 @@ export async function getTracksByArtist(slug: string): Promise<Track[]> {
  *
  * DOS ORÍGENES EN UNA SOLA CONSULTA:
  *
- *   VIVO   — la pieza no es fija y la casa ACTUAL de su autor es este
+ *   VIVO   — la pieza no es fija y la residencia ACTUAL de su autor es este
  *            colectivo. No hay ninguna fila guardada que diga eso: se
  *            deriva de artist_collectives cada vez. Por eso cambiar de
- *            casa migra el contenido sin mover una sola fila.
+ *            residencia migra el contenido sin mover una sola fila.
  *   FIJO   — la pieza tiene un placement acá, escrito al publicar o al
  *            aceptar una invitación, y congelado desde entonces.
  *
@@ -532,11 +532,11 @@ export async function getTracksByArtist(slug: string): Promise<Track[]> {
  * colectivo antes de que el vínculo estuviera aceptado.
  *
  * Una pieza con artist_slug NULL —su artista se borró— no entra por la
- * rama viva, porque no hay a quién preguntarle la casa. Si tenía
+ * rama viva, porque no hay a quién preguntarle la residencia. Si tenía
  * placement, sigue entrando por la fija.
  *
  * Sirve igual para un venue, y ahí la rama viva nunca matchea: un venue
- * no es la casa de nadie. Solo vería lo fijo, si alguna vez se lo invita
+ * no es la residencia de nadie. Solo vería lo fijo, si alguna vez se lo invita
  * como colaborador. Esa decisión está abierta y anotada en PROGRESO.md.
  */
 export async function getCollectiveSets(collectiveSlug: string): Promise<DjSet[]> {
@@ -547,7 +547,7 @@ export async function getCollectiveSets(collectiveSlug: string): Promise<DjSet[]
         SELECT 1 FROM artist_collectives ac
         WHERE ac.artist_slug = s.artist_slug
           AND ac.collective_slug = ${collectiveSlug}
-          AND ac.kind = 'casa'
+          AND ac.kind = 'residente'
           AND ac.to_date IS NULL
           AND ac.accepted_at IS NOT NULL
       ))
@@ -570,7 +570,7 @@ export async function getCollectiveTracks(collectiveSlug: string): Promise<Track
         SELECT 1 FROM artist_collectives ac
         WHERE ac.artist_slug = t.artist_slug
           AND ac.collective_slug = ${collectiveSlug}
-          AND ac.kind = 'casa'
+          AND ac.kind = 'residente'
           AND ac.to_date IS NULL
           AND ac.accepted_at IS NOT NULL
       ))
@@ -705,7 +705,7 @@ export type Vinculo = {
   collectiveSlug: string;
   artistSlug: string;
   artistName: string;
-  kind: "casa" | "miembro";
+  kind: "residente" | "miembro";
   fromDate: string;
 };
 
@@ -720,7 +720,7 @@ export type Vinculo = {
  * joins artists so the caller does not need a second lookup table just to
  * print names.
  *
- * Casa first, then miembros, each alphabetically — a stable order that
+ * Residentes primero, después miembros, cada grupo alfabético — a stable order that
  * does not shuffle as rows are added.
  */
 export async function getVinculos(
@@ -737,7 +737,7 @@ export async function getVinculos(
     WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
       AND c.entity_kind = ${kind}
     ORDER BY ac.collective_slug,
-             CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END,
+             CASE ac.kind WHEN 'residente' THEN 0 ELSE 1 END,
              a.name
   `;
   const byCollective = new Map<string, Vinculo[]>();
@@ -748,7 +748,7 @@ export async function getVinculos(
       collectiveSlug: slug,
       artistSlug: r.artist_slug as string,
       artistName: r.artist_name as string,
-      kind: r.kind as "casa" | "miembro",
+      kind: r.kind as "residente" | "miembro",
       fromDate: toISODate(r.from_date as string),
     });
   }
@@ -916,13 +916,13 @@ export type MyMembership = {
   id: number;
   collectiveSlug: string;
   collectiveName: string;
-  kind: "casa" | "miembro";
+  kind: "residente" | "miembro";
   fromDate: string;
   /**
    * Colectivo o venue. Acá NO se filtra por tipo, a diferencia de los
    * listados públicos: el DJ tiene que ver todos sus vínculos juntos,
    * porque son suyos. Lo que cambia es la etiqueta, y sobre todo que en
-   * un venue no se le ofrece "hacer mi casa": un venue no es la casa de
+   * un venue no se le ofrece la residencia: un venue no es la residencia de
    * nadie.
    */
   entityKind: EntityKind;
@@ -933,7 +933,7 @@ export type MyMembership = {
  *
  * Needed as its own read, not folded into the pending list: once the other
  * side accepts, the row stops being pending but the DJ may still have to
- * choose whether it is their casa — the spec puts that choice after the
+ * choose whether it is their residencia — the spec puts that choice after the
  * acceptance. Without this the choice would have nowhere to happen.
  */
 export async function getMyMemberships(email: string): Promise<MyMembership[]> {
@@ -945,13 +945,13 @@ export async function getMyMemberships(email: string): Promise<MyMembership[]> {
     JOIN collectives c ON c.slug = ac.collective_slug
     WHERE ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
       AND lower(a.owner_email) = lower(${email})
-    ORDER BY CASE ac.kind WHEN 'casa' THEN 0 ELSE 1 END, c.entity_kind, c.name
+    ORDER BY CASE ac.kind WHEN 'residente' THEN 0 ELSE 1 END, c.entity_kind, c.name
   `;
   return rows.map((r) => ({
     id: Number(r.id),
     collectiveSlug: r.collective_slug as string,
     collectiveName: r.collective_name as string,
-    kind: r.kind as "casa" | "miembro",
+    kind: r.kind as "residente" | "miembro",
     fromDate: toISODate(r.from_date as string),
     entityKind: (r.entity_kind as EntityKind) ?? "collective",
   }));
@@ -961,24 +961,24 @@ export async function getMyMemberships(email: string): Promise<MyMembership[]> {
  * The collective that is currently this account's home, if any.
  *
  * Used to name it when offering to replace it, so the warning reads "hoy
- * tu casa es X" instead of something abstract the DJ has to go look up.
+ * sos residente de X" instead of something abstract the DJ has to go look up.
  */
-export async function getMyCurrentCasa(
+export async function getMiResidenciaActual(
   email: string
 ): Promise<{ slug: string; name: string } | null> {
-  // SIN filtro por entity_kind, a propósito. Una casa solo puede estar en
+  // SIN filtro por entity_kind, a propósito. Una residencia solo puede estar
   // un colectivo, y eso lo garantiza el write path. Filtrar acá por
-  // entity_kind = 'collective' ESCONDERÍA una casa que se hubiera colado
-  // en un venue en vez de mostrarla: el DJ vería "no tenés casa" teniendo
+  // en un colectivo, y eso lo garantiza el write path. Filtrar acá por
+  // entity_kind = 'collective' ESCONDERÍA una residencia colada en un venue
   // una, y el diálogo de conflicto no se abriría nunca. Si alguna vez
-  // aparece una casa en un venue, es un bug del write path y tiene que
+  // en vez de mostrarla, y el DJ vería "no sos residente" siéndolo. Si
   // verse, no taparse desde la lectura.
   const rows = await sql`
     SELECT c.slug, c.name
     FROM artist_collectives ac
     JOIN artists a ON a.slug = ac.artist_slug
     JOIN collectives c ON c.slug = ac.collective_slug
-    WHERE ac.kind = 'casa' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
+    WHERE ac.kind = 'residente' AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL
       AND lower(a.owner_email) = lower(${email})
     LIMIT 1
   `;
@@ -1175,7 +1175,7 @@ export type InvitacionColab = {
   autorNombre: string;
   autorSlug: string | null;
   invitadaEn: string;
-  /** Adónde va a quedar fija si acepta: su casa de HOY, o null. */
+  /** Adónde va a quedar fija si acepta: su residencia de HOY, o null. */
   destino: string | null;
   /** El nombre del colectivo invitado, cuando la invitación es a uno. */
   colectivoNombre: string | null;
@@ -1199,7 +1199,7 @@ export type InvitacionColab = {
  * COLECTIVO.
  *
  * El destino se calcula AL LEER y no al invitar, a propósito: es dónde
- * va a quedar la pieza si acepta HOY, y la casa puede cambiar entre la
+ * va a quedar la pieza si acepta HOY, y la residencia puede cambiar entre la
  * invitación y la respuesta. Mostrar el de la invitación sería prometer
  * un destino viejo.
  */
@@ -1215,7 +1215,7 @@ export async function getInvitacionesColab(
            COALESCE(s.artist_slug, t.artist_slug) AS autor_slug,
            COALESCE(
              (SELECT ac.collective_slug FROM artist_collectives ac
-              WHERE ac.artist_slug = cc.artist_slug AND ac.kind = 'casa'
+              WHERE ac.artist_slug = cc.artist_slug AND ac.kind = 'residente'
                 AND ac.to_date IS NULL AND ac.accepted_at IS NOT NULL LIMIT 1),
              cc.collective_slug
            ) AS destino
@@ -1743,7 +1743,7 @@ export async function getNewsTags(): Promise<string[]> {
   // que nadie aprobó —o de una rechazada por spam— aparecía sugerida en
   // el formulario de todos los demás publicadores, que ni administran
   // ese colectivo ni pueden ver esa noticia. Una sugerencia es una
-  // recomendación de la casa: no puede salir de algo que la casa
+  // recomendación de la residencia: no puede salir de algo que ella
   // todavía no aceptó.
   const rows = await sql`
     SELECT tag, count(*)::int AS n FROM news

@@ -24,6 +24,7 @@
 import { neon } from "@neondatabase/serverless";
 import { canEditArtist } from "./artists-write";
 import { canEditCollective, type WriteResult } from "./collectives-write";
+import { registrarEdicion } from "./edit-log-write";
 import { GENRE_RULES } from "./genre-taxonomy";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -38,7 +39,7 @@ export type GenreOwner = "artist" | "collective";
  *
  * Y no alcanza con canEditCollective: un venue vive en la MISMA tabla
  * `collectives` y solo se distingue por entity_kind, que ese permiso no
- * mira. Es exactamente la forma del bug de la casa-en-venue —el índice
+ * mira. Es exactamente la forma del bug de la residencia-en-venue —el índice
  * único tampoco ve entity_kind—, así que la guarda tiene que estar acá,
  * en el camino de escritura, y no confiarse del permiso.
  *
@@ -232,6 +233,22 @@ export async function setGenres(
   ];
 
   await sql.transaction(queries);
+
+  /**
+   * Solo los géneros de un COLECTIVO se registran. Los de un artista son de su
+   * propio perfil, que solo edita su dueño: no hay varias manos, así que no hay
+   * nada que desambiguar.
+   */
+  if (owner === "collective" && email) {
+    await registrarEdicion({
+      collectiveSlug: slug,
+      actorEmail: email,
+      entidad: "genero",
+      entidadId: slug,
+      accion: "editar",
+      campos: ["branch_primario", "branches_secundarios", "tags"],
+    });
+  }
 
   return {
     ok: true,

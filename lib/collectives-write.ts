@@ -32,6 +32,7 @@ import {
   type WriteResult,
 } from "./collectives-gate";
 import { concederResidenciaAlFundador } from "./residency-offers-write";
+import { registrarEdicion } from "./edit-log-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -235,6 +236,30 @@ export async function updateCollectiveInfo(
     return { ok: false, status: 400, error: "No mandaste ningún campo para cambiar" };
   }
 
+  /**
+   * EL REGISTRO VA DESPUÉS DE ESCRIBIR Y NO DENTRO DE UNA TRANSACCIÓN, al
+   * revés de lo que hace reasignarDueno. La razón es la asimetría entre las dos
+   * cosas: un traspaso sin registro es irreversible, así que más vale abortarlo;
+   * una edición sin registro es un texto que se ve en la página y se puede
+   * volver a hacer. Bloquear la edición de una bio porque la tabla de auditoría
+   * está caída es peor que perder una línea de log. Está escrito entero en
+   * lib/edit-log-write.ts.
+   *
+   * Y NO se await-ea el rol para decidir nada: registrarEdicion lo resuelve
+   * sola con la misma función que usó la puerta. Si el llamador pudiera decir
+   * quién es, el registro diría lo que quiso y no lo que era cierto.
+   */
+  if (email) {
+    await registrarEdicion({
+      collectiveSlug: slug,
+      actorEmail: email,
+      entidad: "collective",
+      entidadId: slug,
+      accion: "editar",
+      campos: updated,
+    });
+  }
+
   return { ok: true, value: { updated } };
 }
 
@@ -244,9 +269,9 @@ export async function updateCollectiveInfo(
  * One per account. The creator becomes owner_email and joins as a member
  * straight away — a collective with nobody in it is not a collective.
  *
- * §4.1 says the new collective is the founder's casa, and it is, UNLESS
+ * §4.1 dice que el colectivo nuevo es la residencia del fundador, y lo es, SALVO
  * they already have one somewhere else. In that case the link opens as
- * miembro and the caller is handed the usual casa conflict, so the DJ
+ * que ya tenga una: entonces entra como miembro y le queda una OFERTA, así que
  * decides explicitly what happens to their old home. Moving it silently
  * here would be the exact thing the membership rules forbid, and founding
  * a collective is no more of an excuse than any other route.
@@ -262,8 +287,8 @@ export async function createCollective(
    * cuenta, con el fundador como dueño y primer miembro (§4.1 y §5).
    *
    * Lo único que cambia es el tipo y, con él, el vínculo: en un colectivo
-   * el fundador entra como casa si no tiene otra; en un VENUE entra
-   * siempre como miembro, porque un venue no es la casa de nadie.
+   * el fundador entra como residente si no tiene otra; en un VENUE entra
+   * siempre como miembro, porque un venue no tiene residentes.
    */
   entityKind: EntityKind = "collective",
   /** El género, obligatorio para un colectivo e ignorado para un venue. */
@@ -284,6 +309,12 @@ export async function createCollective(
      * de crear un colectivo.
      */
     residenciaTomada: { slug: string; name: string } | null;
+    /**
+     * La oferta de residencia que quedó ESPERANDO por ese motivo. El colectivo
+     * se creó y el fundador es su dueño; lo que falta es que decida si mueve su
+     * residencia acá. La UI la usa para decirlo en vez de dejarlo en silencio.
+     */
+    ofertaPendiente: { id: number | null; actual: { slug: string; name: string } } | null;
   }>
 > {
   if (typeof name !== "string" || name.trim() === "") {
@@ -415,10 +446,25 @@ export async function createCollective(
     VALUES (${artist.slug}, ${slug}, 'miembro', CURRENT_DATE, now(), 'artist')
   `;
 
+  /**
+   * SE LLAMA SIEMPRE, incluso cuando el fundador ya tiene residencia en otro
+   * lado. Antes se salteaba en ese caso y el fundador quedaba de miembro de su
+   * propio colectivo sin que nada se lo dijera — un silencio donde tenía que
+   * haber una decisión. Ahora concederResidenciaAlFundador decide: concede si
+   * puede, y si no, deja una OFERTA ABIERTA que el fundador ve en su bandeja y
+   * acepta renunciando a la anterior, o ignora.
+   *
+   * Crear el colectivo no falla nunca por esto, y la residencia anterior no se
+   * mueve sola.
+   */
   let kind: MembershipKind = "miembro";
-  if (entityKind !== "venue" && !residencia) {
-    const concedida = await concederResidenciaAlFundador(slug, artist.slug as string, email!);
-    if (concedida.ok && concedida.value.concedida) kind = "residente";
+  let ofertaPendiente: { id: number | null; actual: { slug: string; name: string } } | null = null;
+  if (entityKind !== "venue") {
+    const concesion = await concederResidenciaAlFundador(slug, artist.slug as string, email!);
+    if (concesion.ok) {
+      if (concesion.value.concedida) kind = "residente";
+      ofertaPendiente = concesion.value.ofertaPendiente;
+    }
   }
 
   return {
@@ -429,6 +475,7 @@ export async function createCollective(
       residenciaTomada: residencia
         ? { slug: residencia.collective_slug as string, name: residencia.name as string }
         : null,
+      ofertaPendiente,
     },
   };
 }

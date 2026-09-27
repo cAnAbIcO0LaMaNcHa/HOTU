@@ -7,10 +7,10 @@ import { formatShortDate } from "@/lib/date-utils";
 /**
  * SETS y TRACKS en el perfil de un colectivo (§6).
  *
- * De dónde sale cada pieza —de la casa actual de su autor, o de un
+ * De dónde sale cada pieza —de la residencia actual de su autor, o de un
  * placement congelado— lo resuelve la consulta. Acá no se distingue, y
  * es a propósito: para quien mira, es el contenido del colectivo. Que
- * una pieza esté ahí porque su autor tiene la casa acá hoy, o porque se
+ * una pieza esté ahí porque su autor es residente acá hoy, o porque se
  * publicó acá con colaboradores hace un año, no le cambia nada.
  *
  * Solo lectura. El colectivo no edita el contenido de sus artistas: lo

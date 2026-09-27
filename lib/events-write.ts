@@ -18,6 +18,7 @@
 import { neon } from "@neondatabase/serverless";
 import { isOwnBlobUrl } from "./blob";
 import { canEditCollective, type WriteResult } from "./collectives-write";
+import { registrarEdicion } from "./edit-log-write";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -212,6 +213,14 @@ export async function createCommunityEvent(
     RETURNING id
   `;
 
+  await registrarEdicion({
+    collectiveSlug: organizerSlug,
+    actorEmail: email,
+    entidad: "event",
+    entidadId: String(fila.id),
+    accion: "crear",
+  });
+
   return { ok: true, value: { id: Number(fila.id), slugOrganizador: organizerSlug } };
 }
 
@@ -354,6 +363,15 @@ export async function updateCommunityEvent(
       end_at = ${endAt}, flyer_url = ${flyerUrl}
     WHERE id = ${id}
   `;
+
+  await registrarEdicion({
+    collectiveSlug: propio.organizador,
+    actorEmail: email!,
+    entidad: "event",
+    entidadId: String(id),
+    accion: "editar",
+    campos: ["title", "event_date", "venue", "city", "lineup", "end_at", "flyer_url"],
+  });
   return { ok: true, value: { id } };
 }
 
@@ -396,5 +414,13 @@ export async function deleteCommunityEvent(
   }
 
   await sql`DELETE FROM events WHERE id = ${id}`;
+
+  await registrarEdicion({
+    collectiveSlug: propio.organizador,
+    actorEmail: email!,
+    entidad: "event",
+    entidadId: String(id),
+    accion: "borrar",
+  });
   return { ok: true, value: { borrado: true } };
 }

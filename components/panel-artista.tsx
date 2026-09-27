@@ -5,13 +5,14 @@ import { MembershipInbox } from "@/components/membership-inbox";
 import { ColabInbox } from "@/components/colab-inbox";
 import { CrearArtista } from "@/components/crear-artista";
 import { PanelVacio } from "@/components/panel-switcher";
+import { ofertasAbiertasDeArtista } from "@/lib/residency-offers-write";
 import {
   getArtistBySlug,
   getGenreBranches,
   getGenreTags,
   getInvitacionesColab,
   getMyArtistSlug,
-  getMyCurrentCasa,
+  getMiResidenciaActual,
   getMyMemberships,
   getPendingForArtist,
 } from "@/lib/db";
@@ -59,13 +60,17 @@ export async function PanelArtista({ email }: { email: string }) {
 
   // Con el email propio: un perfil recién creado está en borrador, y sin
   // esto el dueño no vería su propio press kit en su propio perfil.
-  const [myArtist, pending, currentCasa, memberships, invitaciones] = await Promise.all([
-    getArtistBySlug(myArtistSlug, email),
-    getPendingForArtist(email),
-    getMyCurrentCasa(email),
-    getMyMemberships(email),
-    getInvitacionesColab(email, "artist"),
-  ]);
+  const [myArtist, pending, residenciaActual, memberships, invitaciones, ofertas] =
+    await Promise.all([
+      getArtistBySlug(myArtistSlug, email),
+      getPendingForArtist(email),
+      getMiResidenciaActual(email),
+      getMyMemberships(email),
+      getInvitacionesColab(email, "artist"),
+      // Las ofertas de residencia sin responder: es lo único de esta bandeja
+      // que otorga un permiso, así que no puede faltar.
+      ofertasAbiertasDeArtista(myArtistSlug),
+    ]);
 
   return (
     <>
@@ -127,7 +132,12 @@ export async function PanelArtista({ email }: { email: string }) {
           arriba de todo lo demás del panel. */}
       <ColabInbox invitaciones={invitaciones} />
 
-      <MembershipInbox pending={pending} memberships={memberships} currentCasa={currentCasa} />
+      <MembershipInbox
+        pending={pending}
+        memberships={memberships}
+        residenciaActual={residenciaActual}
+        ofertas={ofertas}
+      />
     </>
   );
 }

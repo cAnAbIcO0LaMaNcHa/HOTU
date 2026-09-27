@@ -37,15 +37,15 @@ export function EpkSets({
   canEdit,
   artistSlug,
   candidatos,
-  sinCasa,
+  sinResidencia,
 }: {
   sets: DjSet[];
   canEdit: boolean;
   artistSlug: string;
   /** A quién se puede invitar a colaborar (§6.1). */
   candidatos: CandidatoColab[];
-  /** Si el autor no tiene casa hoy: cambia lo que dice el aviso. */
-  sinCasa: boolean;
+  /** Si el autor no es residente de nada hoy: cambia lo que dice el aviso. */
+  sinResidencia: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? sets : sets.slice(0, VISIBLE);
@@ -62,7 +62,7 @@ export function EpkSets({
             artistSlug={artistSlug}
             collection="sets"
             candidatos={candidatos}
-            sinCasa={sinCasa}
+            sinResidencia={sinResidencia}
           />
         ) : null
       }

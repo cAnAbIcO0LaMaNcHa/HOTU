@@ -18,8 +18,8 @@ import { Field } from "./epk-editable-section";
  * INVITAR A ALGUIEN CONGELA LA PIEZA, PARA SIEMPRE
  * ============================================================
  *
- * Sin colaboradores, la pieza vive en la casa ACTUAL de su autor y se
- * muda con él cada vez que cambie de casa. Con aunque sea un
+ * Sin colaboradores, la pieza vive en la residencia ACTUAL de su autor y se
+ * muda con él cada vez que cambie de residencia. Con aunque sea un
  * colaborador, queda FIJA donde se publicó y no se mueve nunca más.
  *
  * Eso no se puede deshacer sacando al colaborador después, así que el
@@ -33,13 +33,13 @@ export function EpkNewRow({
   collection,
   /** Artistas y colectivos publicados, para elegir a quién invitar. */
   candidatos,
-  /** Si el autor NO tiene casa hoy. Cambia lo que dice el aviso. */
-  sinCasa,
+  /** Si el autor NO es residente de nada hoy. Cambia lo que dice el aviso. */
+  sinResidencia,
 }: {
   artistSlug: string;
   collection: "sets" | "tracks";
   candidatos: Candidato[];
-  sinCasa: boolean;
+  sinResidencia: boolean;
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -235,21 +235,21 @@ export function EpkNewRow({
             quede fija no se deshace sacando al colaborador más tarde. */}
         {invitados.length > 0 && (
           <p className="mt-3 border border-dashed border-primary/50 px-3 py-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
-            {sinCasa ? (
+            {sinResidencia ? (
               <>
                 <strong className="text-primary">
                   Esta pieza NO va a aparecer en ningún colectivo, ni ahora ni cuando entres a
                   uno.
                 </strong>{" "}
-                Todavía no tenés una casa, y las piezas con colaboradores quedan fijas donde se
-                publican: no se mueven después. Si querés que aparezca en tu casa, entrá a un
+                Todavía no sos residente de ningún colectivo, y las piezas con colaboradores quedan fijas donde se
+                publican: no se mueven después. Si querés que aparezca en tu colectivo, entrá a uno
                 colectivo primero y publicala después.
               </>
             ) : (
               <>
                 Al invitar a alguien, esta pieza queda <strong className="text-primary">fija</strong>{" "}
-                donde se publica: va a tu casa de hoy y a la de cada quien acepte, y no se muda
-                aunque después cambies de casa. Sin colaboradores, en cambio, se mudaría con vos.
+                donde se publica: va a tu colectivo de hoy y al de cada quien acepte, y no se muda
+                aunque después cambies de residencia. Sin colaboradores, en cambio, se mudaría con vos.
               </>
             )}
           </p>
@@ -258,7 +258,7 @@ export function EpkNewRow({
         {invitados.length > 0 && (
           <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
             Cada persona tiene que aceptar la invitación. Hasta que acepte, la pieza no aparece en
-            su casa.
+            su colectivo.
           </p>
         )}
       </div>

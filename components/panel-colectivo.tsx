@@ -86,7 +86,7 @@ export async function PanelColectivo({
         explicacion={
           esVenue
             ? "Un venue tiene su página, sus miembros, sus eventos y sus métricas. Pero primero necesitás un perfil de DJ: los venues se registran desde una cuenta de artista."
-            : "Un colectivo tiene su página, sus artistas, el contenido de su casa y sus métricas. Pero primero necesitás un perfil de DJ: los colectivos se fundan desde una cuenta de artista."
+            : "Un colectivo tiene su página, sus artistas, el contenido de su residencia y sus métricas. Pero primero necesitás un perfil de DJ: los colectivos se fundan desde una cuenta de artista."
         }
       >
         <Link
@@ -191,7 +191,7 @@ export async function PanelColectivo({
           explicacion={
             esVenue
               ? "Si tenés un lugar donde suena música, registralo: va a tener su página, sus miembros, sus eventos y sus métricas. Uno por cuenta."
-              : "Un colectivo es tu crew: su página, sus artistas, el contenido de quienes lo tienen como casa, y sus métricas. Podés fundar uno —uno por cuenta— o pedir entrar a uno que ya exista desde su página."
+              : "Un colectivo es tu crew: su página, sus artistas, el contenido de quienes son residentes, y sus métricas. Podés fundar uno —uno por cuenta— o pedir entrar a uno que ya exista desde su página."
           }
         >
           <Link
@@ -335,7 +335,7 @@ export async function PanelColectivo({
                     {m.collectiveName}
                   </Link>
                   <div className="mt-1 font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {m.kind === "casa" ? "MI CASA" : "MIEMBRO"}
+                    {m.kind === "residente" ? "SOY RESIDENTE" : "MIEMBRO"}
                   </div>
                 </div>
                 {/* Solo hay algo de lo que salirse si hay artista: las
@@ -345,7 +345,7 @@ export async function PanelColectivo({
                     collectiveSlug={m.collectiveSlug}
                     collectiveName={m.collectiveName}
                     artistSlug={myArtistSlug}
-                    esCasa={m.kind === "casa"}
+                    esResidente={m.kind === "residente"}
                   />
                 )}
               </div>

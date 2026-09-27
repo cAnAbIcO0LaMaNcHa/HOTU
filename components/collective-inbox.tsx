@@ -114,8 +114,8 @@ export function CollectiveInbox({
                 </Link>
                 <p className="mt-1 font-mono text-[10px] text-muted-foreground">
                   {esVenue
-                    ? "Quiere sumarse. Si aceptás, entra como miembro: un venue no es la casa de nadie."
-                    : "Quiere sumarse. Si aceptás, elige después si sos su casa o entra como miembro."}
+                    ? "Quiere sumarse. Si aceptás, entra como miembro: un venue no tiene residentes."
+                    : "Quiere sumarse. Si aceptás, entra como miembro. La residencia se ofrece aparte."}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
@@ -183,7 +183,7 @@ export function CollectiveInbox({
                 key={`${d.artistSlug}-${d.toDate}`}
                 className="font-mono text-[11px] text-muted-foreground"
               >
-                {d.artistName} · {d.kind === "casa" ? "era su casa" : "era miembro"} ·{" "}
+                {d.artistName} · {d.kind === "residente" ? "era residente" : "era miembro"} ·{" "}
                 {d.toDate.slice(0, 10)}
               </li>
             ))}

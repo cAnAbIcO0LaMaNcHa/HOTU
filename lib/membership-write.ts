@@ -7,7 +7,7 @@
  *
  *   1. the DJ applies, OR the collective invites        -> pendiente
  *   2. the other side accepts or rejects
- *   3. THE DJ chooses whether the link is casa or miembro
+ *   3. la residencia se OFRECE aparte: el dueño ofrece y el DJ acepta
  *   4. confirmed. Only now does the membership count.
  *
  * States are read off timestamps, not a status column:
@@ -41,7 +41,7 @@ export type RequestedBy = "artist" | "collective";
  * The DJ picks the kind at step 3, on acceptance — before that there is no
  * answer to store. 'miembro' is the safe placeholder precisely because
  * it is the non-exclusive one: a pending row can never collide with the
- * one-active-casa index, so an invitation cannot be blocked by a home the
+ * one-active-residente index, so an invitation cannot be blocked by a residency the
  * DJ has somewhere else.
  */
 const PENDING_KIND: MembershipKind = "miembro";

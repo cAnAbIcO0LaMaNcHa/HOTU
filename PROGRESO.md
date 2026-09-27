@@ -187,6 +187,40 @@ queda MEDIDO, no supuesto.
 Recién después: la migración que la borra. Otro día, cuando esto lleve
 tiempo andando sin sorpresas.
 
+### El CASCADE se lleva la historia: `profile_ownership` y `residency_offers`
+
+Las dos tablas registran QUIÉN DECIDIÓ QUÉ, y las dos van
+`ON DELETE CASCADE` hacia `artists` y `collectives`. Así que borrar un perfil
+no borra solo el perfil: **borra el registro de las decisiones que se tomaron
+sobre él.**
+
+    profile_ownership   quién cedió o traspasó el perfil, a quién y por qué
+    residency_offers    quién concedió cada residencia, o sea quién le dio a
+                        quién permiso para editar un colectivo
+
+Lo segundo es lo que más duele, y conviene decir por qué con el caso concreto
+que lo hizo aparecer: `setup-cierre-residentes` se negó a convertir filas
+`'casa'` precisamente porque no podía probar que el dueño las hubiera
+invitado. La diferencia entre "el dueño lo invitó" y "el DJ se lo eligió" es
+la que decide si alguien puede editar un perfil ajeno. Si el CASCADE se lleva
+esas filas, esa pregunta deja de tener respuesta para siempre — y lo hace en
+silencio, porque un CASCADE no deja rastro de lo que borró.
+
+**No se arregla cambiando el FK.** `SET NULL` no sirve: las dos columnas son
+`NOT NULL` y tendrían que dejar de serlo, y una fila que no dice de qué perfil
+habla no registra nada. `RESTRICT` tampoco: impediría borrar un perfil por
+tener historia, que es justo lo que todo perfil viejo tiene.
+
+**Mismo criterio que ya rige el resto:** quien construya el borrado de
+perfiles COPIA las filas históricas antes, a una tabla sin FK —como
+`account_removals` y `edit_log`, que no los tienen a propósito— y recién
+después borra. Es la misma forma que `account_removals` usa para sobrevivir a
+la cuenta que registra.
+
+Va acá y no en el código porque hoy **no hay** un borrado de perfiles: lo que
+existe es censurar y desamparar, que no borran nada. El día que se escriba, el
+que lo escriba tiene que leer esto antes.
+
 ### Cuánto tiempo se guardan las filas de `mail_outbox`
 
 **Hay que decidirlo ANTES de que haya proveedor, no después.** La tabla

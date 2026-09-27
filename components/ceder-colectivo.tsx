@@ -8,7 +8,7 @@ type Candidato = {
   email: string;
   artistSlug: string;
   artistName: string;
-  kind: "casa" | "miembro";
+  kind: "residente" | "miembro";
   yaAdministra: number;
 };
 
@@ -160,7 +160,7 @@ export function CederColectivo({
               <option value="">— elegí a alguien —</option>
               {candidatos.map((c) => (
                 <option key={c.email} value={c.email}>
-                  {c.artistName} — {c.kind === "casa" ? "de la casa" : "miembro"}
+                  {c.artistName} — {c.kind === "residente" ? "residente" : "miembro"}
                   {/* Que ya administre otro NO lo impide: el límite de uno
                       por cuenta es para fundar, no para recibir. Pero se
                       dice, porque es información para decidir. */}

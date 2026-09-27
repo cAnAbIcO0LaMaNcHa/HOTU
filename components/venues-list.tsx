@@ -13,7 +13,7 @@ import { EmptyResult } from "@/components/listing-empty";
  * Muy parecidas a las de /colectivos, y no compartidas con ellas a
  * propósito: un venue muestra dirección y aforo, que un colectivo no
  * tiene, y la etiqueta de sus miembros es "MIEMBROS" y no "ARTISTAS DE
- * LA MARCA" porque en un venue nadie tiene su casa. Unificarlas sería
+ * LA MARCA" porque en un venue nadie es residente. Unificarlas sería
  * meter condicionales en el render para ahorrar un archivo.
  */
 export function VenuesList({

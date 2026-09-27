@@ -3,21 +3,21 @@
  *
  * TENER COLABORADORES ES LO QUE MARCA LA PIEZA COMO FIJA. Una pieza fija
  * no migra nunca: se queda donde se publicó, aunque su autor cambie de
- * casa cinco veces. Una pieza sin colaboradores no tiene ni una fila en
- * content_placements y vive en la casa ACTUAL de su autor, derivada cada
+ * residencia cinco veces. Una pieza sin colaboradores no tiene ni una fila en
+ * content_placements y vive en la residencia ACTUAL de su autor, derivada cada
  * vez que alguien mira.
  *
  * EL COLABORADOR TIENE QUE ACEPTAR. Sin eso, publicar un track diciendo
- * que lo hiciste con alguien lo pondría en el perfil de la casa de esa
+ * que lo hiciste con alguien lo pondría en el perfil de la residencia de esa
  * persona sin que opine. Es la misma forma del problema que ya resolvió
  * membresías —"un colectivo no puede listar a un DJ que nunca dijo que
  * sí"— y la misma solución. Hasta que acepte, la pieza se ve solo en la
- * casa del autor.
+ * residencia del autor.
  *
  * CADA DESTINO SE CONGELA CUANDO ESA PARTE ENTRA, no todos al publicar:
  * el del autor al publicar, el de cada colaborador al aceptar, con la
- * casa que tenga EN ESE MOMENTO. Es lo honesto: consentiste estando en
- * esa casa. Y evita tener que inventar qué pasa si alguien acepta seis
+ * residencia que tenga EN ESE MOMENTO. Es lo honesto: consentiste estando en
+ * esa residencia. Y evita tener que inventar qué pasa si alguien acepta seis
  * meses después de que lo invitaron.
  *
  * Node-only. Nunca importar desde un client component.
@@ -40,33 +40,33 @@ export type ColaboradorOk = { artistSlug: string | null; collectiveSlug: string 
 export const MAX_COLABORADORES = 10;
 
 /**
- * La casa ACTIVA de un artista, o null.
+ * La RESIDENCIA ACTIVA de un artista, o null.
  *
- * Es lo que se congela como destino. Un artista sin casa devuelve null y
+ * Es lo que se congela como destino. Un artista sin residencia devuelve null y
  * eso NO es un error: se puede publicar igual. Lo que no se puede es
  * arreglarlo después, y por eso la UI tiene que avisarlo antes (ver
- * `avisoSinCasa`).
+ * `AVISO_SIN_RESIDENCIA`).
  */
-export async function casaActual(artistSlug: string): Promise<string | null> {
+export async function residenciaActual(artistSlug: string): Promise<string | null> {
   const filas = await sql`
     SELECT collective_slug FROM artist_collectives
     WHERE artist_slug = ${artistSlug}
-      AND kind = 'casa' AND to_date IS NULL AND accepted_at IS NOT NULL
+      AND kind = 'residente' AND to_date IS NULL AND accepted_at IS NOT NULL
     LIMIT 1
   `;
   return (filas[0]?.collective_slug as string | undefined) ?? null;
 }
 
 /**
- * El aviso que la UI muestra al publicar una colaboración sin tener casa.
+ * El aviso que la UI muestra al publicar una colaboración sin tener residencia.
  *
- * Dice la consecuencia COMPLETA, no la mitad. "Todavía no tenés casa" no
+ * Dice la consecuencia COMPLETA, no la mitad. "No sos residente de nada" no
  * alcanza: quien lo lee asume que la pieza va a entrar sola cuando entre
  * a un colectivo, y no va a entrar nunca, porque una pieza con
  * colaboradores es fija y lo fijo no migra.
  */
-export const AVISO_SIN_CASA =
-  "Todavía no tenés una casa, así que esta pieza NO va a aparecer en ningún colectivo — " +
+export const AVISO_SIN_RESIDENCIA =
+  "Todavía no sos residente de ningún colectivo, así que esta pieza NO va a aparecer en ninguno — " +
   "ni ahora, ni cuando entres a uno. Las piezas con colaboradores quedan fijas donde se " +
   "publican, y no se mueven después.";
 
@@ -83,8 +83,8 @@ export const AVISO_SIN_CASA =
  * 2. UN VENUE NO ES COLABORADOR. §6.1 dice "artistas o colectivos", y un
  *    venue vive en la MISMA tabla que los colectivos distinguiéndose
  *    solo por entity_kind, que ningún FK ve. Es exactamente la forma del
- *    bug de la casa-en-venue. Y es la misma decisión de fondo que ya
- *    tomamos dos veces: un venue no es la casa de nadie, y el género lo
+ *    bug de la residencia-en-venue. Y es la misma decisión de fondo que ya
+ *    tomamos dos veces: un venue no tiene residentes, y el género lo
  *    tiene la fiesta y no el lugar. La música no es de un lugar.
  * 3. NO SE PUEDE INVITAR A ALGO QUE NO EXISTE O NO ESTÁ PUBLICADO. El FK
  *    atajaría lo inexistente, pero "no existe ese artista" se entiende y
@@ -118,7 +118,7 @@ export async function validarColaboradores(
       return {
         ok: false,
         status: 400,
-        error: "No hace falta que te invites: la pieza ya es tuya y va a tu casa sola",
+        error: "No hace falta que te invites: la pieza ya es tuya y va a tu residencia sola",
       };
     }
     const clave = a ? `a:${a}` : `c:${k}`;
@@ -185,7 +185,7 @@ export function sentenciasDeColaboracion(
   tabla: "set" | "track",
   piezaSlug: string,
   colaboradores: ColaboradorOk[],
-  casaDelAutor: string | null
+  residenciaDelAutor: string | null
 ) {
   const col = tabla === "set" ? "set_slug" : "track_slug";
   const queries = [
@@ -194,14 +194,14 @@ export function sentenciasDeColaboracion(
     ]),
   ];
 
-  // El destino del autor, congelado ahora con la casa que tiene hoy.
-  // Sin casa no hay fila, y como la pieza es fija no la va a haber nunca.
-  if (casaDelAutor) {
+  // El destino del autor, congelado ahora con la residencia que tiene hoy.
+  // Sin residencia no hay fila, y como la pieza es fija no la va a haber nunca.
+  if (residenciaDelAutor) {
     queries.push(
       sql(
         `INSERT INTO content_placements (${col}, collective_slug) VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
-        [piezaSlug, casaDelAutor]
+        [piezaSlug, residenciaDelAutor]
       )
     );
   }
@@ -223,7 +223,7 @@ export function sentenciasDeColaboracion(
  * Acepta una invitación y congela el destino de quien acepta.
  *
  * El INSERT del placement lleva ON CONFLICT DO NOTHING, y no es
- * decorativo: si quien acepta comparte casa con el autor, esa fila ya
+ * decorativo: si quien acepta comparte residencia con el autor, esa fila ya
  * existe desde que se publicó, y el índice único la rechazaría. Sin el
  * ON CONFLICT la aceptación devolvería 500 DESPUÉS de que la persona ya
  * dijo que sí, que es la peor forma de fallar.
@@ -244,10 +244,10 @@ export async function aceptarColaboracion(
     return { ok: true, value: { aceptada: true, colectivo: null } };
   }
 
-  // A dónde va: si el invitado es un artista, su casa de HOY. Si es un
+  // A dónde va: si el invitado es un artista, su residencia de HOY. Si es un
   // colectivo, el colectivo mismo.
   const destino = fila.artist_slug
-    ? await casaActual(fila.artist_slug as string)
+    ? await residenciaActual(fila.artist_slug as string)
     : (fila.collective_slug as string);
 
   const col = fila.set_slug ? "set_slug" : "track_slug";

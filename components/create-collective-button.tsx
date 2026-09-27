@@ -17,9 +17,9 @@ import {
  * Only rendered for a DJ who does not already own one — one per account,
  * and the page decides that, so this component never has to.
  *
- * If the founder already has a casa somewhere, the new collective opens as
+ * Si el fundador ya es residente de otro colectivo, el nuevo se abre con él
  * a pertenencia and says so plainly instead of moving their home behind
- * their back. Changing it is then the ordinary casa conversation, with its
+ * de miembro y le queda una OFERTA de residencia esperando: nada se mueve a
  * three explicit options, in the panel right above.
  */
 export function CreateCollectiveButton({
@@ -91,11 +91,27 @@ export function CreateCollectiveButton({
       }
       if (esVenue) {
         setNote(
-          "Venue creado. Entraste como miembro, que es el único vínculo que un venue tiene: tu casa sigue siendo tu colectivo."
+          "Venue creado. Entraste como miembro, que es el único vínculo que un venue tiene: tu residencia sigue donde está."
+        );
+      } else if (data.ofertaPendiente) {
+        /**
+         * EL CASO QUE ANTES ERA UN SILENCIO. El fundador ya era residente en
+         * otro colectivo, así que este se creó con él de miembro — y hasta la
+         * fase 2 eso no se decía en ninguna parte: quedaba fuera del carrusel
+         * de RESIDENTES de su propio colectivo sin saber por qué.
+         *
+         * Ahora hay una oferta esperándolo y el aviso dice dónde está y que
+         * nada se movió. El nombre del colectivo anterior va incluido porque
+         * "ya tenés una residencia" obliga a ir a buscar cuál.
+         */
+        setNote(
+          `Creado, y sos su dueño. Como sos residente de ${data.ofertaPendiente.actual.name}, ` +
+            "acá entraste como miembro y te dejamos una oferta de residencia en tu perfil: " +
+            "aceptala cuando quieras y te va a preguntar qué hacer con la anterior. Nada se movió."
         );
       } else if (data.kind === "miembro") {
         setNote(
-          "Creado. Como ya tenés casa en otro colectivo, entraste a este como miembro. Si querés que sea tu casa, cambialo desde COLECTIVOS, acá arriba."
+          "Creado. Entraste como miembro. La residencia se ofrece aparte desde el panel del colectivo."
         );
       }
       setOpen(false);

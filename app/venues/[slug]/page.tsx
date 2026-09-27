@@ -35,7 +35,7 @@ export async function generateMetadata({
  * El press kit de un venue (§5).
  *
  * Es el del colectivo más dirección y aforo, y con una diferencia que no
- * es cosmética: un venue tiene MIEMBROS y no tiene casa. Por eso hay un
+ * es cosmética: un venue tiene MIEMBROS y no tiene residentes. Por eso hay un
  * solo carrusel y no dos. Un DJ toca acá, no vive acá.
  *
  * getVenueBySlug filtra por tipo, así que /venues/<slug-de-colectivo> da
@@ -127,7 +127,7 @@ export default async function VenuePage({
       <VenueContactButton venueName={venue.name} />
 
       {/* Un solo carrusel: MIEMBROS. Un venue no tiene artistas de la
-          casa, porque no es la casa de nadie. */}
+          residentes, porque nadie es residente de un venue. */}
       {roster.length > 0 && (
         <div className="mt-12">
           <h2 className="text-xl font-bold">MIEMBROS</h2>

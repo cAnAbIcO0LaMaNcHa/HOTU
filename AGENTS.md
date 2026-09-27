@@ -75,20 +75,50 @@ Tablas creadas en la tanda 1
 
 (artist_collectives ya tiene datos desde la migración de tanda 2. Las otras tres siguen en 0 filas en producción hasta que arranque tanda 3.)
 
-artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('casa' | 'miembro'), from_date, to_date, accepted_at, created_at.
+artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('residente' | 'miembro'), from_date, to_date, accepted_at, rejected_at, canceled_at, requested_by, created_at.
   ES LA FUENTE DE VERDAD DE LAS MEMBRESÍAS desde tanda 2. Nadie lee collectives.artist_slugs.
-  VOCABULARIO NUEVO desde tanda 3, pieza 2. Los valores viejos ya no existen:
-    casa      — el colectivo principal del DJ, "mi casa". UNO SOLO.
-    miembro   — el vínculo general. Varios a la vez. NO edita nada.
-  HISTORIA DE LOS NOMBRES, y hay que leerla entera antes de tocar esto. Tanda 3: 'residente'→'casa' y 'toca_con'→'residente'. FASE 1 del renombre de §8: 'residente'→'miembro', corrida por /api/setup-miembros. FASE 2, PENDIENTE: 'casa'→'residente'.
+  VOCABULARIO DESDE §8 FASE 2:
+    residente — el colectivo principal del DJ. UNO SOLO, y solo un colectivo, nunca un venue.
+                NO ES UNA ETIQUETA: ES PERMISO PARA EDITAR EL COLECTIVO.
+    miembro   — el vínculo general. Varios a la vez, colectivos o venues. NO edita nada.
 
-  O sea que la palabra "residente" ya cambió de significado dos veces y va a cambiar una tercera. Al leer código o comentarios viejos, fijate de qué tanda son. Hoy, después de la fase 1: 'casa' es el núcleo y 'miembro' el vínculo general. Cuando corra la fase 2, el núcleo se va a llamar 'residente'.
+  HISTORIA DE LOS NOMBRES, Y HAY QUE LEERLA ENTERA. Esta palabra cambió de significado TRES veces:
+    tanda 3          'residente' = el núcleo    ('toca_con' = el vínculo general)
+    tanda 3 pieza 2  'casa'      = el núcleo    ('residente' = el vínculo general)
+    §8 fase 1        'casa'      = el núcleo    ('miembro'   = el vínculo general)
+    §8 fase 2        'residente' = el núcleo    ('miembro'   = el vínculo general)
+
+  O sea que "residente" significó el núcleo, después el vínculo general, y ahora otra vez el núcleo — pero esta vez con permisos que antes no tenía. Antes de creerle a un comentario, fijate de qué tanda es. La fase 1 la corrió /api/setup-miembros, la fase 2 /api/setup-residentes, y /api/setup-cierre-residentes retiró 'casa' del CHECK.
   to_date IS NULL = vínculo activo. El histórico es inmutable: se cierra con to_date, no se borra.
-  CHECK artist_collectives_kind_valores_check: kind IN ('casa','miembro'). El nombre NO menciona ningún valor a propósito: la fase 2 vuelve a hacer swap sobre el mismo. El viejo artist_collectives_kind_casa_check fue eliminado por setup-miembros, y setup-membership-kinds quedó NEUTRALIZADA para que al re-correrla no lo reinstale — su rama de "ya migrado" dropeaba la guarda nueva y su ADD fallaba, dejando la tabla sin ningún CHECK.
-  Índice único parcial artist_collectives_one_active_casa_idx: una sola 'casa' activa por artista.
+  CHECK artist_collectives_kind_valores_check: kind IN ('miembro','residente'). El nombre NO menciona ningún valor a propósito, porque cada fase hace swap sobre el mismo. setup-membership-kinds quedó NEUTRALIZADA para que al re-correrla no reinstale la guarda vieja — su rama de "ya migrado" dropeaba la nueva y su ADD fallaba, dejando la tabla sin ningún CHECK.
+  Índice único parcial artist_collectives_one_active_residente_idx: una sola 'residente' activa por artista. NO MIRA accepted_at, y eso decidió el diseño de las ofertas: una fila pendiente con kind='residente' le ocuparía el cupo al DJ antes de que acepte. Por eso PENDING_KIND es 'miembro' y por eso la oferta vive en residency_offers y no acá.
   Índice único parcial artist_collectives_active_link_idx: no se repite el mismo vínculo activo (artist_slug, collective_slug, kind).
-  Se lee con getCollectiveMembers() en lib/db.ts, que devuelve los vínculos activos agrupados por colectivo y con el nombre del artista ya resuelto. Se escribe SOLO por /api/collectives/[slug]/members (POST agrega, DELETE cierra), con la lógica en lib/collectives-write.ts.
-  La 'casa' se valida en el write path, no solo con el índice: el índice no ve entity_kind, así que no puede saber que una casa solo vale en un colectivo y no en un venue.
+  Se lee con getVinculos() en lib/db.ts. Se escribe por /api/memberships (invitar, aceptar, rechazar, retirar, renunciar) y /api/residency-offers (conceder la residencia).
+
+  UN SOLO ARCHIVO ESCRIBE kind='residente': lib/residency-offers-write.ts. No es una convención, es la propiedad que vuelve verificable toda la fase 2 — un segundo escritor sería un camino para ganar permiso de edición que nadie revisó. Lo comprueba un grep estático en scripts/pruebas/residencias.mjs, que además exige encontrar AL MENOS UNA escritura: si el grep se rompiera, pasaría vacío diciendo que todo está bien.
+  La residencia se valida en el write path y no solo con el índice: el índice no ve entity_kind, así que no puede saber que una residencia vale en un colectivo y no en un venue. Y está MEDIDO que el schema acepta una oferta a un venue sin chistar.
+
+residency_offers — id SERIAL. artist_slug→artists CASCADE, collective_slug→collectives CASCADE, offered_by→user_profiles SET NULL, offered_at, resolved_at, outcome ('accepted'|'declined'|'revoked').
+  EL DUEÑO OFRECE, EL DJ ACEPTA. Desde la fase 2 la residencia es un permiso, y un permiso no se toma: se concede. chooseKind quedó INVERTIDO — un DJ puede bajar a 'miembro' siempre, y NUNCA subir a 'residente'.
+  resolved_at IS NULL = oferta abierta. Índice único parcial residency_offers_una_abierta_idx: una sola abierta por par.
+  La oferta SE RESUELVE, no se borra: lo que registra es quién concedió permiso de edición sobre un colectivo, y esa pregunta tiene que seguir teniendo respuesta después.
+  offered_by va SET NULL y no CASCADE: si la cuenta del dueño se borra, la oferta SIGUIÓ pasando. Mismo criterio que censored_by y reviewed_by.
+
+edit_log — id SERIAL. SIN NINGÚN FK, a propósito. actor_email, actor_rol ('dueno'|'residente'|'super_admin'), collective_slug, entidad, entidad_id, accion ('crear'|'editar'|'borrar'), detalle jsonb, creado_en.
+  NO ES TELEMETRÍA: ES PARTE DEL PERMISO. La residencia se concedió con la condición de que cada edición quede con su autor.
+  GUARDA NOMBRES DE CAMPO, NUNCA VALORES. Guardar los valores lo volvería una copia del contenido del sitio y heredaría el problema de retención de mail_outbox.
+  NUNCA REVIENTA: si el INSERT falla, la edición sigue en pie y el error va a console.error. Es LO CONTRARIO de reasignarDueno, que aborta si no puede escribir su fila, y la asimetría es deliberada: un traspaso sin registro es irreversible, una edición sin registro es un texto que se ve en la página.
+  Registra TAMBIÉN al SUPER_ADMIN. Lo que el SUPER_ADMIN no hace es aparecer en la lista pública de editores, que es el carrusel RESIDENTES — y no puede aparecer ahí por construcción, porque no tiene fila en artist_collectives. Está medido en la batería, no razonado.
+
+LA PUERTA DE UN COLECTIVO ESTÁ PARTIDA EN TRES, en lib/collectives-gate.ts:
+
+  canEditCollective          dueño · residente · SUPER_ADMIN   CONTENIDO: eventos, noticias, géneros, imágenes, info del perfil.
+  puedeAdministrarColectivo  dueño · SUPER_ADMIN               MEMBRESÍAS Y PLATA: invitar, quitar, aceptar, ofrecer residencias.
+  esDuenoDelColectivo        dueño, y NADIE más                CEDER, DESAMPARAR, ELIMINAR.
+
+  POR QUÉ TRES Y NO DOS: si las membresías cayeran en esDuenoDelColectivo, el SUPER_ADMIN perdería la capacidad de arreglar un colectivo cuyo dueño desapareció, que hoy tiene. Eso es lo que prohíbe la regla de la transición. El escalón del medio existe para cerrarle la puerta al residente sin romper la moderación.
+  Las tres derivan de UN primitivo, rolSobreColectivo(), que devuelve CUÁL de los tres es y no un booleano: edit_log necesita escribir cuál hizo cada edición, y derivarlo dos veces en dos lugares es cómo los dos se desincronizan.
+  Vive en su propio archivo por un ciclo de imports REAL, no por orden: collectives-write necesita concederResidenciaAlFundador y residency-offers-write necesita puedeAdministrarColectivo. Un ciclo en ESM a veces anda y a veces deja un export en undefined según el orden de carga, sin decir por qué. collectives-write lo re-exporta, así que ningún llamador cambió.
 ticket_attributions — id SERIAL. ticket_id→tickets UNIQUE, seller_artist_slug→artists (NULL = venta de HOTU), seller_collective_slug→collectives, event_id→events, amount_cop, created_at.
   event_id y amount_cop están duplicados de tickets/order_items A PROPÓSITO: la fila es un snapshot congelado al momento de la venta.
   seller_collective_slug NUNCA se recalcula al consultar. Si un DJ cambia de colectivo, sus ventas viejas siguen contando para el colectivo viejo.
@@ -190,6 +220,8 @@ EL DEV SERVER SE LEVANTA SIEMPRE CON `npm run dev`, Y CON NADA MÁS. No `next de
 EL FILESYSTEM DE WINDOWS NO DISTINGUE MAYÚSCULAS, Y ESO FABRICA FALSOS POSITIVOS AL VERIFICAR. Guardar dos respuestas en `salida-colectivo.html` y `salida-Colectivo.html` no son dos archivos: son el mismo, y el segundo pisa al primero. Un chequeo de "?panel=Colectivo cae en MI PERFIL" da positivo cuando en realidad estabas leyendo la respuesta de la otra URL.
 
 Es la misma familia que el log congelado y que verificar un deploy contra un fixture de dev: la herramienta no falla, contesta mal. Cuando el nombre del archivo temporal salga de algo que el test varía —una URL, un slug, un parámetro—, normalizá el nombre o numeralo, y ante un resultado raro volvé a pedir esa URL sola antes de reportarlo.
+
+Y LA MISMA FAMILIA, UNA VUELTA MÁS: NINGÚN NOMBRE DE FIXTURE PUEDE SER PREFIJO DE OTRO. Dos artistas de prueba llamados "ZZ Res DJ" y "ZZ Res DJ2" hicieron fallar un chequeo que buscaba el primero en el HTML: encontraba al segundo. El chequeo reportó que un moderador figuraba entre los residentes de un colectivo cuando el que figuraba era el residente de verdad, y el reporte tenía forma de hallazgo grave sobre permisos. Un includes() no sabe de límites de palabra, y los fixtures numerados los fabrican sin querer. Nombralos con palabras distintas —"Uno" y "Dos", no "DJ" y "DJ2"— o compará con límites explícitos. Vale para nombres, slugs, emails y códigos de DJ.
 
 LA VERIFICACIÓN DE UN DEPLOY VA CONTRA ALGO QUE EXISTA EN MAIN, NUNCA CONTRA UN FIXTURE DE DEV. Las bases no tienen los mismos datos: dev está lleno de filas de prueba —test-camila, otu, bodega-prueba— que en main no existen. Esperar un deploy pidiendo /colectivos/otu da 404 para siempre, y ese 404 se lee como "todavía no subió" cuando en realidad subió hace diez minutos.
 

@@ -12,7 +12,7 @@
 import { neon } from "@neondatabase/serverless";
 import { canEditArtist } from "./artists-write";
 import {
-  casaActual,
+  residenciaActual,
   sentenciasDeColaboracion,
   validarColaboradores,
 } from "./collaborators-write";
@@ -167,7 +167,7 @@ export async function createSet(
   artistSlug: string,
   input: NewSetInput,
   actorEmail?: string | null
-): Promise<WriteResult<{ slug: string; sinCasa?: boolean }>> {
+): Promise<WriteResult<{ slug: string; sinResidencia?: boolean }>> {
   const auth = await authorize(artistSlug, actorEmail);
   if (!auth.ok) return auth;
 
@@ -212,12 +212,12 @@ export async function createSet(
   // un error en ningún log. El usuario vería un 500, reintentaría, y
   // uniqueSlug le daría un slug nuevo: quedaría la huérfana invisible MÁS
   // la buena.
-  const casa = await casaActual(artistSlug);
+  const residencia = await residenciaActual(artistSlug);
   await sql.transaction([
     insertar,
-    ...sentenciasDeColaboracion("set", slug, colaboradores.value, casa),
+    ...sentenciasDeColaboracion("set", slug, colaboradores.value, residencia),
   ]);
-  return { ok: true, value: { slug, sinCasa: casa === null } };
+  return { ok: true, value: { slug, sinResidencia: residencia === null } };
 }
 
 /** Every field of an existing set the owner may change. */
@@ -399,7 +399,7 @@ export async function createTrack(
   artistSlug: string,
   input: NewTrackInput,
   actorEmail?: string | null
-): Promise<WriteResult<{ slug: string; sinCasa?: boolean }>> {
+): Promise<WriteResult<{ slug: string; sinResidencia?: boolean }>> {
   const auth = await authorize(artistSlug, actorEmail);
   if (!auth.ok) return auth;
 
@@ -435,12 +435,12 @@ export async function createTrack(
 
   // Misma razón que en createSet: todo junto o nada. Ver el comentario
   // largo allá arriba.
-  const casa = await casaActual(artistSlug);
+  const residencia = await residenciaActual(artistSlug);
   await sql.transaction([
     insertar,
-    ...sentenciasDeColaboracion("track", slug, colaboradores.value, casa),
+    ...sentenciasDeColaboracion("track", slug, colaboradores.value, residencia),
   ]);
-  return { ok: true, value: { slug, sinCasa: casa === null } };
+  return { ok: true, value: { slug, sinResidencia: residencia === null } };
 }
 
 export async function deleteTrack(

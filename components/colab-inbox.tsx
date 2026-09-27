@@ -11,13 +11,13 @@ import type { InvitacionColab } from "@/lib/db";
  *
  * Acá se entera el invitado. Sin esta bandeja, la invitación existiría en
  * la base y nadie la vería nunca: el autor esperaría una respuesta que no
- * va a llegar, y la pieza no aparecería en la casa del invitado sin que
+ * va a llegar, y la pieza no aparecería en la residencia del invitado sin que
  * nadie entienda por qué.
  *
  * Vacía no se renderiza, la regla de siempre.
  *
  * DICE A DÓNDE VA A QUEDAR FIJA ANTES DE ACEPTAR. Aceptar congela el
- * destino con la casa que el invitado tiene HOY, y eso no se deshace
+ * destino con la residencia que el invitado tiene HOY, y eso no se deshace
  * después: rechazar más tarde retira el crédito pero no saca la pieza de
  * donde ya se publicó. Que la decisión sea irreversible obliga a que sea
  * informada.
@@ -92,11 +92,11 @@ export function ColabInbox({ invitaciones }: { invitaciones: InvitacionColab[] }
                 <>
                   Si aceptás, esta pieza va a aparecer en{" "}
                   <strong className="text-primary">{inv.destino}</strong> y se queda ahí: las
-                  piezas con colaboradores no se mudan, aunque después cambies de casa.
+                  piezas con colaboradores no se mudan, aunque después cambies de residencia.
                 </>
               ) : (
                 <>
-                  <strong className="text-primary">Todavía no tenés una casa</strong>, así que
+                  <strong className="text-primary">Todavía no sos residente de ningún colectivo</strong>, así que
                   aceptar no va a hacer que la pieza aparezca en ningún colectivo — ni ahora ni
                   cuando entres a uno. El crédito sí queda. Si querés que aparezca, entrá a un
                   colectivo antes de aceptar.

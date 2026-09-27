@@ -95,11 +95,11 @@ const VENUE = {
 /**
  * The membership fixture, declared rather than accumulated.
  *
- * Every DJ gets one casa and at least one pertenencia somewhere else, spread
+ * Every DJ gets one residencia and at least one membership somewhere else, spread
  * across the collectives that exist, so the two carousels of a press kit
  * both have something in them.
  *
- * One casa per artist, which is the rule the partial unique index enforces
+ * One residencia per artist, which is the rule the partial unique index enforces
  * — check it by eye before adding a row here: camila/otu, pedro/paramo,
  * luna/subsuelo, dueña/reisen, and the aplicante with none at all.
  *
@@ -107,17 +107,17 @@ const VENUE = {
  * zero, and seeding it into anything would destroy the case it exists for.
  */
 const MEMBERSHIPS = [
-  { artist: "test-camila", collective: "otu", kind: "casa" as const },
+  { artist: "test-camila", collective: "otu", kind: "residente" as const },
   { artist: "test-camila", collective: "hotu-138", kind: "miembro" as const },
-  { artist: "test-pedro", collective: "paramo-club", kind: "casa" as const },
+  { artist: "test-pedro", collective: "paramo-club", kind: "residente" as const },
   { artist: "test-pedro", collective: "otu", kind: "miembro" as const },
-  { artist: "test-luna", collective: "subsuelo-djs", kind: "casa" as const },
+  { artist: "test-luna", collective: "subsuelo-djs", kind: "residente" as const },
   { artist: "test-luna", collective: "otu", kind: "miembro" as const },
-  { artist: "test-duena", collective: REISEN.slug, kind: "casa" as const },
+  { artist: "test-duena", collective: REISEN.slug, kind: "residente" as const },
   { artist: "test-duena", collective: "chia-underground", kind: "miembro" as const },
-  // Pertenencias en el VENUE. Nunca 'casa': un venue no es la casa de
+  // Membresías en el VENUE. Nunca 'residente': un venue no tiene residentes,
   // nadie, y el write path rechaza los tres caminos que podrían ponerla
-  // ahí. Poner 'casa' acá crearía a mano justo el estado que el código
+  // y poner 'residente' acá crearía a mano justo el estado que el código
   // impide, y el fixture dejaría de representar algo alcanzable.
   { artist: "test-duena", collective: VENUE.slug, kind: "miembro" as const },
   { artist: "test-camila", collective: VENUE.slug, kind: "miembro" as const },
@@ -418,7 +418,7 @@ export async function GET(request: Request) {
      * to whatever is already there.
      *
      * CLOSE FIRST, THEN INSERT, and not the other way round. Moving a DJ's
-     * casa means there is a moment with two active casas if the insert goes
+     * residencia means there is a moment with two active ones if the insert goes
      * first, and the partial unique index refuses exactly that. The order
      * is not tidiness, it is the only one that works.
      *

@@ -38,6 +38,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { canEditCollective, type WriteResult } from "./collectives-write";
+import { registrarEdicion } from "./edit-log-write";
 import { isModerator } from "./roles-check";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
@@ -185,6 +186,14 @@ export async function createCommunityNews(
     RETURNING id
   `;
 
+  await registrarEdicion({
+    collectiveSlug: autor,
+    actorEmail: email!,
+    entidad: "news",
+    entidadId: String(fila.id),
+    accion: "crear",
+  });
+
   return { ok: true, value: { id: Number(fila.id), reviewStatus } };
 }
 
@@ -331,6 +340,15 @@ export async function updateCommunityNews(
   if (filas.length === 0) {
     return { ok: false, status: 409, error: "Alguien la movió mientras la editabas. Recargá." };
   }
+
+  await registrarEdicion({
+    collectiveSlug: propia.autor,
+    actorEmail: email!,
+    entidad: "news",
+    entidadId: String(id),
+    accion: "editar",
+    campos: ["tag", "news_date", "title", "excerpt"],
+  });
   return { ok: true, value: { id } };
 }
 
@@ -422,6 +440,14 @@ export async function deleteCommunityNews(
   if (filas.length === 0) {
     return { ok: false, status: 409, error: "Alguien la publicó mientras tanto. Recargá." };
   }
+
+  await registrarEdicion({
+    collectiveSlug: propia.autor,
+    actorEmail: email!,
+    entidad: "news",
+    entidadId: String(id),
+    accion: "borrar",
+  });
   return { ok: true, value: { borrada: true } };
 }
 

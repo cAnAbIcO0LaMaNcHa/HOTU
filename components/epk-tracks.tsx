@@ -27,13 +27,13 @@ export function EpkTracks({
   canEdit,
   artistSlug,
   candidatos,
-  sinCasa,
+  sinResidencia,
 }: {
   tracks: Track[];
   canEdit: boolean;
   artistSlug: string;
   candidatos: CandidatoColab[];
-  sinCasa: boolean;
+  sinResidencia: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? tracks : tracks.slice(0, VISIBLE);
@@ -50,7 +50,7 @@ export function EpkTracks({
             artistSlug={artistSlug}
             collection="tracks"
             candidatos={candidatos}
-            sinCasa={sinCasa}
+            sinResidencia={sinResidencia}
           />
         ) : null
       }

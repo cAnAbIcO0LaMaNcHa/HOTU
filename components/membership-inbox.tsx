@@ -7,51 +7,69 @@ import { Clock, Home, Users } from "lucide-react";
 import type { MyMembership, PendingMembership } from "@/lib/db";
 
 /**
- * The DJ's side of the membership conversation, on their profile.
+ * El lado del DJ de la conversación de membresía, en su perfil.
  *
- * Two kinds of row land here and they are not the same thing:
- *   - a collective invited them  -> theirs to answer, with the kind
- *   - they applied somewhere     -> waiting, nothing to click
+ * Tres cosas distintas caen acá:
+ *   - un colectivo lo invitó       -> le toca responder
+ *   - él se postuló                -> esperando, nada que apretar
+ *   - le OFRECIERON LA RESIDENCIA  -> le toca responder, y es otra cosa
  *
- * Accepting is where the DJ chooses casa or miembro, because that choice
- * is theirs alone (§3). Picking "casa" while already having one runs the
- * change-of-home flow server-side: the old home is demoted to miembro
- * and the new one takes over, in one transaction, so there is never a
- * moment with two casas.
+ * ============================================================
+ * LO QUE ESTE COMPONENTE YA NO TIENE: EL BOTÓN "HACER MI CASA"
+ * ============================================================
+ *
+ * Hasta §8 fase 2, aceptar era donde el DJ elegía casa o miembro, y había un
+ * botón para volver casa cualquier vínculo ya aceptado. Los dos se fueron.
+ *
+ * 'residente' ahora es PERMISO PARA EDITAR el colectivo, y un permiso no se
+ * toma: lo ofrece quien administra el colectivo y el DJ lo acepta. Dejar el
+ * botón habría sido dejar que cualquier miembro se diera permiso de editar un
+ * perfil ajeno con un clic.
+ *
+ * Lo que SÍ queda es el botón para DEJAR de ser residente, y queda sin pedirle
+ * permiso a nadie: renunciar a un permiso es asunto de quien lo tiene.
  */
 export function MembershipInbox({
   pending,
   memberships,
-  currentCasa,
+  residenciaActual,
+  ofertas,
 }: {
   pending: PendingMembership[];
-  /** Accepted, live links — where the casa/miembro choice happens. */
+  /** Vínculos aceptados y vivos. Acá solo se puede RENUNCIAR a la residencia. */
   memberships: MyMembership[];
-  /** The collective that is currently home, if any — so the warning about
-   *  replacing it can name it instead of being abstract. */
-  currentCasa: { slug: string; name: string } | null;
+  /** El colectivo donde hoy es residente, si hay alguno — para que los avisos
+   *  lo nombren en vez de hablar en abstracto. */
+  residenciaActual: { slug: string; name: string } | null;
+  /** Ofertas de residencia sin responder. */
+  ofertas: {
+    id: number;
+    collectiveSlug: string;
+    collectiveName: string;
+    offeredAt: string;
+  }[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * The open home conflict, if any: the server handed back options instead
-   * of acting, and nothing changes until one of them is clicked.
+   * El conflicto de residencia abierto, si hay: el servidor devolvió las
+   * opciones en vez de actuar, y nada cambia hasta que se elija una.
    */
   const [conflict, setConflict] = useState<{
     id: number;
-    current: { slug: string; name: string };
-    target: { slug: string; name: string };
+    actual: { slug: string; name: string };
+    destino: { slug: string; name: string };
   } | null>(null);
 
-  if (pending.length === 0 && memberships.length === 0) return null;
+  if (pending.length === 0 && memberships.length === 0 && ofertas.length === 0) return null;
 
-  async function act(id: number, body: Record<string, unknown>) {
+  async function pedir(url: string, body: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/memberships/${id}`, {
+      const res = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -61,10 +79,12 @@ export function MembershipInbox({
         setError(data.error ?? `No se pudo responder (HTTP ${res.status})`);
         return;
       }
-      // A conflict is a question, not a failure: the row is untouched and
-      // the DJ has to answer it before anything moves.
-      if (data.conflict === "casa") {
-        setConflict({ id, current: data.current, target: data.target });
+      /**
+       * Un conflicto es una PREGUNTA, no un error: la fila quedó intacta y el
+       * DJ tiene que contestarla antes de que algo se mueva.
+       */
+      if (data.conflict === "residencia") {
+        setConflict({ id: data.id ?? conflict?.id ?? 0, actual: data.actual, destino: data.destino });
         return;
       }
       setConflict(null);
@@ -76,6 +96,11 @@ export function MembershipInbox({
     }
   }
 
+  const act = (id: number, body: Record<string, unknown>) =>
+    pedir(`/api/memberships/${id}`, body);
+  const responderOferta = (id: number, body: Record<string, unknown>) =>
+    pedir(`/api/residency-offers/${id}`, body);
+
   const invitations = pending.filter((p) => p.requestedBy === "collective");
   const applications = pending.filter((p) => p.requestedBy === "artist");
 
@@ -85,59 +110,55 @@ export function MembershipInbox({
         <Clock className="h-4 w-4 text-primary" /> COLECTIVOS
       </h2>
 
-      {/* The three options, spelled out. Nothing was closed to get here. */}
+      {/* Las opciones, dichas enteras. Para llegar acá no se cerró nada. */}
       {conflict && (
         <div className="mt-5 border border-primary p-5">
-          <p className="font-mono text-[10px] tracking-[0.2em] text-primary">
-            ELEGÍ DÓNDE QUEDA TU CASA
-          </p>
+          <span className="font-mono text-[10px] tracking-[0.2em] text-primary">
+            TENÉS QUE ELEGIR
+          </span>
           <p className="mt-2 font-mono text-[11px] leading-relaxed">
-            Hoy tu casa es <strong>{conflict.current.name}</strong>. Querés hacer tu casa en{" "}
-            <strong>{conflict.target.name}</strong>. Un DJ tiene una sola casa, así que hay
-            que decidir qué pasa con {conflict.current.name}.
+            Hoy sos residente de <strong>{conflict.actual.name}</strong>, y{" "}
+            <strong>{conflict.destino.name}</strong> te ofreció su residencia. Un DJ es residente
+            de un solo colectivo, así que hay que decidir qué pasa con {conflict.actual.name}.
           </p>
 
-          <div className="mt-4 flex flex-col gap-3">
+          <div className="mt-4 space-y-2">
             {[
               {
-                key: "keep",
-                body: { action: "casa", decision: "keep" },
-                titulo: `Mi casa sigue siendo ${conflict.current.name}`,
-                aqui: `Entro a ${conflict.target.name} como miembro.`,
-                alla: `${conflict.current.name} no cambia: sigue siendo mi casa.`,
-                fuerte: false,
+                body: {
+                  action: "aceptar",
+                  decision: { respuesta: "renunciar", anterior: "miembro" },
+                },
+                titulo: `Paso a ser residente de ${conflict.destino.name}`,
+                aqui: `${conflict.destino.name} queda como mi residencia.`,
+                alla: `Sigo en ${conflict.actual.name}, pero como miembro. No pierdo el vínculo.`,
               },
               {
-                key: "move-stay",
-                body: { action: "casa", decision: "move", previous: "stay" },
-                titulo: `Mi casa pasa a ser ${conflict.target.name}`,
-                aqui: `${conflict.target.name} queda como mi casa.`,
-                alla: `Sigo en ${conflict.current.name}, pero como miembro. No pierdo el vínculo.`,
-                fuerte: true,
+                body: {
+                  action: "aceptar",
+                  decision: { respuesta: "renunciar", anterior: "salir" },
+                },
+                titulo: `Paso a ${conflict.destino.name} y salgo de ${conflict.actual.name}`,
+                aqui: `${conflict.destino.name} queda como mi residencia.`,
+                alla: `Se cierra del todo mi vínculo con ${conflict.actual.name}. Dejo de aparecer entre sus artistas.`,
               },
               {
-                key: "move-leave",
-                body: { action: "casa", decision: "move", previous: "leave" },
-                titulo: `Mi casa pasa a ser ${conflict.target.name} y salgo de ${conflict.current.name}`,
-                aqui: `${conflict.target.name} queda como mi casa.`,
-                alla: `Se cierra del todo mi vínculo con ${conflict.current.name}. Dejo de aparecer entre sus artistas.`,
-                fuerte: false,
+                body: { action: "aceptar", decision: { respuesta: "rechazar" } },
+                titulo: `Sigo siendo residente de ${conflict.actual.name}`,
+                aqui: `Rechazo la oferta de ${conflict.destino.name}.`,
+                alla: `${conflict.actual.name} no cambia.`,
               },
             ].map((o) => (
               <button
-                key={o.key}
+                key={o.titulo}
                 type="button"
-                onClick={() => act(conflict.id, o.body)}
+                onClick={() => responderOferta(conflict.id, o.body)}
                 disabled={busy}
-                className={`border p-3 text-left disabled:opacity-50 ${
-                  o.fuerte
-                    ? "border-primary text-primary"
-                    : "border-border hover:border-primary"
-                }`}
+                className="block w-full border border-border p-3 text-left hover:border-primary disabled:opacity-50"
               >
                 <span className="block font-mono text-[11px] font-bold">{o.titulo}</span>
-                {/* Both halves spelled out: what happens here, and what
-                    happens to the home being left behind. */}
+                {/* Las dos consecuencias, siempre las dos: qué pasa acá y qué
+                    pasa con la residencia que se deja atrás. */}
                 <span className="mt-1.5 block font-mono text-[10px] leading-relaxed text-muted-foreground">
                   · {o.aqui}
                 </span>
@@ -162,6 +183,52 @@ export function MembershipInbox({
         </div>
       )}
 
+      {/* LAS OFERTAS DE RESIDENCIA, primero: es lo único acá que otorga un
+          permiso, y por eso se dice qué permiso es. */}
+      {ofertas.length > 0 && (
+        <div className="mt-5">
+          <span className="font-mono text-[10px] tracking-[0.2em] text-primary">
+            TE OFRECIERON LA RESIDENCIA ({ofertas.length})
+          </span>
+          <ul className="mt-3 space-y-4">
+            {ofertas.map((o) => (
+              <li key={o.id} className="border border-primary p-4">
+                <span className="font-bold">{o.collectiveName}</span>
+                <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                  Si aceptás, quedás como residente: aparecés entre sus RESIDENTES y podés
+                  editar el perfil del colectivo —eventos, noticias, géneros, fotos—. No podés
+                  invitar ni sacar gente, ni ver sus ventas.
+                </p>
+                {residenciaActual && (
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    Hoy sos residente de <strong>{residenciaActual.name}</strong>. Aceptar te va a
+                    preguntar qué querés que pase con eso — no se mueve solo.
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => responderOferta(o.id, { action: "aceptar" })}
+                    disabled={busy}
+                    className="surface-chrome sheen inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] font-bold tracking-[0.2em] disabled:opacity-50"
+                  >
+                    <Home className="h-3 w-3" /> ACEPTAR LA RESIDENCIA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => responderOferta(o.id, { action: "rechazar" })}
+                    disabled={busy}
+                    className="border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary disabled:opacity-50"
+                  >
+                    NO, GRACIAS
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {invitations.length > 0 && (
         <div className="mt-5">
           <span className="font-mono text-[10px] tracking-[0.2em] text-primary">
@@ -170,32 +237,24 @@ export function MembershipInbox({
           <ul className="mt-3 space-y-4">
             {invitations.map((p) => (
               <li key={p.id} className="border border-border p-4">
-                <Link
-                  href={`/colectivos`}
-                  className="font-bold hover:text-primary"
-                >
+                <Link href={`/colectivos`} className="font-bold hover:text-primary">
                   {p.collectiveName}
                 </Link>
                 <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                  Te invitó a sumarte. Vos elegís cómo entrar.
+                  Te invitó a sumarte como miembro.
                 </p>
 
+                {/* UN SOLO BOTÓN DE ACEPTAR. Antes había dos —miembro o casa—
+                    y esa elección ya no es del DJ: la residencia se ofrece
+                    aparte, y aparece arriba cuando la ofrecen. */}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => act(p.id, { action: "accept", kind: "miembro" })}
+                    onClick={() => act(p.id, { action: "accept" })}
                     disabled={busy}
                     className="inline-flex items-center gap-1.5 border border-primary px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-primary disabled:opacity-50"
                   >
                     <Users className="h-3 w-3" /> ENTRAR COMO MIEMBRO
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => act(p.id, { action: "accept", kind: "casa" })}
-                    disabled={busy}
-                    className="surface-chrome sheen inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] font-bold tracking-[0.2em] disabled:opacity-50"
-                  >
-                    <Home className="h-3 w-3" /> HACER MI CASA
                   </button>
                   <button
                     type="button"
@@ -206,13 +265,6 @@ export function MembershipInbox({
                     NO, GRACIAS
                   </button>
                 </div>
-
-                {currentCasa && (
-                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
-                    Hoy tu casa es <strong>{currentCasa.name}</strong>. Si hacés tu casa acá,
-                    allá pasás a miembro — no te vas, cambiás de vínculo.
-                  </p>
-                )}
               </li>
             ))}
           </ul>
@@ -230,8 +282,8 @@ export function MembershipInbox({
                 <span className="font-mono text-[11px] text-muted-foreground">
                   {p.collectiveName} · esperando respuesta
                 </span>
-                {/* Withdrawing is the applicant's own call, and only while
-                    nobody has answered yet. */}
+                {/* Retirarse es decisión del que se postuló, y solo mientras
+                    nadie haya contestado todavía. */}
                 <button
                   type="button"
                   onClick={() => act(p.id, { action: "cancel" })}
@@ -260,52 +312,42 @@ export function MembershipInbox({
                 <span className="min-w-0">
                   <span className="block truncate font-bold">{m.collectiveName}</span>
                   <span className="font-mono text-[10px] tracking-widest text-muted-foreground">
-                    {m.kind === "casa" ? "TU CASA" : "MIEMBRO"}
+                    {m.kind === "residente" ? "RESIDENTE" : "MIEMBRO"}
                     {m.entityKind === "venue" ? " · VENUE" : ""} · desde{" "}
                     {m.fromDate.slice(0, 10)}
                   </span>
                 </span>
 
-                {/* The choice lives here because the spec puts it AFTER the
-                    other side accepts — at which point the row is no longer
-                    pending and would otherwise have nowhere to be made.
-
-                    En un venue no se ofrece: un venue no es la casa de
-                    nadie. El write path lo rechaza igual, pero un botón que
-                    siempre falla al tocarlo es peor que no tenerlo. */}
+                {/* SOLO SE PUEDE BAJAR. No hay botón para subir porque subir no
+                    es del DJ: se lo ofrecen. Y bajar no le pide permiso a nadie,
+                    porque renunciar a un permiso es de quien lo tiene. */}
                 {m.entityKind === "venue" ? (
                   <span className="shrink-0 font-mono text-[10px] leading-relaxed text-muted-foreground">
                     Acá sos miembro.
                     <br />
-                    Tu casa va en un colectivo.
+                    La residencia va en un colectivo.
                   </span>
-                ) : m.kind === "casa" ? (
+                ) : m.kind === "residente" ? (
                   <button
                     type="button"
                     onClick={() => act(m.id, { action: "kind", kind: "miembro" })}
                     disabled={busy}
                     className="shrink-0 border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-muted-foreground hover:border-primary disabled:opacity-50"
                   >
-                    DEJAR DE SER MI CASA
+                    DEJAR DE SER RESIDENTE
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => act(m.id, { action: "kind", kind: "casa" })}
-                    disabled={busy}
-                    className="inline-flex shrink-0 items-center gap-1.5 border border-primary px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-primary disabled:opacity-50"
-                  >
-                    <Home className="h-3 w-3" /> HACER MI CASA
-                  </button>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    Acá sos miembro.
+                  </span>
                 )}
               </li>
             ))}
           </ul>
-          {currentCasa &&
-            memberships.some((m) => m.kind !== "casa" && m.entityKind !== "venue") && (
+          {residenciaActual && (
             <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
-              Hacer tu casa en otro lado mueve la de <strong>{currentCasa.name}</strong>, que
-              pasa a miembro. Nunca tenés dos casas.
+              Sos residente de <strong>{residenciaActual.name}</strong>. La residencia la ofrece
+              el colectivo, y siempre es una sola.
             </p>
           )}
         </div>

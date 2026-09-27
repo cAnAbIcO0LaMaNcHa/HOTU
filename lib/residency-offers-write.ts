@@ -360,7 +360,13 @@ export async function concederResidenciaAlFundador(
   collectiveSlug: string,
   artistSlug: string,
   founderEmail: string
-): Promise<WriteResult<{ concedida: boolean }>> {
+): Promise<
+  WriteResult<{
+    concedida: boolean;
+    /** Si NO se concedió porque ya tenía residencia en otro lado: la oferta que quedó esperando. */
+    ofertaPendiente: { id: number | null; actual: { slug: string; name: string } } | null;
+  }>
+> {
   /**
    * Se comprueba que sea el dueño AUNQUE el llamador acabe de crear el
    * colectivo. "Solo lo llama createCollective" es una promesa sobre quién
@@ -372,12 +378,7 @@ export async function concederResidenciaAlFundador(
 
   /** Un venue no es la residencia de nadie, ni siquiera de quien lo abrió. */
   if (await rechazarResidenciaEnVenue(collectiveSlug)) {
-    return { ok: true, value: { concedida: false } };
-  }
-
-  /** Y si ya tiene residencia en otro lado, esta queda en miembro. Nada se mueve solo. */
-  if (await residenciaActual(artistSlug, collectiveSlug)) {
-    return { ok: true, value: { concedida: false } };
+    return { ok: true, value: { concedida: false, ofertaPendiente: null } };
   }
 
   const vinculo = await sql`
@@ -389,6 +390,50 @@ export async function concederResidenciaAlFundador(
     return { ok: false, status: 409, error: "Falta la membresía del fundador" };
   }
 
+  /**
+   * ============================================================
+   * YA TIENE RESIDENCIA EN OTRO LADO: QUEDA UNA OFERTA PENDIENTE
+   * ============================================================
+   *
+   * Tres cosas que NO pueden pasar acá, y las tres pasarían con el camino
+   * corto:
+   *
+   *   1. Que crear el colectivo FALLE. Abrir un colectivo no puede depender
+   *      de dónde tenés la residencia. El colectivo se crea, sin excepción.
+   *   2. Que la residencia se MUEVA sola. Cerrar la residencia de alguien no
+   *      es un efecto secundario de crear un colectivo, ni siquiera cuando el
+   *      afectado es quien lo crea: al crearlo no le preguntamos nada.
+   *   3. Que no pase NADA. Es lo que hacía este código antes, y era la peor
+   *      de las tres: el fundador quedaba de miembro de su propio colectivo,
+   *      fuera del carrusel de RESIDENTES, sin ningún lugar donde enterarse
+   *      de por qué ni cómo arreglarlo. Un silencio no es una decisión
+   *      conservadora, es una decisión escondida.
+   *
+   * Así que queda una OFERTA ABIERTA a nombre suyo. La ve en su bandeja y
+   * puede aceptarla renunciando a la anterior —con el paso de siempre de decir
+   * qué pasa con ese vínculo— o dejarla ahí y no hacer nada. La oferta es el
+   * lugar donde la decisión existe sin estar tomada.
+   */
+  const actual = await residenciaActual(artistSlug, collectiveSlug);
+  if (actual) {
+    const filas = await sql`
+      INSERT INTO residency_offers (artist_slug, collective_slug, offered_by)
+      VALUES (${artistSlug}, ${collectiveSlug}, ${founderEmail})
+      ON CONFLICT (artist_slug, collective_slug) WHERE resolved_at IS NULL DO NOTHING
+      RETURNING id
+    `;
+    return {
+      ok: true,
+      value: {
+        concedida: false,
+        ofertaPendiente: {
+          id: (filas[0]?.id as number) ?? null,
+          actual: { slug: actual.collective_slug as string, name: actual.name as string },
+        },
+      },
+    };
+  }
+
   await sql.transaction([
     sql`
       INSERT INTO residency_offers
@@ -397,7 +442,7 @@ export async function concederResidenciaAlFundador(
     `,
     sql`UPDATE artist_collectives SET kind = 'residente' WHERE id = ${vinculo[0].id}`,
   ]);
-  return { ok: true, value: { concedida: true } };
+  return { ok: true, value: { concedida: true, ofertaPendiente: null } };
 }
 
 export type OfertaAbierta = {
