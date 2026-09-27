@@ -157,7 +157,7 @@ export async function restaurarSeed(sql) {
  * esta corrida creó", sin un solo patrón en el medio: ni zz-, ni
  * @test.hotu.local, ni nada que alguien pueda elegir por casualidad.
  *
- * Son las de TABLAS_VOLATILES —hoy 19— y ~160 filas en dev, así que la foto
+ * Son las de TABLAS_VOLATILES —hoy 20— y ~160 filas en dev, así que la foto
  * entera sale en una consulta por tabla y no se nota. El número va acá de
  * referencia y no de contrato: la lista manda, y ya se desactualizó una vez.
  *
@@ -198,6 +198,14 @@ const TABLAS_VOLATILES = [
    * corrió última.
    */
   ["edit_log", "id::text"],
+  /**
+   * residency_offers va ANTES de artists y collectives. Sus FK son CASCADE, así
+   * que el orden no la salva de nada —se iría igual— pero el conteo que
+   * imprime limpiarLoCreado sería mentira: diría 0 ofertas borradas cuando en
+   * realidad se las llevó el borrado del colectivo. Un barrido que no dice
+   * cuántas filas se llevó no está auditado.
+   */
+  ["residency_offers", "id::text"],
   ["artist_collectives", "id::text"],
   ["artist_gigs", "id::text"],
   ["artist_likes", "artist_slug || '|' || user_email"],
