@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { AlertTriangle, Check, EyeOff, KeyRound, ListChecks, Newspaper, UserX } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Check,
+  EyeOff,
+  KeyRound,
+  ListChecks,
+  Newspaper,
+  UserX,
+} from "lucide-react";
 import {
   getArtistsInReview,
   getBannedAccounts,
@@ -8,6 +17,7 @@ import {
   getNewsInReview,
 } from "@/lib/db";
 import { getReclamosPendientes } from "@/lib/claims-write";
+import { eventosSinOrganizador } from "@/lib/event-organizer-write";
 
 export const revalidate = 0;
 
@@ -28,13 +38,14 @@ export const revalidate = 0;
  * buena noticia, no un inventario vacío.
  */
 export default async function AdminHome() {
-  const [djs, noticias, lineups, censuradas, baneadas, reclamos] = await Promise.all([
+  const [djs, noticias, lineups, censuradas, baneadas, reclamos, huerfanos] = await Promise.all([
     getArtistsInReview(),
     getNewsInReview(),
     getLineupsPendientes(),
     getCensored(),
     getBannedAccounts(),
     getReclamosPendientes(),
+    eventosSinOrganizador(),
   ]);
 
   const colas = [
@@ -68,6 +79,17 @@ export default async function AdminHome() {
       href: "/admin/reclamos",
       Icono: KeyRound,
       que: "Alguien dice que un perfil es suyo",
+    },
+    {
+      // La quinta tampoco aprueba contenido: le pone dueño a un evento que
+      // no tiene. Va con las otras por lo mismo — es trabajo que espera una
+      // decisión, y mientras espera el lineup de esa fiesta no le suma
+      // convocatoria a nadie.
+      label: "SIN ORGANIZADOR",
+      n: huerfanos.length,
+      href: "/admin/organizadores",
+      Icono: CalendarClock,
+      que: "Eventos viejos sin colectivo a cargo",
     },
   ];
 
