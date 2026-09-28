@@ -19,7 +19,7 @@ Orden obligatorio de toda migración: primero en dev desde localhost, verificar,
 Toda migración tiene que ser idempotente: se corre dos veces seguidas y la segunda devuelve ok:true igual. Esa es la prueba de que se puede reaplicar en main sin romper nada.
 SCHEMA — LA FOTO DE LA TANDA 2 (18 tablas). LO QUE SIGUE ES ESA FOTO, NO EL ESTADO DE HOY.
 
-Hoy hay 34 tablas. Lo que este listado NO menciona, agregado después: collective_ownership y artist_collectives.can_edit (§8), collective_likes, account_removals (§8), y todo el sistema de géneros y tags de la tanda 4 (genre_branches, genre_tags, genre_aliases, cross_tags, artist_genres, artist_genre_tags, artist_cross_tags y sus tres equivalentes de collective_), más content_collaborators, content_placements y event_lineup.
+Hoy hay 39 en dev y 38 en main —la de más es zz_test_lock, que es infraestructura de pruebas y no va a main—. El número cambia seguido: PREGUNTALE A LA BASE, no a este archivo. Lo que este listado NO menciona, agregado después: collective_ownership y artist_collectives.can_edit (§8), collective_likes, account_removals (§8), y todo el sistema de géneros y tags de la tanda 4 (genre_branches, genre_tags, genre_aliases, cross_tags, artist_genres, artist_genre_tags, artist_cross_tags y sus tres equivalentes de collective_), más content_collaborators, content_placements y event_lineup.
 
 Se deja la foto vieja en vez de reescribirla porque lo que describe —las PK de texto, los FK, las decisiones y por qué— sigue siendo cierto y es lo que hace falta leer. Pero el número engañaba: decía 18 y son 34. Si necesitás el estado real, preguntale a la base, no a este archivo.
 
@@ -148,17 +148,17 @@ Decisiones que se derivan del schema real
 HECHO (tanda 2) — NO crear artist_recordings ni artist_tracks. Se reusaron dj_sets y tracks, con FK real a artists(slug) y los campos de orden manual, sello y portada.
 HECHO (tanda 2) — Los tres jsonb quedaron deprecados. collectives.artist_slugs se migró a artist_collectives; artists.sets y top_tracks NO se migraron (eran placeholders) y solo se dejó de escribirlos. Ninguna columna se borró: son la red por si hubiera que reintentar.
 PENDIENTE — Borrar las tres columnas jsonb. Es otra migración, en otro momento, después de que esto lleve un tiempo andando sin sorpresas. Hasta entonces se quedan congeladas con lo que tenían.
-EN CURSO (tanda 1) — user_profiles.cedula se deprecia. birth_date DATE ya existe. No borrar la columna de una: primero dejar de escribirla, después limpiarla.
-EN CURSO (tanda 1) — Ya hay next-auth con Google. Para las cuentas de prueba sin Google, agregar un Credentials provider (email + contraseña), no reemplazar el existente. Los dos conviven; user_profiles.auth_provider marca el origen de cada cuenta.
+EN CURSO — user_profiles.cedula se deprecia. birth_date DATE ya existe. No se escribe más. Falta VACIARLA y borrar la columna, en ese orden: main tiene 1 fila con dato. La migración está preparada y sin correr en main.
+HECHO (tanda 1) — next-auth con Google Y un Credentials provider (email + contraseña) conviviendo. user_profiles.auth_provider marca el origen de cada cuenta, y password_hash queda NULL en las de Google.
 HECHO (tanda 1) — tickets no tenía FK declaradas a orders/events. Ya están las tres.
 
 ESTADO DE PRODUCCIÓN — LEER ANTES DE TOCAR COLECTIVOS
 
-Las membresías de main entraron desde el jsonb como el vínculo múltiple, que tras la fase 1 de §8 se llama 'miembro'. NINGÚN colectivo de producción tiene una 'casa' asignada: el array plano de slugs nunca dijo quién era el principal, e inventarlo habría sido afirmar algo que el dato no decía.
+Las membresías de main entraron desde el jsonb como el vínculo múltiple, que hoy se llama 'miembro'. NINGÚN colectivo de producción tiene un RESIDENTE: el array plano de slugs nunca dijo quién era el principal, e inventarlo habría sido afirmar algo que el dato no decía. Medido: main tiene 11 vínculos y 0 residencias activas.
 
-Ya NO hay consecuencia de bloqueo: el mínimo de 3 DJs con 2+ miembros se eliminó en tanda 3, así que cualquier colectivo puede publicar eventos aunque no tenga casa ni miembros.
+Ya NO hay consecuencia de bloqueo: el mínimo de 3 DJs con 2+ miembros se eliminó en tanda 3, así que cualquier colectivo puede publicar eventos aunque no tenga residente ni miembros. Lo que SÍ hay es una consecuencia de permisos: sin residentes, solo el dueño puede editar el colectivo.
 
-Lo que sí queda pendiente: asignar las 'casa' a mano donde corresponda. No frena nada, pero el press kit del colectivo muestra dos carruseles separados (ARTISTAS DE LA CASA y MIEMBROS), y hasta que haya casas el primero va a estar vacío.
+Lo que sí queda pendiente: CONCEDER RESIDENCIAS. Ya no se marcan a mano — el dueño las ofrece desde el panel del colectivo y el DJ acepta. Main tiene 0 residencias activas, así que el carrusel RESIDENTES está vacío en todos los colectivos y, hasta que se concedan, SOLO EL DUEÑO puede editar cada uno. No frena nada y es el estado correcto: conceder residencias que nadie pidió sería inventar permisos.
 
 Nota: más abajo, en el perfil de DJ, las secciones DJ SETS y TRACKS mencionaban tablas artist_recordings y artist_tracks. Queda sin efecto: mandan dj_sets y tracks.
 Ojo con user_profiles: ahora que es la tabla de cuentas, el login con Google tiene que hacer upsert de la fila en el primer ingreso. Si no, un usuario de Google se autentica pero revienta contra el FK de artist_likes al dar el primer like.
@@ -207,6 +207,83 @@ Y todo UPDATE de backfill lleva RETURNING, para que el log pueda decir CUÁNTAS 
 UN RENOMBRE NO ACTUALIZA, INSERTA. Todo upsert de vocabulario resuelve el conflicto por una clave derivada del contenido — el slug sale del nombre —, así que cambiar el nombre cambia el slug y la fila vieja NO se actualiza: entra una nueva al lado y quedan las dos. No hay error, no hay fila perdida, solo una de más que nadie eligió y que va a aparecer en los selectores. Es el mismo tipo de falla que la segunda corrida del renombre de kind: no rompe, corrompe. Por eso todo seed reporta el conteo de ANTES y DESPUÉS, y por eso hay que mirarlo: si un conteo SUBE cuando esperabas que quedara igual, hubo un renombre y quedó un huérfano. Limpiarlo es a mano, y el FK RESTRICT hacia los perfiles garantiza que se note si alguien ya lo eligió. Pasó de verdad con tres cross-tags en dev ("Radio" contra "Radio / Broadcast"), y se detectó solo porque el total dio 53 donde tenía que dar 50.
 
 TODO SWAP DE CONSTRAINT VA EN UNA TRANSACCIÓN. Si una migración borra un constraint y lo vuelve a crear, las dos sentencias van juntas dentro de sql.transaction([...]), nunca como dos await sueltos. Cada sql`` del driver HTTP de Neon es su propio request y su propia transacción: entre un DROP CONSTRAINT y su ADD CONSTRAINT hay una ventana real de un round-trip en la que la tabla no tiene guarda, y si el ADD falla la ventana no se cierra nunca. Y falla más de lo que parece: una fila vieja con un valor que el CHECK nuevo no acepta tira check_violation, que NO es duplicate_object y por lo tanto el envoltorio DO $$ ... EXCEPTION WHEN duplicate_object $$ no lo atrapa. El resultado es una tabla sin CHECK, que es peor que no haber corrido nada. Dentro de la transacción el ADD va desnudo, sin ese envoltorio: después del DROP no queda nada con ese nombre que duplicar, así que el handler solo podría tragarse un error real. El patrón está en setup-membership-kinds (el swap del rename de kind) y en setup-venues (los dos CHECK de entity_kind y capacity).
+
+LA VENTA ONLINE ESTÁ APAGADA — VENTA_ONLINE, en lib/flags.ts.
+
+APAGADO POR DEFECTO: si la variable falta o está mal escrita, no se vende. El default de un
+interruptor de plata es "no".
+
+Se llama VENTA_ONLINE y NO VENTA_BOLETAS porque el carrito es UNO y mezcla boletas y merch
+—hay un tipo de orden 'mixed'—, así que un nombre que dijera "boletas" mentiría sobre lo que
+apaga.
+
+QUÉ APAGA: createPendingOrder se niega, el botón de agregar entrada, el de comprar en
+/tienda —que queda de catálogo—, el ícono del carrito y su cajón.
+QUÉ NO: las boletas ya compradas, la verificación en la puerta, y markOrderPaid, que sigue
+pudiendo cobrar a mano una orden que YA existe. Apagar la venta impide crear órdenes nuevas,
+no abandonar las que quedaron a medias.
+EL CartProvider QUEDA MONTADO: site-header llama a useCart(), que LANZA sin provider, así que
+sacarlo dejaría la pantalla en blanco en todo el sitio. Queda inerte.
+
+LA GUARDA ESTÁ EN createPendingOrder, no solo en la UI, y es una garantía COMPLETA porque
+está MEDIDO que es el único camino alcanzable: los otros dos INSERT INTO orders viven en
+/api/seed-test y /api/migrate, los dos detrás de MIGRATE_SECRET. Lo verifica
+scripts/pruebas/venta-apagada.mjs, que además falla el día que alguien agregue un segundo.
+
+EL PRECIO EN TAQUILLA — events.door_price_cop, informativo y SIN TOPE.
+
+Es lo que el organizador cobra en la puerta, para mostrarlo como "Taquilla: $35.000". NO es
+un precio de venta y no lo lee el carrito ni el checkout.
+
+NULL = no dijo, y la página no muestra nada. 0 = ENTRADA LIBRE, y se anuncia. Son distintos:
+comparar con !== null y NUNCA como truthy, porque 0 es falsy y una fiesta gratis desaparecería
+del anuncio.
+
+SIN TOPE MÁXIMO, y es una decisión: el precio es del organizador. Hubo un tope de 10.000.000 y
+se sacó — un número absurdo se ve en la página y lo corrige quien lo escribió; un tope que
+rechaza un precio legítimo no lo corrige nadie, porque el organizador no sabe que existe. Ojo:
+un CHECK no puede atajar un tipeo, porque un cero de más da un precio posible.
+
+LA HORA DE INICIO — events.starts_at TIMESTAMPTZ, y la regla de la madrugada.
+
+event_date sigue siendo el DÍA AUTORITATIVO; starts_at solo agrega el reloj. Es columna nueva
+y no una transformación de event_date, porque convertirla le INVENTARÍA medianoche a los
+eventos que ya existen.
+
+DE 00:00 A 06:00 PERTENECE A LA NOCHE DE event_date, así que se guarda en el DÍA SIGUIENTE:
+una fiesta del "sábado 15" que arranca a la 1:00 empieza el domingo 16. Eso no es un detalle
+de presentación, es cómo funciona la escena.
+
+LA ZONA ES America/Bogota EXPLÍCITA al armar starts_at, nunca la del servidor: Vercel corre en
+UTC. Está MEDIDO que 23:00-05:00 del 15 se guarda como 04:00+00 del 16.
+
+NO HAY CHECK que ate starts_at a event_date, y no lo va a haber: dependería de la zona
+—starts_at::date cambia con el TimeZone de la sesión— y además sería FALSO por la madrugada.
+La regla vive en el write path. SÍ hay CHECK de end_at > starts_at, que compara dos instantes
+y por lo tanto significa lo mismo en cualquier zona.
+
+CADA EDICIÓN DE UN COLECTIVO QUEDA REGISTRADA, Y SI NO SE PUEDE REGISTRAR NO SE APLICA.
+
+edit_log guarda quién editó qué, con actor_rol en ('dueno','residente','super_admin','moderador').
+Guarda NOMBRES DE CAMPO, nunca valores.
+
+NADA SE ESCRIBE SIN REGISTRO. resolverRolParaRegistro() corre ANTES de escribir, y
+sentenciaDeRegistro() devuelve el INSERT para meterlo DENTRO de la misma transacción que el
+dato. Donde el registro necesita el id que devuelve el INSERT —crear un evento, crear una
+noticia— se usa un CTE que modifica datos: una sola sentencia, atómica sin pedirlo. En los
+UPDATE y DELETE condicionales el registro sale de SELECT ... FROM la_cte, así que si la fila
+no se tocó, el log tampoco entra.
+
+/api/upload es la ÚNICA excepción y está dicha: el blob ya viajó a Vercel y ninguna
+transacción lo trae de vuelta. Ahí el rol se resuelve ANTES de subir, y si el registro falla
+después, el blob queda huérfano sin que nada lo referencie.
+
+'moderador' se resuelve APARTE de rolSobreColectivo, a propósito: ese primitivo alimenta
+canEditCollective, así que devolverlo desde ahí le daría a todo MODERATOR permiso de editar
+cualquier colectivo. No lo tiene y no lo gana.
+
+Y LA RAMA DE "ROL NO RESOLUBLE" ES INALCANZABLE POR LA API, por construcción: cada puerta que
+deja pasar tiene todos sus miembros resolubles. Queda como defensa para una puerta futura.
 
 Todo el contenido es district-aware.
 
@@ -287,7 +364,7 @@ Usuario — perfil PRIVADO. Compra boletas, aparta cupos, sigue DJs, da likes. N
 DJ — perfil PÚBLICO. EPK + stats visibles para cualquiera.
 Colectivo / Organizador — perfil PÚBLICO. Cuenta aparte de la de artista.
 
-Auth propia por email + contraseña. Sin Google.
+Auth por email + contraseña Y con Google: los dos conviven, y user_profiles.auth_provider marca el origen de cada cuenta. El Credentials provider está HECHO desde la tanda 1; el texto que decía "sin Google" era del plan original.
 
 Datos personales
 Se guarda fecha de nacimiento, NO número de cédula. Es dato sensible bajo la Ley 1581 de 2012 y no hace falta: para verificar mayoría de edad basta la fecha.
@@ -305,9 +382,12 @@ DJ SETS — grabaciones de sets. Barras horizontales con play + forma de onda. "
 TRACKS — producciones propias. Cuadrados en fila con portada, sello y fecha. "MORE →" al final de la fila. Tabla tracks. DJ SETS y TRACKS van SEPARADOS, no en tabs. Portada y sello ya existen desde tanda 2 (cover_url, label); sin portada cae a un placeholder con el tinte del distrito.
 EVENTS — carrusel horizontal de flyers, cada uno linkea al evento. Resumen debajo: "20 EVENTOS, 10 EN 2026".
 STATS — público. Promedio de asistentes, tabla de asistentes por fiesta, horas tocadas.
-Galería — fotos en alta para que el organizador arme flyers.
-Prensa — links a notas con medio y fecha.
-Rider técnico — marca y cantidad de CDJs, mixer, monitores.
+         PENDIENTE. Las horas salen de starts_at y end_at y solo donde existan los DOS;
+         los asistentes dependen de la atribución, que está pospuesta.
+Galería — fotos en alta para que el organizador arme flyers. PENDIENTE.
+Prensa — links a notas con medio y fecha. PENDIENTE.
+Rider técnico — marca y cantidad de CDJs, mixer, monitores. La columna artists.rider jsonb
+         existe desde la tanda 1 y está VACÍA: nadie la lee ni la escribe.
 
 Regla de UI: el perfil crece con el artista. Las secciones vacías NO se muestran; en su lugar, al dueño se le sugiere qué completar. Un DJ con tres toques no puede ver ocho secciones vacías.
 
@@ -318,7 +398,11 @@ Toques (artist_gigs)
 Si el evento está publicado en HOTU, el toque entra solo desde el lineup.
 Si tocó afuera, el DJ lo agrega a mano y queda marcado como declarado.
 Campos: evento (interno o externo + flyer), venue, ciudad, fecha, distrito, rol, b2b, duración, notas.
-Atribución de ventas — LA REGLA CENTRAL
+Atribución de ventas — POSPUESTA, Y LA REGLA CENTRAL PARA CUANDO VUELVA
+
+NO ESTÁ CONSTRUIDA Y NO SE VA A CONSTRUIR HASTA QUE HAYA VENTA. La venta online está apagada por VENTA_ONLINE, así que no hay ventas que atribuir. ticket_attributions existe desde la tanda 1 y NADIE la escribe fuera del seed.
+
+Lo que sigue es el diseño acordado, para cuando se retome:
 
 Al comprar hay un campo "quién te la vendió" con el código del DJ.
 
@@ -339,16 +423,33 @@ El comprador nunca ve el colectivo del vendedor. La boleta muestra solo la fiest
 
 Colectivos
 
-Dos tipos de vínculo (vocabulario de tanda 3):
+Dos tipos de vínculo (vocabulario de §8 fase 2 — ver la historia de los nombres en el schema, que cambió TRES veces):
 
-casa — el colectivo principal del DJ. UNO SOLO. Solo puede ser un colectivo, nunca un venue.
-miembro — el vínculo general. Varios a la vez, vale en colectivos y en venues, y NO edita nada.
+residente — el colectivo principal del DJ. UNO SOLO, y solo un colectivo, nunca un venue.
+            NO ES UNA ETIQUETA: ES PERMISO PARA EDITAR EL COLECTIVO.
+miembro   — el vínculo general. Varios a la vez, en colectivos y en venues, y NO edita nada.
 
 NO hay mínimo para publicarse, ni estados activo/incompleto, ni bloqueo. Un colectivo con un solo miembro puede crear eventos. Eso se eliminó en tanda 3.
 
-Otras reglas:
+LA RESIDENCIA SE CONCEDE, NO SE ELIGE. El dueño la OFRECE desde el panel del colectivo y el DJ ACEPTA. Las dos partes.
 
-Al aceptar una 'casa' teniendo otra, el sistema ofrece mantener la actual y entrar acá como miembro, o mover la casa. Nunca hay un estado intermedio con dos casas.
+  Un DJ NO puede ascenderse: chooseKind('residente') devuelve 403. Puede BAJAR a
+  miembro siempre y sin pedirle permiso a nadie — renunciar a un permiso es de
+  quien lo tiene. La asimetría es el punto.
+
+  La oferta vive en residency_offers y no como una fila pendiente de
+  artist_collectives, porque el índice de una-sola-residencia NO mira accepted_at
+  y una oferta sin responder le ocuparía el cupo al DJ.
+
+  Si el DJ ya es residente de otro colectivo, aceptar le PREGUNTA qué hacer:
+  renunciar a la anterior —quedando de miembro allá o saliendo del todo— o
+  rechazar esta. Nunca hay reemplazo automático ni un estado con dos residencias.
+
+  El FUNDADOR de un colectivo queda residente de entrada, con su fila en
+  residency_offers ya resuelta. Si ya era residente de otro, el colectivo se crea
+  igual, él entra de miembro, y le queda una OFERTA ABIERTA. No falla, no le mueve
+  la residencia, y no se queda callado.
+
 Membresías con desde / hasta. El histórico es inmutable: se cierra con to_date, no se borra.
 Likes
 
@@ -368,7 +469,7 @@ Migración /api/setup-profiles:
 
 user_profiles: agregar birth_date DATE, display_name, avatar_url
 artists: agregar email, password_hash, owner_email, dj_code UNIQUE, bpm_min, bpm_max, origin, cover_url, socials jsonb, rider jsonb, show_sales_to_organizers BOOLEAN DEFAULT TRUE
-collectives: agregar owner_email, status_membership (DEPRECADA en tanda 3)
+collectives: agregar owner_email, status_membership (DEPRECADA en tanda 3, y PENDIENTE DE BORRAR)
 NUEVA artist_collectives: artist_slug, collective_slug, kind (renombrado a 'casa' | 'residente' en tanda 3, y 'residente'→'miembro' en la fase 1 de §8), from_date, to_date, accepted_at
 NUEVA ticket_attributions: ticket_id, seller_artist_slug (nullable = HOTU), seller_collective_slug (CONGELADO al momento de la venta), event_id, amount_cop, created_at
 NUEVA artist_gigs: artist_slug, event_id (nullable), external_name, flyer_url, venue, city, gig_date, district, role, b2b_with, duration_minutes, source ('hotu' | 'declarado')
@@ -378,9 +479,16 @@ TANDA 1 — CERRADA. Migración, Credentials provider conviviendo con Google, up
 
 TANDA 2 — CERRADA. Parte A: cover_url, label y sort_order en tracks/dj_sets, los FK a artists(slug), las secciones DJ SETS / TRACKS / EVENTS del EPK, y POST/PATCH/DELETE por fila. Parte B: membresías migradas a artist_collectives, jsonb deprecados, editor de miembros en el admin.
 
-TANDA 3 — SIGUIENTE. Atribución: códigos de DJ, link pre-llenado por WhatsApp, campo manual en el checkout, y el colectivo de residencia congelado en el momento de la venta. Requisito previo: marcar miembros a mano en producción (ver ESTADO DE PRODUCCIÓN más arriba).
+TANDA 3 — POSPUESTA. La atribución de ventas espera a que haya venta. Ver la sección de
+atribución más arriba.
 
-Después: 4. Stats y panel de colectivo — asistentes por fiesta, promedio, horas. 5. Wraps — DJ, colectivo, usuario.
+§8 — CERRADA. Reclamo de perfiles, eliminación de cuentas, limpieza pre-lanzamiento,
+traspaso de moderación, y el renombre de 'casa' a 'residente' en dos fases con su
+inversión de permisos.
+
+LO QUE SIGUE: terminar la web sin agregar nada a la base. Asignar organizador desde el
+admin (hecho), la hora de inicio de los eventos, y las secciones del EPK que faltan.
+Pagos, atribución y verificación NO entran hasta que la web esté terminada.
 
 Al terminar cada tanda, avisar qué sigue y esperar confirmación.
 
