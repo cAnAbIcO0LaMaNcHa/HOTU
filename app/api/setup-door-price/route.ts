@@ -50,22 +50,36 @@ const COLUMNA = "door_price_cop";
 const CHECK = `${TABLA}_door_price_check`;
 
 /**
- * Acepta 0 —gratis es un precio que alguien puede querer anunciar— y rechaza
- * negativos.
+ * NULL, o cero o más. SIN TOPE.
  *
- * EL TECHO NO ATAJA TIPEOS, Y DECIRLO IMPORTA porque la primera versión de este
- * comentario prometía justamente eso. Un cero de más sobre un precio normal da
- * 350.000, que es un precio perfectamente posible: ningún CHECK puede
- * distinguir un tipeo de una decisión. Lo que el techo ataja es otra cosa, más
- * chica y todavía útil: un número que NO PUEDE SER un precio de entrada.
+ * ============================================================
+ * HUBO UN TECHO Y SE SACÓ. LA HISTORIA IMPORTA PORQUE MAIN LO TIENE.
+ * ============================================================
  *
- * 10.000.000 COP son unos USD 2.500. Ninguna entrada de fiesta en Bogotá cuesta
- * eso, y un valor por encima es casi seguro un campo mal usado —una cédula, un
- * teléfono, un id— más que una decisión de precio. Es una guarda de tipo, no de
- * criterio.
+ * La primera versión ponía un techo de 10.000.000 con el argumento de que
+ * atajaba un campo mal usado —una cédula, un teléfono— más que un precio. El
+ * argumento anterior a ése era peor todavía y el reviewer lo tumbó: decía que
+ * atajaba tipeos, y no puede, porque un cero de más sobre un precio normal da
+ * 350.000, que es un precio posible. Ningún CHECK distingue un tipeo de una
+ * decisión.
+ *
+ * Se saca entero por una razón más simple que cualquiera de las dos: EL PRECIO
+ * ES DEL ORGANIZADOR. Un tope es la plataforma decidiendo cuánto puede costar
+ * entrar a una fiesta ajena, y no tenemos por qué opinar. Un número absurdo se
+ * ve en la página y lo corrige quien lo escribió; un tope que rechaza un precio
+ * legítimo lo corrige nadie, porque el organizador no sabe que existe.
+ *
+ * OJO: MAIN TIENE EL CHECK CON TOPE. Esta migración ya corrió allá con la
+ * versión vieja. El swap va con la próxima migración que toque events —la de
+ * hora de inicio, punto 17— con DROP + ADD en una transacción, y está anotado en
+ * PROGRESO.md porque el comparador de esquemas NO ve los CHECK: compara tablas y
+ * columnas, así que esta diferencia es invisible para el post-deploy.
+ *
+ * Mientras tanto no hay nada roto: el CHECK de main es MÁS estricto que el de
+ * acá, así que lo que pasa este validador pasa aquél, salvo un precio por encima
+ * de diez millones. Es el único caso que main rechazaría y dev no.
  */
-const DEF_CHECK =
-  `CHECK (((${COLUMNA} IS NULL) OR ((${COLUMNA} >= 0) AND (${COLUMNA} <= 10000000))))`;
+const DEF_CHECK = `CHECK (((${COLUMNA} IS NULL) OR (${COLUMNA} >= 0)))`;
 
 type Estado = {
   columna: { tipo: string; aceptaNull: boolean; default: string | null } | null;

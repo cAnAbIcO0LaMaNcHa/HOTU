@@ -188,13 +188,31 @@ try {
       ["abc", "texto"],
       ["-5000", "negativo"],
       ["35000,50", "con centavos"],
-      ["99000000", "por encima del techo"],
     ]) {
       const r = await req("d", "PATCH", `/api/events/${id}`, { doorPriceCop: v });
       chk(`'${v}' rechazado (${por})`, r.status === 400, JSON.stringify(r));
     }
     const [c] = await sql`SELECT door_price_cop FROM events WHERE id = ${id}`;
     chk("y ninguno dejó basura", c.door_price_cop === null, `es ${c.door_price_cop}`);
+
+    /**
+     * NO HAY TOPE MÁXIMO, y esto lo afirma en vez de darlo por sentado.
+     *
+     * Hubo uno de 10.000.000 y se sacó: el precio es del organizador, no de la
+     * plataforma. Este chequeo era antes "rechazado por encima del techo" y
+     * FALLÓ cuando el tope se fue — que es lo que tenía que pasar. Queda
+     * invertido para que, si alguien vuelve a poner un tope, la batería lo diga
+     * en vez de que el rechazo aparezca en silencio para un organizador.
+     *
+     * OJO: en MAIN esto todavía rechazaría. El CHECK de allá conserva el tope
+     * hasta que la próxima migración de events lo saque —está anotado en
+     * PROGRESO.md— y el comparador de esquemas no ve los CHECK, así que esta
+     * prueba es el único lugar donde la diferencia se nota.
+     */
+    const grande = await req("d", "PATCH", `/api/events/${id}`, { doorPriceCop: "99000000" });
+    chk("un precio enorme se ACEPTA: no hay tope", grande.status === 200, JSON.stringify(grande));
+    const [g] = await sql`SELECT door_price_cop FROM events WHERE id = ${id}`;
+    chk("y quedó guardado tal cual", g.door_price_cop === 99000000, `es ${g.door_price_cop}`);
   }
 } finally {
   const resumen = await corrida.cerrar();

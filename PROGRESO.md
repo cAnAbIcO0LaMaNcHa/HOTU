@@ -187,6 +187,33 @@ queda MEDIDO, no supuesto.
 Recién después: la migración que la borra. Otro día, cuando esto lleve
 tiempo andando sin sorpresas.
 
+### PENDIENTE EN MAIN: el CHECK de `door_price_cop` todavía tiene tope
+
+**Y el comparador de esquemas NO puede verlo.** `scripts/post-deploy.mjs` compara
+tablas y columnas, no CHECK constraints, así que esta diferencia entre dev y main
+es invisible para el chequeo post-deploy. Por eso está acá: si no, se pierde.
+
+    dev:   CHECK (((door_price_cop IS NULL) OR (door_price_cop >= 0)))
+    main:  CHECK (((door_price_cop IS NULL) OR ((door_price_cop >= 0) AND (door_price_cop <= 10000000))))
+
+Main corrió `setup-door-price` con la versión que tenía tope de 10.000.000. El
+tope se sacó después —el precio es del organizador, no de la plataforma— y la
+ruta ya quedó con la forma nueva, pero **no se corre una migración en main solo
+por esto**.
+
+**Va con la próxima migración que toque `events`** —probablemente la de hora de
+inicio, punto 17— con DROP + ADD en UNA transacción, como todo swap de constraint.
+Re-correr `setup-door-price` en main también lo arreglaría, y es la opción de
+respaldo si el punto 17 se demora.
+
+**Mientras tanto no hay nada roto, y vale saber por qué:** el CHECK de main es
+MÁS estricto que el de dev. Todo lo que pasa la validación del servidor pasa el
+CHECK de main, salvo un precio por encima de diez millones — el único caso que
+main rechazaría con un error de constraint y dev aceptaría. Si alguien anuncia una
+entrada de más de diez millones antes de que esto se arregle, va a recibir un 500
+en vez de un mensaje; es improbable y es el costo aceptado de no correr una
+migración de más.
+
 ### El CASCADE se lleva la historia: `profile_ownership` y `residency_offers`
 
 Las dos tablas registran QUIÉN DECIDIÓ QUÉ, y las dos van

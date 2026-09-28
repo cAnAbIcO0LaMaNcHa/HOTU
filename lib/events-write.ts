@@ -281,8 +281,11 @@ async function cargarEventoPropio(
  * gratuito que alguien decidió anunciar, y null es que no dijo nada y la página
  * no habla por él. Por eso el vacío NO cae en 0.
  *
- * El techo lo repite el CHECK de la base. Acá está igual para poder dar un
- * mensaje entendible en vez de una violación de constraint.
+ * NO HAY TOPE MÁXIMO, y es una decisión y no un olvido: el precio es del
+ * organizador. Un tope sería la plataforma opinando sobre cuánto puede costar
+ * entrar a una fiesta ajena. Un número absurdo se ve en la página y lo corrige
+ * quien lo escribió; un tope que rechaza un precio legítimo no lo corrige nadie,
+ * porque el organizador no sabe que existe.
  */
 function validarPrecioTaquilla(
   crudo: unknown
@@ -301,9 +304,6 @@ function validarPrecioTaquilla(
   const n = Number(limpio);
   if (!Number.isInteger(n) || n < 0) {
     return { ok: false, error: "El precio en taquilla tiene que ser un número en pesos, sin centavos" };
-  }
-  if (n > 10000000) {
-    return { ok: false, error: "Ese precio en taquilla es demasiado alto. Revisá si sobra un dígito." };
   }
   return { ok: true, valor: n };
 }
