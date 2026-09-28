@@ -19,7 +19,8 @@
 
 import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import { requireAdmin } from "@/lib/admin";
+import { auth } from "@/auth";
+import { isModerator } from "@/lib/roles-check";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,29 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await requireAdmin())) {
+  /**
+   * isModerator Y NO requireAdmin, Y ES UN ARREGLO, NO UN CAMBIO DE ESTILO.
+   *
+   * En este repo conviven dos sistemas de admin que NO son el mismo conjunto:
+   *
+   *   requireAdmin()  ->  isAdminEmail: la lista de ADMIN_EMAILS del entorno.
+   *   isModerator()   ->  esa lista O el rol SUPER_ADMIN/MODERATOR en user_roles.
+   *
+   * app/admin/layout.tsx usa isModerator, así que un MODERATOR por rol ABRÍA
+   * /admin/lineups y NO PODÍA GUARDAR: enganchaba los nombres, apretaba, y se
+   * comía un 403 sin explicación. Un control que la pantalla ofrece y el server
+   * niega es peor que un control ausente.
+   *
+   * Enganchar un lineup es moderación —decide de quién es un toque y a quién le
+   * cuenta de convocatoria— así que la puerta correcta es la del panel.
+   *
+   * Se descubrió construyendo /admin/organizadores, que había copiado este mismo
+   * patrón y fallaba igual con un MODERATOR de rol.
+   */
+  const session = await auth();
+  const actorEmail = session?.user?.email;
+  if (!actorEmail) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!(await isModerator(actorEmail))) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
