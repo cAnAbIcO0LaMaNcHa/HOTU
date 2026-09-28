@@ -5,7 +5,6 @@ import type { EventItem, LineupEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { EventLineup } from "@/components/event-lineup";
 import { AddTicketButton } from "@/components/add-ticket-button";
-import { TICKET_PRICES } from "@/lib/commerce-types";
 import { formatShortDate } from "@/lib/date-utils";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
@@ -30,6 +29,7 @@ export function EventosList({
   events,
   pastEvents = [],
   lineups = {},
+  ventaOnline = false,
 }: {
   events: EventItem[];
   /** Already over, newest first. Shown as an archive, never as buyable. */
@@ -40,6 +40,15 @@ export function EventosList({
    * congelado: entre la migración y el import, la página se ve igual.
    */
   lineups?: Record<number, LineupEntry[]>;
+  /**
+   * VENTA_ONLINE. Baja como prop y NO se lee del entorno acá porque este es un
+   * client component: process.env no existe del lado del cliente salvo con un
+   * NEXT_PUBLIC_, y eso serían DOS variables para lo mismo — que es exactamente
+   * cómo una queda prendida y la otra apagada.
+   *
+   * Default false: si alguien renderiza esta lista sin pasar el flag, no vende.
+   */
+  ventaOnline?: boolean;
 }) {
   const { active } = useListingFilters();
   // Search and filters apply to both halves: looking for a party you went
@@ -52,7 +61,7 @@ export function EventosList({
     <>
       <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {sorted.map((e) => (
-          <EventCard key={e.id} event={e} lineup={lineups[e.id]} />
+          <EventCard key={e.id} event={e} lineup={lineups[e.id]} ventaOnline={ventaOnline} />
         ))}
         {sorted.length === 0 && (
           <EmptyResult
@@ -86,9 +95,11 @@ function EventCard({
   event: e,
   past = false,
   lineup,
+  ventaOnline = false,
 }: {
   event: EventItem;
   past?: boolean;
+  ventaOnline?: boolean;
   /** Sin entradas —todavía no se importó— EventLineup cae al texto. */
   lineup?: LineupEntry[];
 }) {
@@ -141,10 +152,35 @@ function EventCard({
           </div>
         ) : (
           <>
-            <div className="mt-3 font-mono text-sm font-bold">
-              <AutoTranslate text="Desde" /> {formatCOP(TICKET_PRICES.normal)}
-            </div>
-            <AddTicketButton eventId={e.id} eventTitle={e.title} />
+            {/*
+              EL PRECIO EN TAQUILLA, el que puso el organizador.
+
+              Antes acá decía "Desde $30.000" con TICKET_PRICES.normal, una
+              CONSTANTE: los cuatro eventos anunciaban el mismo precio, que
+              nadie había decidido. Sacarlo no pierde información — dejar de
+              mentir no es perder un dato — y lo que queda es lo que el
+              organizador de verdad escribió, o nada.
+
+              LA COMPARACIÓN ES !== null Y NO TRUTHY, y es el punto entero de
+              que la columna sea nullable: 0 es falsy, así que con un
+              if (doorPriceCop) una fiesta de entrada libre desaparecería del
+              anuncio como si nadie hubiera dicho nada.
+            */}
+            {e.doorPriceCop !== null && (
+              <div className="mt-3 font-mono text-sm font-bold">
+                {e.doorPriceCop === 0 ? (
+                  <AutoTranslate text="Entrada libre" />
+                ) : (
+                  <>
+                    <AutoTranslate text="Taquilla:" /> {formatCOP(e.doorPriceCop)}
+                  </>
+                )}
+              </div>
+            )}
+            {/* Con VENTA_ONLINE apagado no hay botón de comprar. El precio de
+                arriba SÍ se sigue mostrando: es lo que cobra el organizador en la
+                puerta, y eso no depende de que HOTU venda. */}
+            {ventaOnline && <AddTicketButton eventId={e.id} eventTitle={e.title} />}
           </>
         )}
       </div>

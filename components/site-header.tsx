@@ -10,7 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useLanguage } from "@/lib/i18n";
 import { useCart } from "@/components/cart-context";
 
-export function SiteHeader() {
+export function SiteHeader({ ventaOnline = false }: { ventaOnline?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const { t } = useLanguage();
@@ -88,18 +88,24 @@ export function SiteHeader() {
           >
             <Ticket className="h-4 w-4" />
           </Link>
-          <button
-            onClick={() => setCartOpen(true)}
-            aria-label="Carrito"
-            className="relative border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            {count > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 font-mono text-[9px] font-bold text-primary-foreground">
-                {count}
-              </span>
-            )}
-          </button>
+          {/* Sin venta online no hay carrito que abrir. El ícono se va entero y
+              no queda deshabilitado: un botón gris que no hace nada invita a
+              preguntarse qué le falta, y acá no le falta nada — todavía no se
+              vende. */}
+          {ventaOnline && (
+            <button
+              onClick={() => setCartOpen(true)}
+              aria-label="Carrito"
+              className="relative border border-border p-1.5 text-foreground/80 hover:border-primary hover:text-primary"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              {count > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 font-mono text-[9px] font-bold text-primary-foreground">
+                  {count}
+                </span>
+              )}
+            </button>
+          )}
           <LanguageSwitcher />
           <ThemeToggle />
           <Link

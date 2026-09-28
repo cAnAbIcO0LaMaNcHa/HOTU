@@ -181,6 +181,15 @@ function EditorEvento({
   const [venue, setVenue] = useState(evento.venue);
   const [city, setCity] = useState(evento.city);
   const [lineup, setLineup] = useState(evento.lineup);
+  /**
+   * String vacío = sin precio. Se inicializa con "" cuando es null y con el
+   * número cuando hay —incluido 0—, así que hay que comparar con !== null y no
+   * usar un "or" contra vacío: 0 es falsy, y con eso una entrada libre se
+   * abriría como si no tuviera precio. Guardarla después la borraría.
+   */
+  const [doorPrice, setDoorPrice] = useState(
+    evento.doorPriceCop !== null ? String(evento.doorPriceCop) : ""
+  );
 
   return (
     <div className="mt-4 space-y-4 border-t border-border pt-4">
@@ -200,11 +209,21 @@ function EditorEvento({
         <Field label="CIUDAD" value={city} onChange={setCity} disabled={busy} />
       </div>
       <TextAreaField label="LINE UP" value={lineup} onChange={setLineup} rows={3} disabled={busy} />
+      <Field
+        label="PRECIO EN TAQUILLA"
+        value={doorPrice}
+        onChange={setDoorPrice}
+        placeholder="35.000"
+        disabled={busy}
+      />
+      <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
+        Informativo. Vacío no muestra nada; 0 anuncia entrada libre.
+      </p>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           disabled={busy}
-          onClick={() => onGuardar({ title, date, endAt, venue, city, lineup })}
+          onClick={() => onGuardar({ title, date, endAt, venue, city, lineup, doorPriceCop: doorPrice })}
           className="surface-chrome sheen px-4 py-2 font-mono text-[10px] font-bold tracking-[0.2em] disabled:opacity-50"
         >
           {busy ? "GUARDANDO..." : "GUARDAR"}

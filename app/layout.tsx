@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/lib/i18n";
 import { AuthSessionProvider } from "@/components/session-provider";
 import { CartProvider } from "@/components/cart-context";
 import { CartDrawer } from "@/components/cart-drawer";
+import { ventaOnlineHabilitada } from "@/lib/flags";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hotu.com.co"), // TODO: cambiar por tu dominio real
@@ -35,6 +36,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  /**
+   * Se lee UNA vez acá y baja a los dos lugares que lo necesitan. El layout es
+   * server component, así que puede leer el entorno; el header y el cajón son
+   * client components y no.
+   */
+  const venta = ventaOnlineHabilitada();
+
   return (
     <html lang="es">
       <head>
@@ -62,11 +70,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="concrete min-h-screen">
         <AuthSessionProvider>
           <LanguageProvider>
+            {/*
+              EL CartProvider QUEDA MONTADO AUNQUE LA VENTA ESTÉ APAGADA, y no es
+              un descuido: site-header llama a useCart(), que LANZA sin provider,
+              así que sacarlo dejaría la pantalla en blanco en todo el sitio.
+
+              Queda inerte. Sin botones que le agreguen nada y sin cajón que lo
+              muestre, el carrito no puede tener contenido alcanzable — y aunque
+              alguien tuviera items guardados en localStorage de antes, no hay
+              forma de verlos ni de pagarlos: createPendingOrder se niega.
+            */}
             <CartProvider>
-              <SiteHeader />
+              <SiteHeader ventaOnline={venta} />
               {children}
               <SiteFooter />
-              <CartDrawer />
+              {venta && <CartDrawer />}
             </CartProvider>
           </LanguageProvider>
         </AuthSessionProvider>

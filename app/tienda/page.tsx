@@ -3,6 +3,7 @@ import { getMerchCatalog } from "@/lib/orders";
 import { getAllCollectives } from "@/lib/db";
 import { TiendaList } from "@/components/tienda-list";
 
+import { ventaOnlineHabilitada } from "@/lib/flags";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
@@ -24,7 +25,11 @@ export default async function TiendaPage() {
         Agregá lo que quieras al carrito y finalizá el pedido. El cobro en línea se activa próximamente.
       </p>
 
-      <TiendaList items={items} collectives={collectiveOptions} />
+      <TiendaList
+        items={items}
+        collectives={collectiveOptions}
+        ventaOnline={ventaOnlineHabilitada()}
+      />
     </section>
   );
 }

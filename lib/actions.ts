@@ -4,6 +4,7 @@ import { neon } from "@neondatabase/serverless";
 import { auth } from "@/auth";
 import { normalizeEmail } from "./accounts";
 import type { CartItem } from "./commerce-types";
+import { ventaOnlineHabilitada } from "./flags";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -24,6 +25,23 @@ export async function createPendingOrder(items: CartItem[]): Promise<{ orderId: 
    * La de arriba evita el problema; esta lo hace imposible desde este
    * camino, que es el único que escribe orders fuera del seed.
    */
+  /**
+   * EL INTERRUPTOR VA ACÁ, ANTES DE TODO, Y NO SOLO EN LA UI.
+   *
+   * Esconder los botones es una promesa; que este camino se niegue es la
+   * garantía. Es el mismo criterio que las tres llaves de la limpieza: "el botón
+   * no está" deja de ser cierto en cuanto alguien arma el POST a mano, y este
+   * Server Action es invocable desde el front con el payload que quiera.
+   *
+   * Y es una garantía COMPLETA y no parcial, porque está medido que es el único
+   * camino alcanzable: los otros dos INSERT INTO orders viven en /api/seed-test y
+   * /api/migrate, los dos detrás de MIGRATE_SECRET.
+   *
+   * Va antes del chequeo de email a propósito. Con la venta apagada, "no estás
+   * logueado" sería una respuesta falsa: el problema no es quién sos.
+   */
+  if (!ventaOnlineHabilitada()) return { error: "venta_deshabilitada" };
+
   const email = session?.user?.email ? normalizeEmail(session.user.email) : null;
   if (!email) return { error: "not_authenticated" };
   if (items.length === 0) return { error: "empty_cart" };

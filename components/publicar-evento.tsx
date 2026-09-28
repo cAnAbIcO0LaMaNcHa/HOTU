@@ -46,6 +46,7 @@ export function PublicarEvento({
   const [city, setCity] = useState(destino.sector ?? "");
   const [lineup, setLineup] = useState("");
   const [flyerUrl, setFlyerUrl] = useState("");
+  const [doorPrice, setDoorPrice] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,7 @@ export function PublicarEvento({
           city,
           lineup,
           flyerUrl,
+          doorPriceCop: doorPrice,
         }),
       });
       const d = await res.json().catch(() => ({}));
@@ -116,6 +118,29 @@ export function PublicarEvento({
         />
         <Field label="CIUDAD" value={city} onChange={setCity} disabled={busy} />
       </div>
+
+      {/*
+        PRECIO EN TAQUILLA, y el texto de abajo dice las dos cosas que el
+        organizador necesita saber: que es solo un anuncio, y que dejarlo vacío
+        no es lo mismo que poner 0.
+
+        type="text" y no "number": acá la plata se escribe con puntos —35.000— y
+        un input numérico los rechaza o los come según el navegador. El lib
+        acepta los puntos y valida; pedirle a alguien que escriba el precio
+        distinto de como lo lee es pedirle que se equivoque.
+      */}
+      <Field
+        label="PRECIO EN TAQUILLA"
+        value={doorPrice}
+        onChange={setDoorPrice}
+        placeholder="35.000"
+        disabled={busy}
+      />
+      <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
+        Solo informativo: se muestra en la página del evento como "Taquilla: $35.000". HOTU
+        todavía no vende boletas, así que acá no se cobra nada. Si lo dejás vacío no se
+        muestra nada — y eso no es lo mismo que poner 0, que anuncia entrada libre.
+      </p>
 
       <TextAreaField
         label="LINE UP"

@@ -167,6 +167,15 @@ export type EventItem = ContentMeta & {
   /** El colectivo o venue que lo organiza (§7). NULL = todavía sin asignar. */
   organizerSlug: string | null;
   /**
+   * PRECIO EN TAQUILLA, informativo. NULL = el organizador no dijo, y la página
+   * no muestra nada.
+   *
+   * OJO AL LEERLO: hay que comparar con !== null y NO usarlo como truthy. Un
+   * evento gratuito es 0, y 0 es falsy — con un if (doorPriceCop) la entrada
+   * libre se leería igual que "no dijo precio" y el anuncio desaparecería.
+   */
+  doorPriceCop: number | null;
+  /**
    * Cuándo una persona revisó el lineup relacionado. NULL = sin revisar.
    *
    * "Revisado" NO es "todo resuelto": un nombre puede no corresponder a
@@ -848,6 +857,60 @@ export async function getCollectivesOwnedBy(
     SELECT * FROM collectives
     WHERE lower(owner_email) = lower(${email}) AND entity_kind = ${kind}
     ORDER BY name
+  `;
+  return rows.map(mapCollective);
+}
+
+/**
+ * Los colectivos a nombre de los que esta cuenta PUEDE PUBLICAR: los que posee
+ * y los que tiene como residencia.
+ *
+ * ============================================================
+ * POR QUÉ EXISTE, Y QUÉ INCOHERENCIA ARREGLA
+ * ============================================================
+ *
+ * Desde §8 fase 2 la ruta de eventos pide canEditCollective, que incluye a los
+ * residentes. Pero el formulario ofrecía solo getCollectivesOwnedBy, que filtra
+ * por owner_email. O sea que un residente PODÍA publicar por API y en la
+ * pantalla no veía ningún destino: el permiso existía y no había forma de
+ * usarlo. Es la peor forma de una incoherencia, porque no da error — la función
+ * simplemente no está donde tiene que estar.
+ *
+ * ============================================================
+ * EL SUPER_ADMIN QUEDA AFUERA, Y ES A PROPÓSITO
+ * ============================================================
+ *
+ * canEditCollective también lo deja pasar, así que incluirlo sería "lo mismo que
+ * la puerta". No se hace: este lector alimenta el botón de PUBLICAR de un panel
+ * propio, que significa "publicar a nombre de uno de MIS perfiles". Un
+ * SUPER_ADMIN no es parte de esos colectivos, y ofrecerle los 30 del sitio en un
+ * selector convertiría un acto de moderación en un clic distraído sobre una
+ * lista larga. Para eso está /admin, con su propio registro.
+ *
+ * O sea que esto NO es "canEditCollective como lista". Es la lista de lo propio,
+ * y por eso vale que sea más chica que la puerta.
+ */
+export async function getCollectivesQuePuedeEditar(
+  email: string,
+  kind: EntityKind = "collective"
+): Promise<Collective[]> {
+  const rows = await sql`
+    SELECT c.* FROM collectives c
+    WHERE c.entity_kind = ${kind}
+      AND (
+        lower(c.owner_email) = lower(${email})
+        OR EXISTS (
+          SELECT 1
+          FROM artist_collectives ac
+          JOIN artists a ON a.slug = ac.artist_slug
+          WHERE ac.collective_slug = c.slug
+            AND ac.kind = 'residente'
+            AND ac.to_date IS NULL
+            AND ac.accepted_at IS NOT NULL
+            AND lower(a.owner_email) = lower(${email})
+        )
+      )
+    ORDER BY c.name
   `;
   return rows.map(mapCollective);
 }
@@ -1627,6 +1690,7 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
     title: r.title,
     lineup: r.lineup,
     organizerSlug: (r.organizer_slug as string | null) ?? null,
+    doorPriceCop: (r.door_price_cop as number | null) ?? null,
     lineupReviewedAt: r.lineup_reviewed_at
       ? new Date(r.lineup_reviewed_at as string).toISOString()
       : null,
@@ -1943,6 +2007,8 @@ export type MiEvento = {
   flyerUrl: string | null;
   organizerSlug: string;
   organizerName: string;
+  /** Precio en taquilla, informativo. NULL = no dijo. Comparar con !== null: 0 es gratis. */
+  doorPriceCop: number | null;
   /** Si un moderador lo bajó, y por qué. */
   censoredAt: string | null;
   censorReason: string | null;
@@ -1989,6 +2055,7 @@ export async function getMyEvents(email: string, kind?: EntityKind): Promise<MiE
     flyerUrl: (r.flyer_url as string | null) ?? null,
     organizerSlug: r.organizer_slug as string,
     organizerName: (r.organizer_name as string) ?? (r.organizer_slug as string),
+    doorPriceCop: (r.door_price_cop as number | null) ?? null,
     censoredAt: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
     censorReason: (r.censor_reason as string | null) ?? null,
     vendidas: Number(r.vendidas ?? 0),

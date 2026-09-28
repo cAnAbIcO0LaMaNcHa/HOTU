@@ -45,6 +45,12 @@ export type NuevoEvento = {
   lineup?: unknown;
   /** URL que devolvió /api/upload. */
   flyerUrl?: unknown;
+  /**
+   * Precio en taquilla, INFORMATIVO. Vacío o ausente = no dijo, y la página no
+   * muestra nada. No participa de ningún cobro: la venta online está apagada
+   * por VENTA_ONLINE y esto es un anuncio, no un precio de venta.
+   */
+  doorPriceCop?: unknown;
 };
 
 /**
@@ -202,13 +208,18 @@ export async function createCommunityEvent(
   }
   const flyerUrl = flyerRaw || null;
 
+  const precio = validarPrecioTaquilla(input.doorPriceCop);
+  if (!precio.ok) return { ok: false, status: 400, error: precio.error };
+
   const [fila] = await sql`
     INSERT INTO events
       (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
+       door_price_cop,
        district, scope, country_code, language, status, featured, priority_at)
     VALUES
       (${date}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
        ${title}, ${lineup}, ${organizerSlug},
+       ${precio.valor},
        ${DISTRITO_CONGELADO}, 'country', 'COL', 'es', 'published', false, NULL)
     RETURNING id
   `;
@@ -261,6 +272,42 @@ async function cargarEventoPropio(
   return { ok: true, organizador, censurado: e.censored_at != null };
 }
 
+/**
+ * EL PRECIO EN TAQUILLA, y la validación vive acá y no en la ruta porque los
+ * dos caminos —crear y editar— tienen que rechazar lo mismo. Duplicarla es
+ * cómo se desincronizan.
+ *
+ * Devuelve null para "no dijo precio", que NO es lo mismo que 0: 0 es un evento
+ * gratuito que alguien decidió anunciar, y null es que no dijo nada y la página
+ * no habla por él. Por eso el vacío NO cae en 0.
+ *
+ * El techo lo repite el CHECK de la base. Acá está igual para poder dar un
+ * mensaje entendible en vez de una violación de constraint.
+ */
+function validarPrecioTaquilla(
+  crudo: unknown
+): { ok: true; valor: number | null } | { ok: false; error: string } {
+  if (crudo === undefined || crudo === null) return { ok: true, valor: null };
+  const texto = String(crudo).trim();
+  if (texto === "") return { ok: true, valor: null };
+
+  // Se aceptan los puntos y espacios con que se escribe la plata acá —35.000,
+  // 35 000— porque el formulario los muestra así y pedirle al organizador que
+  // los saque es pedirle que escriba distinto de como lee.
+  const limpio = texto.replace(/[.\s]/g, "");
+  if (!/^\d+$/.test(limpio)) {
+    return { ok: false, error: "El precio en taquilla tiene que ser un número en pesos, sin centavos" };
+  }
+  const n = Number(limpio);
+  if (!Number.isInteger(n) || n < 0) {
+    return { ok: false, error: "El precio en taquilla tiene que ser un número en pesos, sin centavos" };
+  }
+  if (n > 10000000) {
+    return { ok: false, error: "Ese precio en taquilla es demasiado alto. Revisá si sobra un dígito." };
+  }
+  return { ok: true, valor: n };
+}
+
 export type ParcheEvento = {
   title?: unknown;
   date?: unknown;
@@ -269,6 +316,7 @@ export type ParcheEvento = {
   city?: unknown;
   lineup?: unknown;
   flyerUrl?: unknown;
+  doorPriceCop?: unknown;
 };
 
 /**
@@ -293,7 +341,7 @@ export async function updateCommunityEvent(
   if (!propio.ok) return propio;
 
   const [actual] = await sql`
-    SELECT event_date::text AS d, venue, city, title, lineup, flyer_url, end_at
+    SELECT event_date::text AS d, venue, city, title, lineup, flyer_url, end_at, door_price_cop
     FROM events WHERE id = ${id}
   `;
 
@@ -357,10 +405,23 @@ export async function updateCommunityEvent(
     flyerUrl = raw || null;
   }
 
+  /**
+   * AUSENTE Y VACÍO SON COSAS DISTINTAS, igual que con endAt. Si la clave no
+   * viene, el precio queda como estaba —un formulario que muestra solo algunos
+   * campos no puede borrar los que no muestra—. Si viene vacía, se BORRA a
+   * propósito: así el organizador puede retirar un precio que ya no aplica.
+   */
+  let doorPrice: number | null = (actual.door_price_cop as number | null) ?? null;
+  if (patch.doorPriceCop !== undefined) {
+    const v = validarPrecioTaquilla(patch.doorPriceCop);
+    if (!v.ok) return { ok: false, status: 400, error: v.error };
+    doorPrice = v.valor;
+  }
+
   await sql`
     UPDATE events SET
       title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
-      end_at = ${endAt}, flyer_url = ${flyerUrl}
+      end_at = ${endAt}, flyer_url = ${flyerUrl}, door_price_cop = ${doorPrice}
     WHERE id = ${id}
   `;
 

@@ -3,6 +3,7 @@ import { ListingLayout } from "@/components/listing-layout";
 import { EventosList } from "@/components/eventos-list";
 import { getAllEvents, getLineupsByEvent, eventHasEnded } from "@/lib/db";
 import { uniqueSorted } from "@/lib/listing-options";
+import { ventaOnlineHabilitada } from "@/lib/flags";
 
 export const revalidate = 0;
 
@@ -45,6 +46,7 @@ export default async function EventosPage() {
         events={events}
         pastEvents={pastEvents}
         lineups={Object.fromEntries(lineups)}
+        ventaOnline={ventaOnlineHabilitada()}
       />
     </ListingLayout>
   );

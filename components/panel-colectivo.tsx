@@ -14,6 +14,7 @@ import type { EntityKind } from "@/lib/db";
 import {
   getVinculos,
   getCollectivesOwnedBy,
+  getCollectivesQuePuedeEditar,
   getGenreBranches,
   getInvitacionesColab,
   getGenreTags,
@@ -161,15 +162,28 @@ export async function PanelColectivo({
       : [[], [], []];
 
   /**
-   * A nombre de quién se puede publicar: los propios que NO estén
-   * bajados por moderación.
+   * A nombre de quién se puede publicar: lo que esta cuenta PUEDE EDITAR —lo
+   * propio y donde es residente— menos lo que esté bajado por moderación.
    *
-   * El server ya los rechaza con un 409, pero ofrecer el formulario
-   * igual haría que alguien escriba una noticia entera para recibir el
-   * "no" recién al mandarla. El "+" ofrece lo que esta cuenta puede
-   * hacer, y en este momento no puede.
+   * ============================================================
+   * PUBLICAR SE AMPLÍA, ADMINISTRAR NO
+   * ============================================================
+   *
+   * Es una lista DISTINTA de `propios`, y la diferencia es la fase 2 entera.
+   * `propios` sigue siendo solo lo que se posee y sigue decidiendo el panel de
+   * administración: la bandeja, el editor de miembros, ceder. Eso es de dueño.
+   *
+   * Publicar no: un residente puede publicar eventos y noticias del colectivo,
+   * porque eso es CONTENIDO y es el permiso que la residencia concede. Antes
+   * ofrecía solo lo propio, así que el residente tenía el permiso por API y
+   * ningún destino en pantalla — un permiso sin puerta de entrada.
+   *
+   * Si alguna vez las dos listas se unifican "porque casi siempre coinciden",
+   * el residente se queda con la bandeja del dueño. Coinciden hoy porque casi
+   * nadie tiene residencia asignada, no porque sean lo mismo.
    */
-  const destinos = propios
+  const publicables = await getCollectivesQuePuedeEditar(email, kind);
+  const destinos = publicables
     .filter((c) => !c.censoredAt)
     .map((c) => ({
       slug: c.slug,

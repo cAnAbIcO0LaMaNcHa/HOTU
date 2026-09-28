@@ -18,7 +18,23 @@ const CATEGORY_LABEL: Record<string, string> = {
 const formatCOP = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
-export function TiendaList({ items, collectives }: { items: MerchItem[]; collectives: CollectiveOption[] }) {
+export function TiendaList({
+  items,
+  collectives,
+  ventaOnline = false,
+}: {
+  items: MerchItem[];
+  collectives: CollectiveOption[];
+  /**
+   * VENTA_ONLINE, bajado como prop. No se lee del entorno acá: este es un client
+   * component y process.env no existe del lado del cliente salvo con un
+   * NEXT_PUBLIC_, y eso serían DOS variables para lo mismo — que es exactamente
+   * cómo una queda prendida y la otra apagada.
+   *
+   * Default false: si alguien lo renderiza sin pasar el flag, no vende.
+   */
+  ventaOnline?: boolean;
+}) {
   const [selected, setSelected] = useState<string[]>([]);
 
   function toggle(slug: string) {
@@ -56,7 +72,17 @@ export function TiendaList({ items, collectives }: { items: MerchItem[]; collect
                 <h3 className="mt-2 text-lg font-bold leading-tight">{item.name}</h3>
                 <p className="mt-2 font-mono text-sm text-muted-foreground">{formatCOP(item.priceCop)}</p>
               </div>
-              <AddToCartButton slug={item.slug} name={item.name} unitPriceCop={item.priceCop} />
+              {/* Con VENTA_ONLINE apagado la tienda es un CATÁLOGO: el precio y la
+                  foto se siguen viendo, lo que no hay es cómo comprar. Es lo que
+                  se podía hacer ayer menos una cosa, y es la cosa que se decidió
+                  apagar — no un efecto secundario. */}
+              {ventaOnline ? (
+                <AddToCartButton slug={item.slug} name={item.name} unitPriceCop={item.priceCop} />
+              ) : (
+                <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                  Todavía no vendemos por acá. Escribinos para conseguirlo.
+                </p>
+              )}
             </div>
           ))}
         </div>
