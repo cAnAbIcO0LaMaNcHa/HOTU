@@ -347,6 +347,73 @@ obliga a poder explicar por qué tenemos cada dato.
    *Para qué:* que no vendan 400 boletas para un lugar de 120. Es la forma más
    común de que un evento real termine en gente afuera pidiendo plata.
 
+## LA VÍA DE ENTRADA PARA COLECTIVOS NUEVOS
+
+**El requisito 6 —un evento ya realizado— deja afuera a los colectivos nuevos
+para siempre, y eso es un problema del requisito, no de ellos.**
+
+Vale decir el tamaño del problema: HOTU existe para la escena independiente de
+Bogotá, y un colectivo que está armando su primera fiesta es exactamente a quien
+menos le sirve otra plataforma. Una regla que solo deja entrar a quien ya llenó
+un lugar convierte a HOTU en un club de los que ya pudieron, que es lo contrario
+de lo que dice la sección "LA CASA ES DE TODOS" de la página.
+
+Y el requisito igual tiene sentido: distinguir un colectivo de una idea es lo
+único que separa "todavía no tiene trayectoria" de "no existe". Así que la salida
+no es sacarlo, es **dar una puerta angosta en vez de una cerrada.**
+
+**Tres opciones, y no elijo ninguna.** Las tres asumen que el resto de la
+verificación —identidad, contacto, cuenta— se cumplió igual: lo que se flexibiliza
+es la trayectoria, nunca el responsable.
+
+### (i) Tope de boletas en el primer evento
+
+Puede vender, con un máximo por evento —digamos 50— hasta cumplir uno.
+
+**A favor:** acota la plata en riesgo a algo concreto y calculable. Es fácil de
+explicar y de construir.
+**En contra:** 50 boletas de una fiesta chica igual es plata real para las 50
+personas. Y un tope puede hacer inviable el evento: si el venue pide un mínimo,
+el colectivo no puede ni intentarlo. Pone a HOTU a decidir cuántas boletas puede
+vender una fiesta ajena, que es la misma objeción por la que se sacó el tope del
+precio en taquilla.
+
+### (ii) Solo con la opción (b): HOTU retiene hasta que el evento pase
+
+Un colectivo sin trayectoria vende únicamente con la plata retenida por HOTU y
+cobra después del evento. Sin tope de boletas.
+
+**A favor:** es la única de las tres que de verdad **protege al comprador**, porque
+si el evento no pasa el reembolso es posible. No limita el tamaño del evento, que
+es lo que un colectivo nuevo necesita para arrancar.
+**En contra:** obliga a que la opción (b) exista, con todo lo que eso trae —ver
+arriba, probablemente actividad regulada—. Y el colectivo nuevo es justamente el
+que peor aguanta cobrar tarde: no tiene caja para pagar el venue por adelantado,
+así que puede quedar afuera por otra vía.
+
+### (iii) Aval de un colectivo ya verificado
+
+Un colectivo verificado responde por el nuevo. Si el nuevo falla, el que avaló
+pierde el verificado.
+
+**A favor:** usa lo que la escena ya tiene, que son las relaciones. No requiere
+que HOTU maneje plata ni ponga topes.
+**En contra:** le pide a alguien arriesgar su reputación por un tercero, y eso o
+no va a pasar, o va a pasar entre amigos sin mirar nada — con lo cual el aval no
+verifica nada. Y crea una jerarquía de padrinos, que es una política social, no
+una regla técnica.
+
+### Lo que sí conviene decidir de una
+
+Sea cual sea la opción, **el límite se levanta después del primer evento
+cumplido**, y "cumplido" necesita una definición que no sea el olfato de un
+moderador. Propongo: el evento ocurrió en la fecha anunciada y no quedaron
+reclamos sin responder pasados N días. Eso se puede medir; "salió bien" no.
+
+Y **el comprador tiene que poder ver que es el primer evento del colectivo.** No
+como una advertencia que asuste, sino como un dato: "primer evento en HOTU". Si
+la información existe y no se la damos, el riesgo se lo pasamos a él sin decirle.
+
 ## CÓMO SE REVISA
 
 **Una persona, no un algoritmo.** Un moderador abre la solicitud, mira los
@@ -514,19 +581,51 @@ y venues independientes publican y venden entradas a sus propias fiestas.)*
 
 **Sobre datos personales**
 
-13. Para verificar guardaríamos cédula, selfie y cuenta bancaria. Bajo la Ley
-    1581 de 2012: ¿cuánto tiempo podemos conservarlos, qué autorización
-    necesitamos, y podemos borrar los documentos dejando solo el registro de
-    que verificamos?
-14. ¿Hace falta registrar las bases de datos ante la SIC, y a partir de qué
-    tamaño?
+*Contexto para esta sección: para verificar a un organizador pensamos pedirle
+foto de su documento de identidad y una selfie sosteniéndolo, más una cuenta
+bancaria. Entendemos que eso es tratamiento de datos personales y posiblemente
+de datos SENSIBLES —una imagen del rostro es un dato biométrico— bajo la Ley
+1581 de 2012, y es la parte donde menos queremos improvisar.*
+
+13. ¿La foto del documento y la selfie son datos SENSIBLES en el sentido del
+    artículo 5 de la Ley 1581? Nos importa porque el artículo 6 prohíbe el
+    tratamiento de datos sensibles salvo excepciones, y una de ellas es la
+    autorización explícita del titular. ¿Alcanza con eso para este caso?
+14. ¿Cómo tiene que ser esa AUTORIZACIÓN para ser válida? Concretamente:
+    ¿sirve una casilla en un formulario web, tiene que ser separada del resto
+    de los términos, tiene que enumerar las finalidades una por una, y cómo se
+    guarda la prueba de que se dio?
+15. ¿Qué tiene que decir la POLÍTICA DE TRATAMIENTO DE DATOS que HOTU debe
+    publicar, y dónde tiene que estar publicada para cumplir? Hoy no tenemos
+    ninguna.
+16. ¿Hay que informar al titular de sus derechos —conocer, actualizar,
+    rectificar, suprimir, revocar la autorización— y por qué canal tiene que
+    poder ejercerlos? ¿Sirve un correo, o hace falta un procedimiento escrito
+    con plazos?
+17. ¿Hace falta registrar las bases de datos en el Registro Nacional de Bases
+    de Datos de la SIC, a partir de qué tamaño o tipo de empresa, y con qué
+    periodicidad se actualiza?
+18. ¿Cuánto tiempo podemos conservar el documento y la selfie? Nuestra
+    intención es BORRARLOS una vez verificado el organizador y quedarnos solo
+    con el registro de que la verificación ocurrió, quién la hizo y cuándo.
+    ¿Eso es suficiente, o hay que conservar el soporte por alguna obligación
+    —probatoria, contable— que lo impida?
+19. Si tercerizamos la verificación de identidad en un proveedor, ¿cambia algo?
+    ¿Somos responsables o encargados del tratamiento, y qué tiene que decir el
+    contrato con ese proveedor?
+20. ¿Qué obligación tenemos si hay una filtración: a quién se le informa, en
+    qué plazo, y hay que avisarle a cada titular?
 
 **Sobre los términos**
 
-15. ¿Qué tiene que decir sí o sí el compromiso que acepta un organizador para
+21. ¿Qué tiene que decir sí o sí el compromiso que acepta un organizador para
     ser exigible?
-16. ¿Podemos suspender a un organizador por incumplir, y bajo qué condiciones,
+22. ¿Podemos suspender a un organizador por incumplir, y bajo qué condiciones,
     sin que sea un incumplimiento nuestro del contrato con él?
+23. Si le permitimos vender a un colectivo NUEVO con un límite —ver "la vía de
+    entrada" más arriba— y ese evento falla, ¿el hecho de haberle puesto un
+    límite nos ayuda o nos perjudica? Nos preocupa que poner un tope se lea como
+    que sabíamos que había riesgo y vendimos igual.
 
 ## LO QUE NO SE PUEDE DECIDIR TODAVÍA
 
