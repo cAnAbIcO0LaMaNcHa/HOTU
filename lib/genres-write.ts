@@ -24,7 +24,7 @@
 import { neon } from "@neondatabase/serverless";
 import { canEditArtist } from "./artists-write";
 import { canEditCollective, type WriteResult } from "./collectives-write";
-import { registrarEdicion } from "./edit-log-write";
+import { resolverRolParaRegistro, sentenciaDeRegistro } from "./edit-log-write";
 import { GENRE_RULES } from "./genre-taxonomy";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -232,23 +232,42 @@ export async function setGenres(
     ),
   ];
 
-  await sql.transaction(queries);
-
   /**
    * Solo los géneros de un COLECTIVO se registran. Los de un artista son de su
    * propio perfil, que solo edita su dueño: no hay varias manos, así que no hay
-   * nada que desambiguar.
+   * nada que desambiguar, y resolverRolParaRegistro contra un slug de artista no
+   * significaría nada.
+   *
+   * El registro entra EN LA MISMA transacción que los borrados e inserts de
+   * arriba, así que "nada se escribe sin registro" es atómico. Y el rol se
+   * resuelve ANTES, para cortar con los datos intactos si no se puede nombrar al
+   * actor.
    */
-  if (owner === "collective" && email) {
-    await registrarEdicion({
-      collectiveSlug: slug,
-      actorEmail: email,
-      entidad: "genero",
-      entidadId: slug,
-      accion: "editar",
-      campos: ["branch_primario", "branches_secundarios", "tags"],
-    });
+  if (owner === "collective") {
+    if (!email) return { ok: false, status: 403, error: "Not signed in" };
+    const rol = await resolverRolParaRegistro(slug, email);
+    if (!rol) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "No pude determinar con qué rol registrar este cambio de géneros, así que no lo " +
+          "apliqué. Nada se escribe sin registro.",
+      };
+    }
+    queries.push(
+      sentenciaDeRegistro(rol, {
+        collectiveSlug: slug,
+        actorEmail: email,
+        entidad: "genero",
+        entidadId: slug,
+        accion: "editar",
+        campos: ["branch_primario", "branches_secundarios", "tags"],
+      })
+    );
   }
+
+  await sql.transaction(queries);
 
   return {
     ok: true,

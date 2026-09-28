@@ -18,7 +18,7 @@
 import { neon } from "@neondatabase/serverless";
 import { isOwnBlobUrl } from "./blob";
 import { canEditCollective, type WriteResult } from "./collectives-write";
-import { registrarEdicion } from "./edit-log-write";
+import { resolverRolParaRegistro, sentenciaDeRegistro } from "./edit-log-write";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -211,26 +211,61 @@ export async function createCommunityEvent(
   const precio = validarPrecioTaquilla(input.doorPriceCop);
   if (!precio.ok) return { ok: false, status: 400, error: precio.error };
 
-  const [fila] = await sql`
-    INSERT INTO events
-      (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
-       door_price_cop,
-       district, scope, country_code, language, status, featured, priority_at)
-    VALUES
-      (${date}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
-       ${title}, ${lineup}, ${organizerSlug},
-       ${precio.valor},
-       ${DISTRITO_CONGELADO}, 'country', 'COL', 'es', 'published', false, NULL)
-    RETURNING id
-  `;
+  /**
+   * El rol ANTES de escribir: nada se escribe sin registro, y resolverlo primero
+   * es lo que hace que el corte sea limpio en vez de dejar el evento creado y el
+   * log vacío.
+   */
+  const rol = await resolverRolParaRegistro(organizerSlug, email);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar la creación de este evento, así que no lo " +
+        "publiqué. Nada se escribe sin registro.",
+    };
+  }
 
-  await registrarEdicion({
-    collectiveSlug: organizerSlug,
-    actorEmail: email,
-    entidad: "event",
-    entidadId: String(fila.id),
-    accion: "crear",
-  });
+  /**
+   * ============================================================
+   * UN SOLO STATEMENT CON CTE, Y NO UNA TRANSACCIÓN DE DOS
+   * ============================================================
+   *
+   * Los otros caminos meten el dato y el registro en un sql.transaction, pero acá
+   * no se puede: el registro necesita el ID QUE EL INSERT DEVUELVE, y las
+   * sentencias de una transacción se arman antes de ejecutarse, así que ninguna
+   * puede leer el resultado de la anterior.
+   *
+   * Un CTE que modifica datos resuelve las dos cosas: Postgres garantiza que cada
+   * uno se ejecuta exactamente una vez y hasta el final, independientemente de si
+   * la consulta principal lee su salida — y al ser UNA sentencia, la atomicidad no
+   * hay ni que pedirla.
+   *
+   * La alternativa era crear el evento, intentar el log, y borrar el evento si el
+   * log falla. Eso es una compensación que también puede fallar, y entonces queda
+   * el evento sin registro, que es exactamente lo que la regla prohíbe.
+   */
+  const [fila] = await sql`
+    WITH nuevo AS (
+      INSERT INTO events
+        (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
+         door_price_cop,
+         district, scope, country_code, language, status, featured, priority_at)
+      VALUES
+        (${date}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
+         ${title}, ${lineup}, ${organizerSlug},
+         ${precio.valor},
+         ${DISTRITO_CONGELADO}, 'country', 'COL', 'es', 'published', false, NULL)
+      RETURNING id
+    ), registro AS (
+      INSERT INTO edit_log
+        (actor_email, actor_rol, collective_slug, entidad, entidad_id, accion, detalle)
+      SELECT ${email}, ${rol}, ${organizerSlug}, 'event', nuevo.id::text, 'crear', NULL
+      FROM nuevo
+    )
+    SELECT id FROM nuevo
+  `;
 
   return { ok: true, value: { id: Number(fila.id), slugOrganizador: organizerSlug } };
 }
@@ -418,21 +453,52 @@ export async function updateCommunityEvent(
     doorPrice = v.valor;
   }
 
-  await sql`
-    UPDATE events SET
-      title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
-      end_at = ${endAt}, flyer_url = ${flyerUrl}, door_price_cop = ${doorPrice}
-    WHERE id = ${id}
-  `;
+  const rol = await resolverRolParaRegistro(propio.organizador, email!);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar esta edición, así que no la apliqué. " +
+        "Nada se escribe sin registro.",
+    };
+  }
 
-  await registrarEdicion({
-    collectiveSlug: propio.organizador,
-    actorEmail: email!,
-    entidad: "event",
-    entidadId: String(id),
-    accion: "editar",
-    campos: ["title", "event_date", "venue", "city", "lineup", "end_at", "flyer_url"],
-  });
+  /**
+   * El dato y el registro en una transacción. Acá sí alcanza —a diferencia de
+   * crear— porque el id ya se conoce y ninguna sentencia necesita leer el
+   * resultado de la otra.
+   *
+   * Los campos que se listan son los que este UPDATE toca SIEMPRE. door_price_cop
+   * queda afuera de la lista a propósito: el UPDATE lo escribe con su valor
+   * anterior cuando el patch no lo trae, así que anunciarlo como cambiado sería
+   * decir que alguien lo tocó cuando no.
+   */
+  await sql.transaction([
+    sql`
+      UPDATE events SET
+        title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
+        end_at = ${endAt}, flyer_url = ${flyerUrl}, door_price_cop = ${doorPrice}
+      WHERE id = ${id}
+    `,
+    sentenciaDeRegistro(rol, {
+      collectiveSlug: propio.organizador,
+      actorEmail: email!,
+      entidad: "event",
+      entidadId: String(id),
+      accion: "editar",
+      campos: [
+        "title",
+        "event_date",
+        "venue",
+        "city",
+        "lineup",
+        "end_at",
+        "flyer_url",
+        ...(patch.doorPriceCop !== undefined ? ["door_price_cop"] : []),
+      ],
+    }),
+  ]);
   return { ok: true, value: { id } };
 }
 
@@ -474,14 +540,32 @@ export async function deleteCommunityEvent(
     };
   }
 
-  await sql`DELETE FROM events WHERE id = ${id}`;
+  const rol = await resolverRolParaRegistro(propio.organizador, email!);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar este borrado, así que no lo hice. " +
+        "Nada se escribe sin registro — y menos un borrado.",
+    };
+  }
 
-  await registrarEdicion({
-    collectiveSlug: propio.organizador,
-    actorEmail: email!,
-    entidad: "event",
-    entidadId: String(id),
-    accion: "borrar",
-  });
+  /**
+   * EL REGISTRO VA PRIMERO EN LA LISTA, y no es indiferente. Es la única fila que
+   * va a quedar del evento: si el DELETE entra y el registro no, no hay a qué
+   * volver. Adentro de una transacción el orden no cambia el resultado —las dos o
+   * ninguna— pero ponerlo antes dice qué es lo que no se puede perder.
+   */
+  await sql.transaction([
+    sentenciaDeRegistro(rol, {
+      collectiveSlug: propio.organizador,
+      actorEmail: email!,
+      entidad: "event",
+      entidadId: String(id),
+      accion: "borrar",
+    }),
+    sql`DELETE FROM events WHERE id = ${id}`,
+  ]);
   return { ok: true, value: { borrado: true } };
 }

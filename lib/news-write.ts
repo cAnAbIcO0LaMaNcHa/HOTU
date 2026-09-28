@@ -38,7 +38,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { canEditCollective, type WriteResult } from "./collectives-write";
-import { registrarEdicion } from "./edit-log-write";
+import { resolverRolParaRegistro } from "./edit-log-write";
 import { isModerator } from "./roles-check";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
@@ -175,24 +175,42 @@ export async function createCommunityNews(
    * tenga exactamente el mismo schema antes de cada despliegue, y esta
    * es la línea que decide si un texto sin revisar sale a la portada.
    */
-  const [fila] = await sql`
-    INSERT INTO news
-      (tag, news_date, title, excerpt, district, scope, country_code, language,
-       status, featured, priority_at, author_collective_slug, review_status, submitted_at)
-    VALUES
-      (${tag}, ${f.date}, ${title}, ${excerpt}, ${DISTRITO_CONGELADO},
-       'country', 'COL', 'es', 'draft', false, NULL,
-       ${autor}, ${reviewStatus}, ${enviar ? new Date().toISOString() : null})
-    RETURNING id
-  `;
+  const rol = await resolverRolParaRegistro(autor, email!);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar la creación de esta noticia, así que no lo hice. " +
+        "Nada se escribe sin registro.",
+    };
+  }
 
-  await registrarEdicion({
-    collectiveSlug: autor,
-    actorEmail: email!,
-    entidad: "news",
-    entidadId: String(fila.id),
-    accion: "crear",
-  });
+  /**
+   * UN CTE Y NO UNA TRANSACCIÓN DE DOS: el registro necesita el ID QUE EL INSERT
+   * DEVUELVE, y las sentencias de una transacción se arman antes de ejecutarse, así
+   * que ninguna puede leer el resultado de la anterior. Un CTE que modifica datos
+   * se ejecuta exactamente una vez y hasta el final, y al ser UNA sentencia la
+   * atomicidad no hay ni que pedirla.
+   */
+  const [fila] = await sql`
+    WITH nueva AS (
+      INSERT INTO news
+        (tag, news_date, title, excerpt, district, scope, country_code, language,
+         status, featured, priority_at, author_collective_slug, review_status, submitted_at)
+      VALUES
+        (${tag}, ${f.date}, ${title}, ${excerpt}, ${DISTRITO_CONGELADO},
+         'country', 'COL', 'es', 'draft', false, NULL,
+         ${autor}, ${reviewStatus}, ${enviar ? new Date().toISOString() : null})
+      RETURNING id
+    ), registro AS (
+      INSERT INTO edit_log
+        (actor_email, actor_rol, collective_slug, entidad, entidad_id, accion, detalle)
+      SELECT ${email}, ${rol}, ${autor}, 'news', nueva.id::text, 'crear', NULL
+      FROM nueva
+    )
+    SELECT id FROM nueva
+  `;
 
   return { ok: true, value: { id: Number(fila.id), reviewStatus } };
 }
@@ -331,24 +349,41 @@ export async function updateCommunityNews(
 
   // El WHERE repite el estado: si un moderador decidió entre la lectura
   // de arriba y este UPDATE, esto no pisa su decisión.
+  const rol = await resolverRolParaRegistro(propia.autor, email!);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar esta edición, así que no lo hice. " +
+        "Nada se escribe sin registro.",
+    };
+  }
+
+  /**
+   * EL CTE ACÁ HACE ALGO MÁS que agrupar: el UPDATE es CONDICIONAL —solo toca la
+   * fila si sigue en borrador o rechazada— y el registro sale de `SELECT ... FROM
+   * upd`, así que si el UPDATE no matcheó nada, el log TAMPOCO entra. El registro
+   * no puede afirmar una edición que no ocurrió.
+   */
   const filas = await sql`
-    UPDATE news SET tag = ${tag}, news_date = COALESCE(${date}::date, news_date),
-                    title = ${title}, excerpt = ${excerpt}
-    WHERE id = ${id} AND review_status IN ('borrador','rechazado') AND status <> 'published'
-    RETURNING id
+    WITH upd AS (
+      UPDATE news SET tag = ${tag}, news_date = COALESCE(${date}::date, news_date),
+                      title = ${title}, excerpt = ${excerpt}
+      WHERE id = ${id} AND review_status IN ('borrador','rechazado') AND status <> 'published'
+      RETURNING id
+    ), registro AS (
+      INSERT INTO edit_log
+        (actor_email, actor_rol, collective_slug, entidad, entidad_id, accion, detalle)
+      SELECT ${email}, ${rol}, ${propia.autor}, 'news', upd.id::text, 'editar',
+             ${JSON.stringify({ campos: ["excerpt", "news_date", "tag", "title"] })}::jsonb
+      FROM upd
+    )
+    SELECT id FROM upd
   `;
   if (filas.length === 0) {
     return { ok: false, status: 409, error: "Alguien la movió mientras la editabas. Recargá." };
   }
-
-  await registrarEdicion({
-    collectiveSlug: propia.autor,
-    actorEmail: email!,
-    entidad: "news",
-    entidadId: String(id),
-    accion: "editar",
-    campos: ["tag", "news_date", "title", "excerpt"],
-  });
   return { ok: true, value: { id } };
 }
 
@@ -432,22 +467,38 @@ export async function deleteCommunityNews(
     return { ok: false, status: 409, error: "Ya está publicada y no la podés borrar" };
   }
 
+  const rol = await resolverRolParaRegistro(propia.autor, email!);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar este borrado, así que no lo hice. " +
+        "Nada se escribe sin registro.",
+    };
+  }
+
+  /**
+   * Mismo CTE, y acá el registro es LO ÚNICO que va a quedar de la noticia: si el
+   * DELETE entra y el log no, no hay a qué volver. El SELECT FROM borrada también
+   * garantiza que no se registre un borrado que no pasó.
+   */
   const filas = await sql`
-    DELETE FROM news
-    WHERE id = ${id} AND review_status <> 'aprobado' AND status <> 'published'
-    RETURNING id
+    WITH borrada AS (
+      DELETE FROM news
+      WHERE id = ${id} AND review_status <> 'aprobado' AND status <> 'published'
+      RETURNING id
+    ), registro AS (
+      INSERT INTO edit_log
+        (actor_email, actor_rol, collective_slug, entidad, entidad_id, accion, detalle)
+      SELECT ${email}, ${rol}, ${propia.autor}, 'news', borrada.id::text, 'borrar', NULL
+      FROM borrada
+    )
+    SELECT id FROM borrada
   `;
   if (filas.length === 0) {
     return { ok: false, status: 409, error: "Alguien la publicó mientras tanto. Recargá." };
   }
-
-  await registrarEdicion({
-    collectiveSlug: propia.autor,
-    actorEmail: email!,
-    entidad: "news",
-    entidadId: String(id),
-    accion: "borrar",
-  });
   return { ok: true, value: { borrada: true } };
 }
 

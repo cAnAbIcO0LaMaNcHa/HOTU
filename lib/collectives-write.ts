@@ -32,7 +32,7 @@ import {
   type WriteResult,
 } from "./collectives-gate";
 import { concederResidenciaAlFundador } from "./residency-offers-write";
-import { registrarEdicion } from "./edit-log-write";
+import { resolverRolParaRegistro, sentenciaDeRegistro } from "./edit-log-write";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -179,12 +179,35 @@ export async function updateCollectiveInfo(
     }
   }
 
+  /**
+   * ============================================================
+   * SE VALIDA TODO, DESPUÉS SE ESCRIBE TODO JUNTO
+   * ============================================================
+   *
+   * Antes cada campo se validaba y se escribía en su propio UPDATE, uno tras
+   * otro. Eso tenía un problema anterior a la auditoría: un patch de cuatro
+   * campos donde el tercero era inválido dejaba los dos primeros GUARDADOS y
+   * devolvía un 400, así que la respuesta decía "no se hizo nada" y no era
+   * cierto.
+   *
+   * Ahora las sentencias se ARMAN y se aplican en una sola transacción junto con
+   * el registro. Es lo que hace que "nada se escribe sin registro" sea atómico y
+   * no una promesa sobre el orden de dos awaits.
+   */
+  /**
+   * El tipo sale de sentenciaDeRegistro y no de `typeof sql`, que está
+   * sobrecargado y da una unión que sql.transaction no acepta. Usar el retorno de
+   * la función que va en la misma lista es además auto-documentado: son sentencias
+   * que van juntas en una transacción.
+   */
+  const pasos: ReturnType<typeof sentenciaDeRegistro>[] = [];
+
   if (patch.name !== undefined) {
     if (typeof patch.name !== "string" || patch.name.trim() === "") {
       return { ok: false, status: 400, error: "El nombre no puede quedar vacío" };
     }
     const name = patch.name.trim().slice(0, 120);
-    await sql`UPDATE collectives SET name = ${name} WHERE slug = ${slug}`;
+    pasos.push(sql`UPDATE collectives SET name = ${name} WHERE slug = ${slug}`);
     updated.push("name");
   }
 
@@ -193,7 +216,7 @@ export async function updateCollectiveInfo(
       return { ok: false, status: 400, error: "La bio tiene que ser texto" };
     }
     const bio = patch.bio.trim().slice(0, 4000);
-    await sql`UPDATE collectives SET bio = ${bio} WHERE slug = ${slug}`;
+    pasos.push(sql`UPDATE collectives SET bio = ${bio} WHERE slug = ${slug}`);
     updated.push("bio");
   }
 
@@ -202,7 +225,7 @@ export async function updateCollectiveInfo(
       return { ok: false, status: 400, error: "El sector tiene que ser texto" };
     }
     const sector = patch.sector.trim().slice(0, 120);
-    await sql`UPDATE collectives SET sector = ${sector || null} WHERE slug = ${slug}`;
+    pasos.push(sql`UPDATE collectives SET sector = ${sector || null} WHERE slug = ${slug}`);
     updated.push("sector");
   }
 
@@ -211,7 +234,7 @@ export async function updateCollectiveInfo(
       return { ok: false, status: 400, error: "La dirección tiene que ser texto" };
     }
     const address = patch.address.trim().slice(0, 200);
-    await sql`UPDATE collectives SET address = ${address || null} WHERE slug = ${slug}`;
+    pasos.push(sql`UPDATE collectives SET address = ${address || null} WHERE slug = ${slug}`);
     updated.push("address");
   }
 
@@ -228,7 +251,7 @@ export async function updateCollectiveInfo(
       }
       capacity = n;
     }
-    await sql`UPDATE collectives SET capacity = ${capacity} WHERE slug = ${slug}`;
+    pasos.push(sql`UPDATE collectives SET capacity = ${capacity} WHERE slug = ${slug}`);
     updated.push("capacity");
   }
 
@@ -237,28 +260,40 @@ export async function updateCollectiveInfo(
   }
 
   /**
-   * EL REGISTRO VA DESPUÉS DE ESCRIBIR Y NO DENTRO DE UNA TRANSACCIÓN, al
-   * revés de lo que hace reasignarDueno. La razón es la asimetría entre las dos
-   * cosas: un traspaso sin registro es irreversible, así que más vale abortarlo;
-   * una edición sin registro es un texto que se ve en la página y se puede
-   * volver a hacer. Bloquear la edición de una bio porque la tabla de auditoría
-   * está caída es peor que perder una línea de log. Está escrito entero en
-   * lib/edit-log-write.ts.
+   * EL ROL SE RESUELVE ANTES DE ESCRIBIR, y si no se puede, no se escribe.
    *
-   * Y NO se await-ea el rol para decidir nada: registrarEdicion lo resuelve
-   * sola con la misma función que usó la puerta. Si el llamador pudiera decir
-   * quién es, el registro diría lo que quiso y no lo que era cierto.
+   * La regla es la de reasignarDueno: nada se escribe sin registro. Y resolverlo
+   * PRIMERO es lo que hace que el corte sea limpio — un actor que el registro no
+   * sabe nombrar se va con los datos intactos, en vez de dejar la edición hecha
+   * y el log vacío.
+   *
+   * El rol NO lo puede decir el llamador: sale de resolverRolParaRegistro, la
+   * misma que sabe de la puerta. Si el llamador pudiera afirmarlo, el registro
+   * diría lo que quiso y no lo que era cierto.
    */
-  if (email) {
-    await registrarEdicion({
+  if (!email) return { ok: false, status: 403, error: "Not signed in" };
+  const rol = await resolverRolParaRegistro(slug, email);
+  if (!rol) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "No pude determinar con qué rol registrar esta edición, así que no la apliqué. " +
+        "Nada se escribe sin registro.",
+    };
+  }
+
+  await sql.transaction([
+    ...pasos,
+    sentenciaDeRegistro(rol, {
       collectiveSlug: slug,
       actorEmail: email,
       entidad: "collective",
       entidadId: slug,
       accion: "editar",
       campos: updated,
-    });
-  }
+    }),
+  ]);
 
   return { ok: true, value: { updated } };
 }

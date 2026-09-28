@@ -19,7 +19,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { canEditArtist } from "@/lib/artists-write";
 import { canEditCollective } from "@/lib/collectives-write";
-import { registrarEdicion } from "@/lib/edit-log-write";
+import {
+  registrarEdicion,
+  resolverRolParaRegistro,
+  type RolRegistrado,
+} from "@/lib/edit-log-write";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -88,6 +92,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not allowed to edit this profile" }, { status: 403 });
   }
 
+  /**
+   * ============================================================
+   * EL ROL SE RESUELVE ACÁ, ANTES DE SUBIR NADA
+   * ============================================================
+   *
+   * Este es el ÚNICO camino donde "nada se escribe sin registro" no se puede
+   * hacer con una transacción, y hay que decir por qué: el archivo viaja a Vercel
+   * Blob, que es un sistema externo. Ninguna transacción de Postgres lo trae de
+   * vuelta.
+   *
+   * Lo que sí se puede es resolver el rol PRIMERO. Así un actor que el registro
+   * no sabe nombrar no sube nada, que es el caso que de verdad pasa. Si después
+   * el INSERT del registro falla —la base caída— la respuesta es un error y el
+   * blob queda huérfano: subido, pero sin que nada lo referencie, porque la URL
+   * recién se vuelve un flyer cuando el evento se guarda.
+   *
+   * Un blob huérfano es basura; un flyer sin registro sería una edición invisible.
+   * Entre las dos, la basura.
+   */
+  let rolParaRegistro: RolRegistrado | null = null;
+  if (kind === "flyer") {
+    rolParaRegistro = await resolverRolParaRegistro(slug, email);
+    if (!rolParaRegistro) {
+      return NextResponse.json(
+        {
+          error:
+            "No pude determinar con qué rol registrar esta subida, así que no la hice. " +
+            "Nada se escribe sin registro.",
+        },
+        { status: 403 }
+      );
+    }
+  }
+
   if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
     return NextResponse.json(
       { error: `Formato no admitido. Usá ${ALLOWED_IMAGE_TYPES.join(", ")}.` },
@@ -114,8 +152,8 @@ export async function POST(request: Request) {
      * No se guarda la URL, ni acá ni en el detalle: edit_log guarda nombres de
      * campo y no valores, y una URL de blob es un valor.
      */
-    if (kind === "flyer") {
-      await registrarEdicion({
+    if (rolParaRegistro) {
+      const r = await registrarEdicion({
         collectiveSlug: slug,
         actorEmail: email,
         entidad: "imagen",
@@ -123,6 +161,16 @@ export async function POST(request: Request) {
         accion: "crear",
         campos: ["flyer"],
       });
+      /**
+       * SE MIRA EL RESULTADO. registrarEdicion ya no se traga nada, y devolver
+       * 201 con el registro fallado sería decir que la subida está hecha y
+       * anotada cuando solo está hecha.
+       *
+       * El rol ya se resolvió arriba, así que lo único que puede fallar acá es la
+       * escritura. El blob queda huérfano y eso está aceptado: nada lo referencia
+       * hasta que el evento se guarde.
+       */
+      if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     }
 
     return NextResponse.json({ ok: true, url }, { status: 201 });
