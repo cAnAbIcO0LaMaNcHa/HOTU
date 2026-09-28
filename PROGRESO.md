@@ -254,6 +254,282 @@ MODERADOR.
 
 ---
 
+# PROPUESTA: VERIFICACIÓN DE COLECTIVOS Y VENUES
+
+**Esto es una propuesta para que la revises. No hay código ni migraciones, y
+no debería haberlos hasta que las decisiones de acá estén tomadas.** La última
+sección está escrita para que se la puedas mandar a un abogado tal cual.
+
+## POR QUÉ EXISTE
+
+El modelo hacia el que vamos: cada colectivo o venue conecta su propia pasarela
+y la plata de sus boletas entra a su cuenta. Eso resuelve un problema real
+—HOTU no quiere ser tesorero de nadie— y crea otro: **el comprador le paga a un
+desconocido a través nuestro.**
+
+Un evento que no se realiza, o que nunca existió, le cuesta la plata a una
+persona que confió en HOTU, no en el colectivo. Aunque legalmente la venta sea
+del organizador, la reputación que se quema es la de la plataforma. Verificar es
+lo que convierte "cualquiera puede vender" en "alguien respondió por esto".
+
+Y hay una razón de orden: **verificar es más barato antes que después.** Una vez
+que hay plata circulando, pedirle documentos a alguien que ya vendió es una
+conversación mucho peor.
+
+## QUÉ PIDE HOTU PARA VERIFICAR
+
+La lista está pensada para que cada cosa tenga un PARA QUÉ. Pedir documentos
+"por si acaso" es acumular datos sensibles sin motivo, y la Ley 1581 de 2012 nos
+obliga a poder explicar por qué tenemos cada dato.
+
+### Del responsable (una persona física, siempre)
+
+1. **Nombre completo y documento de identidad**, con foto del documento.
+   *Para qué:* que exista alguien a quien reclamarle. Un colectivo es un nombre;
+   una persona es responsable.
+2. **Selfie con el documento** o verificación equivalente.
+   *Para qué:* que quien manda la foto del documento sea su dueño. Sin esto,
+   una foto de cédula ajena alcanza para verificarse.
+3. **Teléfono verificado por SMS** y **correo verificado por link.**
+   *Para qué:* un canal de contacto que funcione el día del problema. Hoy no
+   tenemos ninguno de los dos verificados —está anotado como bloqueado por
+   dominio— así que esto DEPENDE de esa pieza.
+
+### Del colectivo o venue
+
+4. **RUT** (el documento del RUT, no solo el NIT tecleado).
+   *Para qué:* saber si factura y cómo. Y si el colectivo no tiene RUT, que es
+   el caso de la mayoría, entonces el responsable es una persona natural y hay
+   que decirlo explícitamente en lugar de dejarlo ambiguo.
+5. **Cuenta bancaria**, a nombre del colectivo **o** del responsable
+   verificado, nunca de un tercero.
+   *Para qué:* que la plata llegue a quien firmó el compromiso. Una cuenta a
+   nombre de otro es exactamente el hueco por el que se va la plata de un
+   reembolso.
+6. **Un evento ya realizado, con prueba.** Fotos, flyer, un video, un link.
+   *Para qué:* distinguir un colectivo de una idea. No exige trayectoria larga:
+   exige una.
+
+### Para venues, además
+
+7. **Dirección exacta y prueba de que pueden usar el lugar** — contrato de
+   arriendo, escritura, o una autorización del dueño.
+   *Para qué:* un venue vende la promesa de un lugar físico. Que exista y que
+   puedan usarlo es la promesa entera.
+8. **Aforo declarado.** Ya hay columna `capacity`.
+   *Para qué:* que no vendan 400 boletas para un lugar de 120. Es la forma más
+   común de que un evento real termine en gente afuera pidiendo plata.
+
+## CÓMO SE REVISA
+
+**Una persona, no un algoritmo.** Un moderador abre la solicitud, mira los
+documentos y decide. No hay volumen que justifique automatizar esto todavía, y
+un rechazo automático sobre un documento mal fotografiado es una forma de perder
+colectivos buenos.
+
+Tres estados y nada más: **pendiente**, **verificado**, **rechazado con motivo.**
+El motivo es obligatorio y se le muestra al solicitante — un "no" sin razón
+garantiza que vuelva a mandar lo mismo.
+
+**Los documentos NO se guardan en la base.** Deberían ir a almacenamiento
+aparte, con acceso restringido, y borrarse una vez verificado, dejando en la
+base solo el HECHO de que se verificó, quién lo hizo y cuándo. Guardar cédulas
+indefinidamente es acumular un riesgo que no compensa: el día de una filtración,
+la diferencia entre "se filtró una lista de emails" y "se filtraron 200 cédulas"
+es la diferencia entre un problema y un desastre.
+
+**Y la verificación se revisa si cambia el responsable.** Si el colectivo se
+cede a otra cuenta, el verificado NO viaja con el perfil: lo verificado era una
+persona, y esa persona ya no está. Esto es importante porque hoy ceder un
+colectivo es un botón.
+
+## EL COMPROMISO QUE ACEPTA EL COLECTIVO O VENUE
+
+Un texto que se acepta explícitamente, con fecha y versión guardadas. Si el
+texto cambia, se vuelve a aceptar — aceptar la versión 1 no es aceptar la 3.
+
+1. **Realizar el evento** en la fecha, el lugar y con las condiciones
+   anunciadas, o avisar con la mayor antelación posible.
+2. **Responderle a los compradores** por el canal de contacto verificado, en un
+   plazo razonable (propongo 72 horas hábiles).
+3. **Reembolsar** si el evento se cancela, se posterga sin acuerdo del
+   comprador, o cambia de forma sustancial —otra ciudad, otro venue muy
+   distinto, el artista principal que no toca—. El plazo y quién ejecuta el
+   reembolso depende de la opción de flujo de plata (ver abajo): **esto no se
+   puede redactar bien hasta que esa decisión esté tomada.**
+4. **No vender más boletas que el aforo.**
+5. **Que la información sea cierta.** El lineup anunciado, el precio, la hora.
+
+### Qué pasa si no cumple
+
+Una escalera, no un interruptor. Y con un principio: **nada de lo que se hace
+para castigar al organizador puede castigar al comprador.**
+
+| qué pasó | consecuencia |
+|---|---|
+| Un reclamo aislado, respondido | nada, queda registrado |
+| Reclamos sin responder | suspensión de la venta de eventos NUEVOS. Los eventos ya vendidos siguen en pie |
+| Evento cancelado sin reembolsar | pérdida del verificado + suspensión de venta |
+| Evento que nunca existió | pérdida del verificado, ban de la cuenta, y el registro queda |
+
+Lo de la segunda fila es el punto entero: **suspender la venta nueva no puede
+bajar los eventos ya vendidos.** Es la misma regla que ya rige el ban y la
+censura en el código de hoy — los eventos y las noticias no se tocan porque hay
+gente con boletas compradas.
+
+**Perder el verificado se puede recuperar**, con una revisión nueva y lo que
+haya quedado pendiente resuelto. El ban por fraude no.
+
+## LAS DOS OPCIONES DE FLUJO DE PLATA
+
+**No elijo. Las dos son defendibles y la decisión cambia qué es HOTU.**
+
+### (a) Directo a la pasarela del colectivo
+
+El comprador le paga al colectivo. HOTU nunca toca la plata: conecta la pasarela
+y muestra el evento.
+
+**A favor**
+- HOTU no maneja plata ajena, y eso saca de encima una cantidad de obligaciones:
+  no hay que responder por fondos de terceros, ni conciliar, ni sostener un
+  saldo.
+- El colectivo cobra al instante, que es lo que necesita para pagar el venue y
+  los artistas.
+- Menos superficie fiscal y contable para HOTU.
+- Más simple de construir y de explicar.
+
+**En contra**
+- **HOTU NO PUEDE REEMBOLSAR.** Esto es lo grave y hay que decirlo sin adornos:
+  si el organizador desaparece, HOTU no tiene la plata, y lo único que puede
+  ofrecerle al comprador es ayudarlo a reclamar. Un "lo lamentamos, contactá al
+  organizador" es una respuesta que quema la reputación de la plataforma aunque
+  sea literalmente cierta.
+- La verificación queda cargando todo el peso: es la ÚNICA protección del
+  comprador.
+- El comprador ve un cobro con el nombre del colectivo o de la pasarela, no de
+  HOTU, y eso genera desconocimientos de cargo.
+- Cada colectivo necesita su propia cuenta de pasarela, con su propio papeleo.
+  Va a ser la principal fricción de entrada.
+
+### (b) HOTU cobra y le paga al colectivo después del evento
+
+El comprador le paga a HOTU. HOTU retiene y transfiere al organizador después
+del evento, descontando lo que corresponda.
+
+**A favor**
+- **HOTU SÍ PUEDE REEMBOLSAR**, porque tiene la plata. Es, de lejos, la mejor
+  protección posible para el comprador.
+- Una sola integración de pagos, no una por colectivo: la fricción de entrada
+  baja mucho.
+- El cobro dice HOTU, que es lo que el comprador reconoce.
+- Retener hasta después del evento alinea los incentivos solo: el organizador
+  cobra si el evento pasa.
+
+**En contra**
+- **HOTU maneja plata que no es suya**, y eso probablemente lo convierta en algo
+  regulado. Es la primera pregunta para el abogado.
+- Obligaciones nuevas y reales: conciliación, saldos, plazos de pago, retenciones,
+  y qué pasa con la plata de un organizador baneado.
+- El organizador cobra TARDE, y eso es un problema de caja de verdad: muchos
+  necesitan la plata antes para pagar el venue. Puede volver a HOTU poco
+  atractivo justo para los colectivos chicos.
+- Si HOTU se cae, se cae con plata de terceros adentro.
+- Más para construir, y lo que se construye hay que auditarlo.
+
+### Un punto medio que conviene tener sobre la mesa
+
+**(c) Retención parcial:** la plata va directo al colectivo (a), pero HOTU
+retiene un porcentaje como fondo de reembolso hasta después del evento. Da algo
+de capacidad de reembolso sin quedarse con todo, y probablemente también sea
+regulado, solo que por menos. Lo menciono porque el abogado va a preguntar si
+existe algo intermedio, y existe.
+
+## PREGUNTAS PARA EL ABOGADO
+
+*(Esta sección está escrita para mandar tal cual. HOTU es una plataforma de
+venta de boletas para eventos de música electrónica en Bogotá, donde colectivos
+y venues independientes publican y venden entradas a sus propias fiestas.)*
+
+**Sobre la responsabilidad de la plataforma**
+
+1. Bajo el Estatuto del Consumidor (Ley 1480 de 2011), ¿qué responsabilidad
+   tiene una plataforma que intermedia la venta de boletas frente al comprador,
+   si el evento no se realiza? ¿Cambia según si la plataforma cobró la plata o
+   no?
+2. El artículo 53 habla de las obligaciones de quien opera comercio electrónico.
+   ¿Qué nos obliga concretamente: información mínima publicada, retención de
+   comprobantes, canal de reclamos, plazos de respuesta?
+3. ¿Sirve de algo que los términos digan que HOTU "solo intermedia"? ¿Hasta
+   dónde es oponible eso frente a un consumidor?
+4. ¿Verificar a los organizadores nos protege o nos expone MÁS? Nos preocupa
+   que verificar pueda leerse como que respondemos por ellos.
+
+**Sobre el dinero**
+
+5. Si HOTU cobra y le transfiere después al organizador (opción b), ¿eso es
+   actividad regulada? ¿Recaudo, giro, administración de recursos de terceros?
+   ¿Qué se necesitaría —licencia, patrimonio, inscripción ante alguna
+   superintendencia?
+6. ¿Y si solo retiene un porcentaje como fondo de reembolso (opción c)?
+7. En la opción (a), con la plata yendo directo al colectivo, ¿qué obligación de
+   reembolso le queda a HOTU, si alguna?
+8. ¿Qué plazo legal tiene un reembolso por evento cancelado?
+
+**Sobre facturación e impuestos**
+
+9. ¿Quién factura la boleta al comprador: HOTU o el colectivo? ¿Cambia por
+   opción?
+10. Si HOTU cobra una comisión, ¿cómo se factura y qué retenciones aplican?
+11. ¿Hay impuestos locales de Bogotá sobre espectáculos públicos que afecten a
+    la plataforma, o son solo del organizador?
+12. ¿Cambia algo si el colectivo no tiene RUT y el responsable es persona
+    natural?
+
+**Sobre datos personales**
+
+13. Para verificar guardaríamos cédula, selfie y cuenta bancaria. Bajo la Ley
+    1581 de 2012: ¿cuánto tiempo podemos conservarlos, qué autorización
+    necesitamos, y podemos borrar los documentos dejando solo el registro de
+    que verificamos?
+14. ¿Hace falta registrar las bases de datos ante la SIC, y a partir de qué
+    tamaño?
+
+**Sobre los términos**
+
+15. ¿Qué tiene que decir sí o sí el compromiso que acepta un organizador para
+    ser exigible?
+16. ¿Podemos suspender a un organizador por incumplir, y bajo qué condiciones,
+    sin que sea un incumplimiento nuestro del contrato con él?
+
+## LO QUE NO SE PUEDE DECIDIR TODAVÍA
+
+Tres cosas dependen de la respuesta del abogado y de la opción de flujo, y
+escribirlas antes sería inventar:
+
+- **El texto del compromiso.** Los plazos y el responsable del reembolso salen
+  de la opción elegida.
+- **Qué se le muestra al comprador** antes de pagar. En (a) hay que decirle que
+  le está comprando al colectivo, y decirlo claro.
+- **El schema.** No hay tabla de verificación todavía a propósito. Cuando se
+  escriba, va a necesitar el estado, quién verificó, cuándo, la versión del
+  compromiso aceptada, y que el verificado NO sobreviva a un cambio de dueño.
+
+## LO QUE HOY YA ESTÁ A FAVOR
+
+Vale decirlo porque cambia el tamaño del trabajo:
+
+- La venta online está **apagada** por `VENTA_ONLINE`, así que nada de esto es
+  urgente y nadie está vendiendo sin verificar.
+- `collectives.owner_email` ya dice quién responde por cada perfil, y
+  `profile_ownership` ya registra cada cambio de dueño.
+- Los roles de moderación ya existen, así que la cola de revisión tiene quién la
+  atienda.
+- `capacity` ya existe en venues.
+- El ban y la censura ya respetan la regla de no tocar eventos vendidos, así que
+  la escalera de consecuencias de arriba se apoya en algo construido y probado.
+
+---
+
 # ================================================================
 # DE ACÁ PARA ABAJO: TANDA 4, YA EN PRODUCCIÓN
 # ================================================================
