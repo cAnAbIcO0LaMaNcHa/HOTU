@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { armarInstante, diaEnPalabras } from "@/lib/date-utils";
 import { Field, TextAreaField } from "./epk-editable-section";
 import { EpkImageField } from "./epk-image-field";
 
@@ -39,7 +40,8 @@ export function PublicarEvento({
 
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
-  const [endAt, setEndAt] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   // En un venue el lugar es él mismo: el server lo deriva si va vacío, y
   // el campo arranca con el nombre para que se vea qué va a quedar.
   const [venue, setVenue] = useState(esVenue ? destino.name : "");
@@ -50,6 +52,27 @@ export function PublicarEvento({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * El aviso sale de armarInstante, la MISMA función que usa el write path. Si acá
+   * se calculara aparte, la pantalla y la base podrían decir días distintos — y el
+   * que se entera es el organizador, mirando la agenda después de publicar.
+   *
+   * date-utils es puro y no importa nada de la base, así que un client component
+   * puede usarlo sin arrastrar el DATABASE_URL al navegador.
+   */
+  const inicio = date && startTime ? armarInstante(date, startTime) : null;
+  const cierre = date && endTime ? armarInstante(date, endTime) : null;
+  const avisoMadrugada = (() => {
+    const partes: string[] = [];
+    if (inicio?.esMadrugada) {
+      partes.push(`empieza la madrugada del ${diaEnPalabras(inicio.dia)}`);
+    }
+    if (cierre?.esMadrugada) {
+      partes.push(`cierra la madrugada del ${diaEnPalabras(cierre.dia)}`);
+    }
+    return partes.length > 0 ? `Se va a guardar así: ${partes.join(", y ")}.` : null;
+  })();
 
   async function publicar() {
     setBusy(true);
@@ -62,7 +85,8 @@ export function PublicarEvento({
           organizerSlug: destino.slug,
           title,
           date,
-          endAt,
+          startTime,
+          endTime,
           venue,
           city,
           lineup,
@@ -93,19 +117,47 @@ export function PublicarEvento({
 
       <Field label="NOMBRE DE LA FIESTA" value={title} onChange={setTitle} disabled={busy} />
 
+      <Field label="FECHA" type="date" value={date} onChange={setDate} disabled={busy} />
+
+      {/*
+        DOS HORAS SUELTAS, no un datetime-local.
+
+        El datetime-local obligaba al organizador a elegir el DÍA del cierre, que
+        es la parte que se equivoca: una fiesta del sábado cierra el domingo, y
+        nadie lo piensa así al llenar un formulario. Peor, ese campo mandaba un
+        instante sin zona que el server interpretaba en UTC — cinco horas de error
+        sin síntoma.
+
+        Ahora van las dos horas y el día lo deduce la regla de la madrugada, que es
+        la misma en la pantalla y en el server porque sale de la misma función.
+      */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="FECHA" type="date" value={date} onChange={setDate} disabled={busy} />
+        <Field
+          label="EMPIEZA (OPCIONAL)"
+          type="time"
+          value={startTime}
+          onChange={setStartTime}
+          disabled={busy}
+        />
         <Field
           label="CIERRA (OPCIONAL)"
-          type="datetime-local"
-          value={endAt}
-          onChange={setEndAt}
+          type="time"
+          value={endTime}
+          onChange={setEndTime}
           disabled={busy}
         />
       </div>
+
+      {/* SE DICE EN CLARO ANTES DE GUARDAR, con el día nombrado. Sin esto el
+          organizador no tiene forma de saber que su 1:00 se guardó en otra fecha,
+          y lo iba a descubrir mirando la agenda. */}
+      {avisoMadrugada && (
+        <p className="font-mono text-[10px] leading-relaxed text-primary">{avisoMadrugada}</p>
+      )}
       <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
-        La fecha es el día en que empieza. Si termina de madrugada, el cierre va al
-        día siguiente.
+        La fecha es la noche de la fiesta. Una hora entre 00:00 y 06:00 se entiende como
+        madrugada, así que cae en el día siguiente — el flyer sigue diciendo la fecha de
+        arriba. Si no ponés horas, la página no muestra ninguna.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2">

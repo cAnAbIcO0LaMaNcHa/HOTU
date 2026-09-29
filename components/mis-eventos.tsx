@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { FranjaCensura } from "./franja-censura";
+import { armarInstante, diaEnPalabras, horaEnBogota } from "@/lib/date-utils";
 import { Field, TextAreaField } from "./epk-editable-section";
 import type { MiEvento } from "@/lib/db";
 
@@ -176,8 +177,29 @@ function EditorEvento({
 }) {
   const [title, setTitle] = useState(evento.title);
   const [date, setDate] = useState(evento.date);
-  // datetime-local quiere "AAAA-MM-DDTHH:MM", sin zona ni segundos.
-  const [endAt, setEndAt] = useState(evento.endAt ? evento.endAt.slice(0, 16) : "");
+  /**
+   * LAS HORAS SE MUESTRAN EN BOGOTÁ, no como el navegador las formatearía.
+   *
+   * evento.startsAt es un instante UTC. Cortarlo con slice() —lo que hacía la
+   * versión anterior con endAt— muestra la hora UTC: una fiesta de 23:00 se abría
+   * en el editor como 04:00. Y guardarlo así la movía de verdad.
+   */
+  const [startTime, setStartTime] = useState(horaEnBogota(evento.startsAt));
+  const [endTime, setEndTime] = useState(horaEnBogota(evento.endAt));
+
+  /** El mismo aviso que el formulario de publicar, con la misma función. */
+  const inicioArmado = date && startTime ? armarInstante(date, startTime) : null;
+  const cierreArmado = date && endTime ? armarInstante(date, endTime) : null;
+  const avisoMadrugada = (() => {
+    const partes: string[] = [];
+    if (inicioArmado?.esMadrugada) {
+      partes.push(`empieza la madrugada del ${diaEnPalabras(inicioArmado.dia)}`);
+    }
+    if (cierreArmado?.esMadrugada) {
+      partes.push(`cierra la madrugada del ${diaEnPalabras(cierreArmado.dia)}`);
+    }
+    return partes.length > 0 ? `Va a quedar así: ${partes.join(", y ")}.` : null;
+  })();
   const [venue, setVenue] = useState(evento.venue);
   const [city, setCity] = useState(evento.city);
   const [lineup, setLineup] = useState(evento.lineup);
@@ -194,16 +216,30 @@ function EditorEvento({
   return (
     <div className="mt-4 space-y-4 border-t border-border pt-4">
       <Field label="NOMBRE DE LA FIESTA" value={title} onChange={setTitle} disabled={busy} />
+      <Field label="FECHA" type="date" value={date} onChange={setDate} disabled={busy} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="FECHA" type="date" value={date} onChange={setDate} disabled={busy} />
+        <Field
+          label="EMPIEZA (OPCIONAL)"
+          type="time"
+          value={startTime}
+          onChange={setStartTime}
+          disabled={busy}
+        />
         <Field
           label="CIERRA (OPCIONAL)"
-          type="datetime-local"
-          value={endAt}
-          onChange={setEndAt}
+          type="time"
+          value={endTime}
+          onChange={setEndTime}
           disabled={busy}
         />
       </div>
+      {avisoMadrugada && (
+        <p className="font-mono text-[10px] leading-relaxed text-primary">{avisoMadrugada}</p>
+      )}
+      <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
+        Una hora entre 00:00 y 06:00 cae en el día siguiente. Si corregís la FECHA, las
+        horas se mudan con ella.
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="LUGAR" value={venue} onChange={setVenue} disabled={busy} />
         <Field label="CIUDAD" value={city} onChange={setCity} disabled={busy} />
@@ -223,7 +259,16 @@ function EditorEvento({
         <button
           type="button"
           disabled={busy}
-          onClick={() => onGuardar({ title, date, endAt, venue, city, lineup, doorPriceCop: doorPrice })}
+          onClick={() => onGuardar({
+              title,
+              date,
+              startTime,
+              endTime,
+              venue,
+              city,
+              lineup,
+              doorPriceCop: doorPrice,
+            })}
           className="surface-chrome sheen px-4 py-2 font-mono text-[10px] font-bold tracking-[0.2em] disabled:opacity-50"
         >
           {busy ? "GUARDANDO..." : "GUARDAR"}

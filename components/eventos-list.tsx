@@ -5,7 +5,7 @@ import type { EventItem, LineupEntry } from "@/lib/db";
 import { AutoTranslate } from "@/components/auto-translate";
 import { EventLineup } from "@/components/event-lineup";
 import { AddTicketButton } from "@/components/add-ticket-button";
-import { formatShortDate } from "@/lib/date-utils";
+import { duracionEnPalabras, formatShortDate, horaEnBogota } from "@/lib/date-utils";
 import { useFilteredList, useListingFilters } from "@/components/listing-filters";
 import { EmptyResult } from "@/components/listing-empty";
 
@@ -166,6 +166,25 @@ function EventCard({
               if (doorPriceCop) una fiesta de entrada libre desaparecería del
               anuncio como si nadie hubiera dicho nada.
             */}
+            {/*
+              LA HORA Y LA DURACIÓN, SOLO SI ESTÁN.
+
+              La hora se formatea en Bogotá y no como la vería el navegador de
+              quien mire: una fiesta de las 23:00 en Bogotá no son las 23:00 en
+              Madrid, y lo que hay que mostrar es a qué hora abre la puerta.
+
+              La duración solo aparece cuando existen LOS DOS extremos. No se
+              estima: un número inventado acá termina en el press kit de alguien.
+            */}
+            {e.startsAt && (
+              <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">
+                {horaEnBogota(e.startsAt)}
+                {duracionEnPalabras(e.startsAt, e.endAt)
+                  ? ` · ${duracionEnPalabras(e.startsAt, e.endAt)}`
+                  : ""}
+              </div>
+            )}
+
             {e.doorPriceCop !== null && (
               <div className="mt-3 font-mono text-sm font-bold">
                 {e.doorPriceCop === 0 ? (

@@ -167,6 +167,12 @@ export type EventItem = ContentMeta & {
   /** El colectivo o venue que lo organiza (§7). NULL = todavía sin asignar. */
   organizerSlug: string | null;
   /**
+   * LA HORA DE INICIO. NULL = el organizador no dijo hora, y la página no la
+   * muestra. Puede caer en un día DISTINTO de date: una fiesta del 15 que arranca
+   * a la 1:00 tiene starts_at el 16, y las dos cosas son ciertas.
+   */
+  startsAt: string | null;
+  /**
    * PRECIO EN TAQUILLA, informativo. NULL = el organizador no dijo, y la página
    * no muestra nada.
    *
@@ -1677,8 +1683,8 @@ export async function getGenreTags(): Promise<TagOption[]> {
 
 export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]> {
   const rows = opts.includeAll
-    ? await sql`SELECT * FROM events ORDER BY event_date ASC`
-    : await sql`SELECT * FROM events WHERE status = 'published' AND censored_at IS NULL ORDER BY event_date ASC`;
+    ? await sql`SELECT * FROM events ORDER BY event_date ASC, starts_at ASC NULLS LAST`
+    : await sql`SELECT * FROM events WHERE status = 'published' AND censored_at IS NULL ORDER BY event_date ASC, starts_at ASC NULLS LAST`;
   return rows.map((r) => ({
     ...mapMeta(r),
     id: r.id,
@@ -1690,6 +1696,7 @@ export async function getAllEvents(opts: ReadOptions = {}): Promise<EventItem[]>
     title: r.title,
     lineup: r.lineup,
     organizerSlug: (r.organizer_slug as string | null) ?? null,
+    startsAt: r.starts_at ? new Date(r.starts_at as string).toISOString() : null,
     doorPriceCop: (r.door_price_cop as number | null) ?? null,
     lineupReviewedAt: r.lineup_reviewed_at
       ? new Date(r.lineup_reviewed_at as string).toISOString()
@@ -2007,6 +2014,8 @@ export type MiEvento = {
   flyerUrl: string | null;
   organizerSlug: string;
   organizerName: string;
+  /** Hora de inicio. NULL = no dijo. */
+  startsAt: string | null;
   /** Precio en taquilla, informativo. NULL = no dijo. Comparar con !== null: 0 es gratis. */
   doorPriceCop: number | null;
   /** Si un moderador lo bajó, y por qué. */
@@ -2055,6 +2064,7 @@ export async function getMyEvents(email: string, kind?: EntityKind): Promise<MiE
     flyerUrl: (r.flyer_url as string | null) ?? null,
     organizerSlug: r.organizer_slug as string,
     organizerName: (r.organizer_name as string) ?? (r.organizer_slug as string),
+    startsAt: r.starts_at ? new Date(r.starts_at as string).toISOString() : null,
     doorPriceCop: (r.door_price_cop as number | null) ?? null,
     censoredAt: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
     censorReason: (r.censor_reason as string | null) ?? null,

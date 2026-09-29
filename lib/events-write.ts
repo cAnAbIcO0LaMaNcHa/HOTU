@@ -19,6 +19,7 @@ import { neon } from "@neondatabase/serverless";
 import { isOwnBlobUrl } from "./blob";
 import { canEditCollective, type WriteResult } from "./collectives-write";
 import { resolverRolParaRegistro, sentenciaDeRegistro } from "./edit-log-write";
+import { armarInstante, horaEnBogota } from "./date-utils";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -38,8 +39,14 @@ export type NuevoEvento = {
   title?: unknown;
   /** YYYY-MM-DD. events.event_date es DATE: no lleva hora. */
   date?: unknown;
-  /** Valor de un <input type="datetime-local">, o vacío. */
-  endAt?: unknown;
+  /**
+   * HH:MM, la hora de INICIO. Vacío = no dijo hora, y la página no la muestra.
+   * El lib la combina con date y le pone la zona; el formulario NO manda un
+   * instante, porque un instante armado en el navegador trae la zona de quien mire.
+   */
+  startTime?: unknown;
+  /** HH:MM, la hora de CIERRE. Misma regla de madrugada que la de inicio. */
+  endTime?: unknown;
   venue?: unknown;
   city?: unknown;
   lineup?: unknown;
@@ -137,29 +144,62 @@ export async function createCommunityEvent(
    * inicio contra la cual comparar. Lo único que se puede afirmar es que
    * un evento no termina ANTES del día en que pasa.
    */
-  const endRaw = limpiarTexto(input.endAt);
+  /**
+   * ============================================================
+   * LA HORA DE INICIO Y LA DE CIERRE, LAS DOS CON LA MISMA REGLA
+   * ============================================================
+   *
+   * ANTES end_at LLEGABA COMO datetime-local Y SE PARSEABA CON new Date(), Y ESO
+   * ERA UN BUG DE CINCO HORAS.
+   *
+   * Un `datetime-local` manda "2026-11-16T06:00", sin offset. `new Date()` de un
+   * string así lo interpreta en la zona del SERVIDOR, y Vercel corre en UTC: una
+   * fiesta que cerraba 06:00 en Bogotá quedaba guardada como 06:00 UTC, o sea
+   * 01:00 de Bogotá. Sin error en ningún lado, y el año y el día pasaban todas las
+   * validaciones porque el problema no era el día.
+   *
+   * Ahora las dos horas llegan como HH:MM y se combinan con event_date usando
+   * armarInstante, que pone el offset EXPLÍCITO y aplica la regla de la madrugada:
+   * de 00:00 a 06:00 el instante cae en el día SIGUIENTE, porque una fiesta del 15
+   * que cierra a las 6 cierra el 16.
+   *
+   * Eso hace que el caso más común de la escena —arranca 23:00, cierra 06:00— salga
+   * bien solo, sin que nadie tenga que entender por qué el cierre es "otro día".
+   */
+  const startRaw = limpiarTexto(input.startTime);
+  let startsAt: string | null = null;
+  if (startRaw) {
+    const armado = armarInstante(date, startRaw);
+    if (!armado) {
+      return { ok: false, status: 400, error: "La hora de inicio no se entiende. Usá HH:MM." };
+    }
+    startsAt = armado.iso;
+  }
+
+  const endRaw = limpiarTexto(input.endTime);
   let endAt: string | null = null;
   if (endRaw) {
-    const d = new Date(endRaw);
-    if (Number.isNaN(d.getTime())) {
-      return { ok: false, status: 400, error: "La hora de cierre no se entiende" };
+    const armado = armarInstante(date, endRaw);
+    if (!armado) {
+      return { ok: false, status: 400, error: "La hora de cierre no se entiende. Usá HH:MM." };
     }
-    // El año PRIMERO. Un año extendido (+275760) serializa como
-    // "+275760-09-13" y la comparación de strings de abajo daba
-    // "anterior al día del evento" — un 400 con el motivo equivocado,
-    // que manda a corregir lo que no está mal.
-    const anioFin = d.getUTCFullYear();
-    if (anioFin < 2000 || anioFin > new Date().getUTCFullYear() + 5) {
-      return { ok: false, status: 400, error: "El año de la hora de cierre no es válido" };
-    }
-    if (d.toISOString().slice(0, 10) < date) {
-      return {
-        ok: false,
-        status: 400,
-        error: "La hora de cierre cae antes del día del evento",
-      };
-    }
-    endAt = d.toISOString();
+    endAt = armado.iso;
+  }
+
+  /**
+   * El CHECK de la base rechaza end_at <= starts_at, pero un mensaje entendible es
+   * mejor que una violación de constraint. Y con la regla de la madrugada este caso
+   * es raro: 23:00 → 06:00 ya sale bien porque el cierre se fue al día siguiente.
+   * Lo que sí cae acá es 23:00 → 22:00, que no tiene lectura razonable.
+   */
+  if (startsAt && endAt && new Date(endAt) <= new Date(startsAt)) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "La hora de cierre cae antes o igual que la de inicio. Si la fiesta termina de " +
+        "madrugada, poné la hora de cierre igual: de 00:00 a 06:00 ya se entiende como el día siguiente.",
+    };
   }
 
   /**
@@ -249,11 +289,11 @@ export async function createCommunityEvent(
   const [fila] = await sql`
     WITH nuevo AS (
       INSERT INTO events
-        (event_date, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
+        (event_date, starts_at, end_at, flyer_url, city, venue, title, lineup, organizer_slug,
          door_price_cop,
          district, scope, country_code, language, status, featured, priority_at)
       VALUES
-        (${date}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
+        (${date}, ${startsAt}, ${endAt}, ${flyerUrl}, ${city}, ${venue},
          ${title}, ${lineup}, ${organizerSlug},
          ${precio.valor},
          ${DISTRITO_CONGELADO}, 'country', 'COL', 'es', 'published', false, NULL)
@@ -346,7 +386,9 @@ function validarPrecioTaquilla(
 export type ParcheEvento = {
   title?: unknown;
   date?: unknown;
-  endAt?: unknown;
+  /** HH:MM. Ausente = no la toques; vacía = borrala. */
+  startTime?: unknown;
+  endTime?: unknown;
   venue?: unknown;
   city?: unknown;
   lineup?: unknown;
@@ -376,7 +418,7 @@ export async function updateCommunityEvent(
   if (!propio.ok) return propio;
 
   const [actual] = await sql`
-    SELECT event_date::text AS d, venue, city, title, lineup, flyer_url, end_at, door_price_cop
+    SELECT event_date::text AS d, venue, city, title, lineup, flyer_url, starts_at, end_at, door_price_cop
     FROM events WHERE id = ${id}
   `;
 
@@ -405,26 +447,54 @@ export async function updateCommunityEvent(
   // —no lo toques, vacialo, ponele esto— y escribirlos como tres
   // asignaciones se lee; escribirlos como un CASE adentro de un
   // COALESCE se descifra.
-  let endAt: string | null =
-    actual.end_at ? new Date(actual.end_at as string).toISOString() : null;
-  if (patch.endAt !== undefined) {
-    const raw = limpiarTexto(patch.endAt);
-    if (!raw) {
-      endAt = null; // Vaciarlo a propósito sí se puede: es opcional.
-    } else {
-      const d = new Date(raw);
-      if (Number.isNaN(d.getTime())) {
-        return { ok: false, status: 400, error: "La hora de cierre no se entiende" };
+  /**
+   * LAS DOS HORAS SE RE-ARMAN CONTRA EL DÍA QUE VA A QUEDAR, no contra el viejo.
+   *
+   * Y eso importa más de lo que parece: si el organizador CORRIGE LA FECHA del
+   * evento, las horas tienen que mudarse con ella. Conservar el timestamp viejo
+   * dejaría una fiesta anunciada para el 22 con su inicio guardado el 15 — un
+   * evento que, para eventHasEnded y para la agenda, ya pasó.
+   *
+   * Por eso se guarda la HORA de lo que había (en Bogotá) y se re-arma con `date`,
+   * que a esta altura ya es la fecha final. Es también la razón por la que la hora
+   * viaja como HH:MM y no como instante: una hora se puede mudar de día, un
+   * instante ya eligió el suyo.
+   */
+  let startsAt: string | null = null;
+  {
+    const horaActual = horaEnBogota((actual.starts_at as string | null) ?? null);
+    const crudo =
+      patch.startTime !== undefined ? limpiarTexto(patch.startTime) : horaActual;
+    if (crudo) {
+      const armado = armarInstante(date, crudo);
+      if (!armado) {
+        return { ok: false, status: 400, error: "La hora de inicio no se entiende. Usá HH:MM." };
       }
-      const anioFin = d.getUTCFullYear();
-      if (anioFin < 2000 || anioFin > new Date().getUTCFullYear() + 5) {
-        return { ok: false, status: 400, error: "El año de la hora de cierre no es válido" };
-      }
-      if (d.toISOString().slice(0, 10) < date) {
-        return { ok: false, status: 400, error: "La hora de cierre cae antes del día del evento" };
-      }
-      endAt = d.toISOString();
+      startsAt = armado.iso;
     }
+  }
+
+  let endAt: string | null = null;
+  {
+    const horaActual = horaEnBogota((actual.end_at as string | null) ?? null);
+    const crudo = patch.endTime !== undefined ? limpiarTexto(patch.endTime) : horaActual;
+    if (crudo) {
+      const armado = armarInstante(date, crudo);
+      if (!armado) {
+        return { ok: false, status: 400, error: "La hora de cierre no se entiende. Usá HH:MM." };
+      }
+      endAt = armado.iso;
+    }
+  }
+
+  if (startsAt && endAt && new Date(endAt) <= new Date(startsAt)) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "La hora de cierre cae antes o igual que la de inicio. Si la fiesta termina de " +
+        "madrugada, poné la hora de cierre igual: de 00:00 a 06:00 ya se entiende como el día siguiente.",
+    };
   }
 
   let flyerUrl: string | null = (actual.flyer_url as string | null) ?? null;
@@ -478,7 +548,8 @@ export async function updateCommunityEvent(
     sql`
       UPDATE events SET
         title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
-        end_at = ${endAt}, flyer_url = ${flyerUrl}, door_price_cop = ${doorPrice}
+        starts_at = ${startsAt}, end_at = ${endAt}, flyer_url = ${flyerUrl},
+        door_price_cop = ${doorPrice}
       WHERE id = ${id}
     `,
     sentenciaDeRegistro(rol, {
