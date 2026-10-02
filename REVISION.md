@@ -216,13 +216,22 @@ borrarla.
 git push origin main
 ```
 
-Son **siete** commits: `cf76695`, `a9b9054`, `2472ae8`, `84ac242`, `3b2e30e` —la
-corrección del conteo de tablas, sección 5— y además `2049dda` y `a4d46a2`, que son **las
-rutas de migración de los pasos 2, 3 y 4**. Tienen que estar desplegadas para poder
-llamarlas, y **desplegar una ruta de migración no la corre**: las corrés vos, en los pasos
-que siguen.
+No es un commit, son varios, y NO voy a poner un total ni un hash de tip: este archivo
+es uno de los commits que se van en ese push, así que cualquier número o hash que
+escriba acá lo invalida el commit siguiente. Es la misma falla que la sección 5 cuenta
+sobre AGENTS.md, y no la voy a repetir en el plan para arreglarla.
 
-**Qué espero ver:** deploy READY con `3b2e30e`.
+Lo que sí importa es QUÉ va, en dos grupos:
+
+- **Código y contexto**: `cf76695` (registro obligatorio), `a9b9054` (organizador),
+  `2472ae8` y `3b2e30e` (AGENTS/CLAUDE), `84ac242` (la hora de inicio), más los de este
+  archivo.
+- **Rutas de migración de los pasos 2, 3 y 4**: `2049dda` y `a4d46a2`. Tienen que estar
+  desplegadas para poder llamarlas, y **desplegar una ruta de migración no la corre**:
+  las corrés vos, en los pasos que siguen.
+
+Corré `git log --oneline origin/main..HEAD` antes de pushear: eso es la lista de verdad,
+y el tip que ahí salga primero es el que tiene que quedar READY en Vercel.
 
 **Qué verificar en producción:**
 - `node scripts/post-deploy.mjs` → **27 lecturas, 0 rotas**, y **sin deriva de
