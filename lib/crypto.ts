@@ -5,10 +5,23 @@ import crypto from "crypto";
  * Uses AES-256-GCM with a key from PROFILE_ENCRYPTION_KEY (base64, 32 bytes).
  *
  * NOTHING IMPORTS THIS RIGHT NOW. Its only caller was user_profiles.cedula,
- * which is no longer read or written (HOTFIX punto 5). It is kept because
- * the column still holds encrypted values: the migration that eventually
- * clears them needs decryptField to confirm what it is deleting, and the
- * next sensitive field will need the same envelope.
+ * which is no longer read or written (HOTFIX punto 5).
+ *
+ * IT GAVE TWO REASONS FOR STAYING ALIVE AND ONE OF THEM IS SETTLED. It said the
+ * migration that clears the column would need decryptField "to confirm what it is
+ * deleting". setup-borrar-cedula does NOT decrypt: it counts with
+ * `COUNT(*) WHERE cedula IS NOT NULL` and clears with `SET cedula = NULL`, without
+ * ever looking at the contents.
+ *
+ * That is deliberate, not an oversight. Decrypting in order to log what is being
+ * deleted would put the cédulas themselves into the server logs — moving PII from
+ * a column nobody reads into a place nobody controls, one step before deleting it.
+ * "Confirm what you are deleting" sounds careful and is the opposite here.
+ *
+ * THE SECOND REASON STANDS and is why this file survives: it is a reusable
+ * AES-256-GCM envelope, not coupled to that column, and the next sensitive field
+ * will need the same thing. Deleting it is a decision about whether HOTU will ever
+ * encrypt a field again — not a consequence of there being no cédula left.
  *
  * If the key isn't configured yet, fields are stored/read as plain text so
  * the app keeps working during rollout - but this should be set in
