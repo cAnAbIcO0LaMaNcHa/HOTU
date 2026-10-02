@@ -256,14 +256,23 @@ y el tip que ahí salga primero es el que tiene que quedar READY en Vercel.
 /api/setup-borrar-cedula?secret=$MIGRATE_SECRET
 ```
 
-**Qué espero ver:** el dryRun con `verificado:false` —la columna todavía está— y un
-`filasConCedula: N`. **No sé cuánto vale N en main y no lo voy a adivinar**: en dev
-planté una fila para que el conteo tuviera algo que contar, así que el 1 de dev no dice
-nada de allá. Lo que importa es que **la corrida 1 devuelva `vaciadas` igual a ese N**.
-Si no coincide, algo escribió una cédula entre las dos llamadas y eso es noticia.
+**Qué espero ver, y acá el número SÍ está medido:** vos lo contaste directo en Neon y main
+tiene **exactamente 1 fila con cédula**, tu propio perfil, el único. Así que:
 
-Después: corrida 1 con `verificado:true`, corrida 2 con `vaciadas: 0` e idempotente, y
-las cuentas totales iguales en las tres.
+- dryRun → `verificado:false` (la columna todavía está) y **`filasConCedula: 1`**.
+- corrida 1 → **`vaciadas: 1`** y `verificado:true`.
+- corrida 2 → `vaciadas: 0`, idempotente.
+- Las cuentas totales, iguales en las tres.
+
+**Si el dryRun dice otro número, PARÁ y no corras la real.** No es un detalle de prolijidad:
+cualquier valor distinto de 1 significa que alguien escribió una cédula después de que
+supuestamente se dejó de escribir la columna, y entonces la premisa de toda la migración
+—"nada la toca desde hace tandas"— es falsa y hay que averiguar quién antes de borrar
+nada irreversible. Un 0 tampoco es inocente: querría decir que la fila que medís se fue
+sola.
+
+El `1` de dev es una coincidencia y no vale como confirmación: allá planté una fila a mano
+para que el conteo tuviera algo que contar. Los dos unos no tienen nada que ver.
 
 **Antes de correrla**, por si alguien creó algo a mano fuera del repo:
 
@@ -343,42 +352,98 @@ aislado, re-corré esa batería sola antes de investigar el código.**
 transitorio que no es un juicio sobre el comando. Cuando pasó seguí con lecturas y
 ediciones, que no lo necesitan, y volví después.
 
-**EL UMBRAL DE CONDICIONALES DE `entity_kind` YA SE CRUZÓ, Y CONVOCATORIAS NI ARRANCÓ.**
+**EL UMBRAL DE CONDICIONALES DE `entity_kind` YA SE CRUZÓ — Y LA MÉTRICA NUEVA ESTÁ
+DEFINIDA, CORRIDA Y PROBADA, PERO NO APLICADA.**
 
-AGENTS.md fija el número contra el que comparar —32 repartidos en 7 archivos al cerrar
-la pieza C— y la regla: **si un archivo pasa de ~10 o el total pasa de ~50, volver a
-mirar si conviene separar venue de colectivo.** Lo corrí con el comando que el propio
-archivo documenta:
+Decidiste no separar venues de colectivos, y pusiste la condición correcta: cambiar cómo
+se mide no puede ser una forma de apagar la alarma. Así que la métrica nueva está escrita
+como código corrible y no como un criterio mío, en
+[scripts/metrica-entity-kind.mjs](scripts/metrica-entity-kind.mjs):
 
-| archivo | n |
+```
+node scripts/metrica-entity-kind.mjs            # el informe
+node scripts/metrica-entity-kind.mjs --detalle  # los 60 casos, uno por uno
+node scripts/metrica-entity-kind.mjs --probar   # se prueba a sí misma
+```
+
+**Tres cosas para que no sea un apagador de alarmas**, y están puestas en ese orden a
+propósito:
+
+1. **La medición vieja se sigue imprimiendo, con su límite y con su estado.** No se
+   reemplaza ni se corrige: el informe arranca diciendo `60 líneas, PASADA (total 60 > 50)
+   (un archivo 14 > 10)` y abajo `DECISIÓN TOMADA: no separar`. Si alguna vez el script
+   dejara de imprimir eso, la métrica nueva pierde todo su valor como argumento.
+2. **El límite nuevo se DERIVA del viejo, no se elige para que hoy pase.** El viejo daba
+   1,5625× la base (50 sobre 32) y 1,4286× el peor archivo (10 sobre 7). Los mismos
+   factores sobre la base nueva dan 29,7 y 7,1, y los redondeé **hacia abajo**: la misma
+   holgura, medida distinto, y si hay que errar que sea por exigente.
+3. **Se prueba a sí misma: 28 chequeos, 0 MAL.** Incluye una corrida de punta a punta
+   contra un fixture de 8 ramas en un archivo, que verifica que sale con código 1, que
+   nombra el archivo, que cuenta 8 y no el vocabulario, y que sigue imprimiendo la
+   medición vieja. Existe porque un "dentro" puede significar que el código está bien o
+   que el clasificador no clasifica nada, y esas dos cosas hay que poder distinguirlas —el
+   mismo razonamiento que `arnes.mjs` sobre el barrido que daba cero.
+
+**LA REGLA, QUE ES LO QUE PEDISTE POR ESCRITO.** La unidad es la línea, igual que el grep
+viejo, para que los dos números se comparen. Si una línea tiene varias menciones y alguna
+es rama, la línea es rama.
+
+| clase | cuenta | qué es |
+|---|---|---|
+| **RAMA** | **sí** | el código hace algo distinto: un `if`, un bloque que aparece o no, campos distintos en el payload, una consulta que se saltea, datos que se filtran, otro estado inicial |
+| VOCABULARIO | no | un ternario cuyas **dos** ramas son un literal de string o template: cambia la palabra, no el flujo. `esVenue ? "venue" : "colectivo"` |
+| DECLARACION | no | la mención introduce o tipa la bandera: `const esVenue = …`, `esVenue?: boolean`, un default de destructuring, un campo que se mapea |
+| COMENTARIO | no | no es código |
+
+**Es conservadora a propósito: ante la duda, RAMA.** Un ternario con una sola rama
+no-literal cuenta como rama aunque en los hechos sea un texto —`publicar-evento` tiene
+`esVenue ? destino.name : "Dónde es"`, que es un placeholder— porque la alternativa es que
+el clasificador empiece a opinar sobre qué expresión "es en el fondo" una palabra, y ahí
+la métrica vuelve a ser un juicio. Una métrica nueva que se equivoca tiene que equivocarse
+**disparando de más**.
+
+**CUÁNTO DA HOY**, de los 60 que el grep viejo cuenta:
+
+| clase | n |
 |---|---|
-| `components/panel-colectivo.tsx` | **14** |
-| `components/create-collective-button.tsx` | 7 |
-| `components/collective-info-editor.tsx` | 6 |
-| `lib/collectives-write.ts` · `publicar-evento` · `collective-metrics` · `collective-join-button` | 4 cada uno |
-| otros ocho archivos | 1 a 3 |
+| RAMA | **19** |
+| VOCABULARIO | 25 |
+| DECLARACION | 15 |
+| COMENTARIO | 1 |
+| total | 60 |
 
-**Total 60, en 15 archivos. Los dos umbrales están pasados**: el total (60 > 50) y un
-archivo (14 > 10). Verifiqué que no son falsos positivos de comentarios —los 14 de
-`panel-colectivo` son todos código— que es justo la trampa que este repo ya pisó con
-otro grep.
+Las 19 ramas, por archivo: `panel-colectivo` 5, `create-collective-button` 4,
+`collective-info-editor` 3, `publicar-evento` 2, y cinco archivos con 1 —
+`collective-join-button`, `collective-members-editor`, `collective-metrics`,
+`membership-inbox`, `lib/collectives-write`.
 
-**Pero mi lectura es que todavía NO hay que separar, y la razón importa:** de los 14,
-**trece son cambios de palabra** ("VENUES QUE INTEGRO" contra "COLECTIVOS QUE INTEGRO")
-que salen de **un solo** `const esVenue` en la línea 56. Eso no es la falla que el umbral
-vigila —lógica duplicada— es vocabulario, y separar la tabla no lo eliminaría: seguirían
-siendo dos textos.
+Fíjate en el cambio de forma: el peor archivo pasa de **14 a 5**. Los 14 de
+`panel-colectivo` eran trece cambios de palabra colgados de un solo `const esVenue`.
 
-Así que la decisión es tuya y son dos, no una:
+**EL LÍMITE QUE PROPONGO: 30 ramas en total, 7 por archivo.** Hoy da 19 y 5, o sea
+`dentro`. Y clasifiqué los 60 a mano ANTES de escribir el script: coinciden caso por caso,
+los 60, lo que me deja algo más tranquilo de que la regla describe lo que hay y no lo que
+me convenía.
 
-- **(a) Separar venue de colectivo.** Lo que el umbral dice literalmente.
-- **(b) No separar, y afinar la métrica** para que cuente **ramas de lógica** y no
-  menciones, con el conteo nuevo anotado como la línea de base. **Recomiendo esta.**
-- **(c) Dejarlo como está y volver a medir después de convocatorias.** Es lo que el
-  umbral quería evitar.
+**NO CAMBIÉ EL UMBRAL DE AGENTS.md.** Pediste ver el número y el límite antes, así que lo
+que hay es la propuesta y la herramienta; el archivo que se autocarga sigue diciendo 32 /
+50 / 10 y sigue siendo el que manda. Cuando lo confirmes, el cambio que haría es: dejar el
+párrafo viejo entero —incluido que se pasó y que se decidió no separar— y agregar abajo el
+límite nuevo con el comando. Tres frases, sin borrar nada.
 
-Elijas (b) o (c), el conteo de 60 queda escrito. Un umbral que se pasa y no se decide
-nada deja de ser un umbral.
+**Y HAY DOS DEFECTOS DEL COMANDO VIEJO que conviene saber, aunque no cambian la
+conclusión** —60 pasa de 50 con cualquier criterio:
+
+- **Cuenta un comentario como si fuera un condicional.** El de `like-button.tsx:15` dice
+  que un `if (esVenue)` ahí sería una copia disfrazada: el comentario que explica por qué
+  **no** hay una rama se cuenta como rama. Es la trampa que AGENTS.md advierte en otra
+  sección, y la comete el comando de AGENTS.md. Es 1 de 60.
+- **Cuenta líneas y dice "condicionales".** `grep -c` cuenta líneas, no menciones: hay
+  **68 menciones en 60 líneas**, medido por separado con `grep -o | wc -l` y con el script,
+  que dan lo mismo. La diferencia son las ocho líneas `const esVenue = entityKind ===
+  "venue"`, que matchean los dos patrones a la vez. O sea que si alguien "arreglara" el
+  comando para contar menciones, el total **subiría a 68** sin que el código cambiara una
+  coma. (Mi primera versión de esta línea decía 61, de memoria. Lo medido es 68.)
 
 **Mi propia migración dejó mintiendo al archivo que se autocarga, y lo arreglé.**
 AGENTS.md decía *"39 tablas en dev y 38 en main"* —medido anoche, correcto cuando lo
