@@ -337,6 +337,40 @@ de la sección 3.
 
 ## 5. COSAS RARAS QUE ENCONTRÉ
 
+**EL CHEQUEO DE "UN EVENTO SIN HORA NO MUESTRA HORA" NO SE PUDO HACER EN PRODUCCIÓN, Y NO
+ES PORQUE FALLARA.** Main tiene 3 eventos —medido con el smoke, `getAllEvents` filas=3— y
+los tres YA PASARON. Para un evento pasado, `eventos-list` renderiza solo el badge
+`FINALIZADO`: la hora, el precio en taquilla y el botón están los tres dentro de la rama
+de evento NO pasado, así que el condicional `e.startsAt && (...)` **ni se ejecuta**.
+
+O sea que no hay nada que observar. Si lo hubiera reportado como verde —"no muestra hora
+✓"— habría estado afirmando que un condicional funciona mirando una página que nunca lo
+evalúa. Es la misma familia que el 307 que se leía como "la página renderiza".
+
+Lo que SÍ quedó verificado en producción: las tres tarjetas renderizan con el código
+nuevo, y ninguna imprime basura en lugar de la hora —ni `HH:MM`, ni `Invalid Date`, ni
+`NaN`, ni 1970, ni una duración inventada— que era el modo de falla que de verdad
+importaba. El condicional en sí está cubierto por la batería `hora-evento` en dev, 34 OK.
+
+**Para cerrarlo hace falta un evento FUTURO en main.** Cuando publiques uno desde tu panel
+—con hora y sin hora— el chequeo se vuelve observable. No lo creé yo: es un dato en
+producción.
+
+**Y de paso apareció una pregunta de producto que no es mía.** Un evento pasado hoy no
+muestra su hora ni su duración, y la duración de un evento pasado es exactamente el dato
+del que STATS saca las horas tocadas. Opciones: (a) dejarlo así, el pasado solo dice
+FINALIZADO; (b) mostrar hora y duración también en los pasados, que es historia y es lo
+que un press kit quiere. **Recomiendo (b)**, pero es tuya.
+
+**Dos falsos positivos míos en este mismo chequeo, los dos de la familia de siempre.**
+Primero `grep -c 'tracking-widest text-muted-foreground'` me dio 1 y lo leí como "el div de
+la hora no está": grep -c cuenta LÍNEAS, y todo el HTML viene en pocas líneas, así que 1
+línea eran 3 apariciones. Después conté las 3 apariciones y las reporté como MAL, o sea
+como si la hora SÍ se estuviera renderizando — y los tres divs decían `FINALIZADO`, que
+comparte las clases de Tailwind exactas con el div de la hora. **Una clase de Tailwind no
+identifica un elemento**, y en un proyecto con un sistema de clases consistente lo
+identifica menos todavía. Hay que comparar por CONTENIDO.
+
 **El dev server parpadea, y lo hizo dos veces con dos caras distintas.** Primero un 404
 con cuerpo vacío en el caso de las `06:00` de la batería de la hora; reproducido aislado
 en 05:59, 06:00 y 06:01 —los tres 201— y limpio al re-correr. Después, en la corrida
