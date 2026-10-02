@@ -243,6 +243,143 @@ try {
     chk("muestra la hora de inicio", /23:00/.test(tarjeta), tarjeta.slice(0, 160));
     chk("y la duración", /7 h/.test(tarjeta), tarjeta.slice(0, 200));
   }
+
+  console.log("\n=== 8. UN EVENTO PASADO MUESTRA HORA Y DURACIÓN IGUAL QUE UN FUTURO ===");
+  {
+    /**
+     * HOTU ES ARCHIVO, Y LA DURACIÓN DE UN EVENTO PASADO ES EL DATO DE STATS.
+     *
+     * El bloque de la hora vivía adentro de la rama de evento NO pasado, junto al
+     * precio y al botón, así que un evento terminado no decía ni a qué hora empezó ni
+     * cuánto duró. El precio y el botón sí dependen de que la fiesta no haya pasado
+     * —una fiesta terminada no es stock—, pero la hora es un hecho.
+     *
+     * ESTA SECCIÓN EXISTE PORQUE EL CHEQUEO NO SE PUDO HACER EN PRODUCCIÓN: los tres
+     * eventos de main ya habían pasado, así que el condicional de la hora no se
+     * evaluaba y no había nada que observar. Un condicional que no se ejecuta no se
+     * puede verificar mirando la página.
+     *
+     * Y SE MIDEN LAS DOS MITADES, no solo la nueva: que el pasado GANE la hora, y que
+     * NO gane el precio ni el botón. Mover un bloque de rama es exactamente cómo algo
+     * que no tenía que cruzar, cruza.
+     */
+    const PASADA = "2025-03-15";
+    const conHoras = await req("d", "POST", "/api/events", {
+      organizerSlug: COL,
+      title: "ZZ Archivo Completa",
+      date: PASADA,
+      venue: "ZZ Bodega",
+      city: "Bogota",
+      lineup: "ZZ DJ",
+      startTime: "23:00",
+      endTime: "06:00",
+      doorPriceCop: "35.000",
+    });
+    chk("un evento con fecha pasada se puede crear", conHoras.status === 201, JSON.stringify(conHoras));
+
+    const sinHoras = await req("d", "POST", "/api/events", {
+      organizerSlug: COL,
+      title: "ZZ Archivo Pelada",
+      date: PASADA,
+      venue: "ZZ Bodega",
+      city: "Bogota",
+      lineup: "ZZ DJ",
+    });
+    chk("y otro sin horas también", sinHoras.status === 201, JSON.stringify(sinHoras));
+
+    /** Que de verdad caigan en la mitad pasada, y no que la prueba se engañe sola. */
+    const [p] = await sql`
+      SELECT (event_date < CURRENT_DATE) AS ya_paso FROM events WHERE id = ${conHoras.data.id}`;
+    chk("la fecha quedó en el pasado", p?.ya_paso === true, JSON.stringify(p));
+
+    const html = await (await fetch(`${BASE}/eventos`)).text();
+    const tarjetaDe = (titulo) => {
+      /**
+       * Se delimita con > y < para que un título no matchee a otro del que es
+       * prefijo, y se corta en el </article> siguiente para no leer la tarjeta de al
+       * lado. "ZZ Archivo Completa" y "ZZ Archivo Pelada" no son prefijo una de otra
+       * a propósito.
+       */
+      const j = html.indexOf(`>${titulo}<`);
+      return j < 0 ? null : html.slice(j, html.indexOf("</article>", j));
+    };
+
+    const completa = tarjetaDe("ZZ Archivo Completa");
+    chk("la pasada con horas aparece en la página", completa !== null, "no aparece");
+    if (completa) {
+      chk("Y MUESTRA LA HORA DE INICIO", /23:00/.test(completa), completa.slice(0, 200));
+      chk("Y MUESTRA LA DURACIÓN", /7 h/.test(completa), completa.slice(0, 260));
+      chk("sigue diciendo FINALIZADO", /FINALIZADO/.test(completa), completa.slice(0, 260));
+      /** Lo que NO tiene que haber cruzado de rama. */
+      chk("NO muestra el precio en taquilla", !/Taquilla/.test(completa), completa.slice(0, 400));
+      chk("NO muestra 35.000", !/35\.000/.test(completa), completa.slice(0, 400));
+      chk("NO tiene botón de agregar entrada", !/AddTicket|agregar entrada/i.test(completa), "hay botón");
+    }
+
+    const pelada = tarjetaDe("ZZ Archivo Pelada");
+    chk("la pasada SIN horas aparece", pelada !== null, "no aparece");
+    if (pelada) {
+      /** Acá sí, la ausencia es la respuesta correcta: no hay hora que mostrar. */
+      chk("no muestra ninguna hora", !/\b([01]?\d|2[0-3]):[0-5]\d\b/.test(pelada), pelada.slice(0, 260));
+      chk("ni una duración", !/\b\d+ h\b/.test(pelada), pelada.slice(0, 260));
+      chk("no imprime basura en su lugar", !/Invalid Date|NaN|1970/.test(pelada), pelada.slice(0, 260));
+      chk("y dice FINALIZADO", /FINALIZADO/.test(pelada), pelada.slice(0, 260));
+    }
+
+    /**
+     * LA REGLA DE LA TRANSICIÓN: EL FUTURO NO PUEDE HABER QUEDADO PEOR. Una fiesta
+     * futura tiene que mostrar hora, duración Y precio, los tres en la misma tarjeta.
+     *
+     * SE CREA UNA PROPIA EN VEZ DE REUSAR LA DE LA SECCIÓN 5, y la primera versión de
+     * esta prueba hacía justamente eso y dio MAL: la sección 5 termina vaciando las
+     * horas a propósito —su último chequeo es "mandarlas vacías las borra"— así que
+     * para cuando llega acá ese evento tiene starts_at en NULL. La prueba estaba mal,
+     * no el código. Una sección que se apoya en el estado final de otra se rompe
+     * cuando la otra agrega un paso, y el síntoma aparece acá, lejos de la causa.
+     */
+    const futura = await req("d", "POST", "/api/events", {
+      organizerSlug: COL,
+      title: "ZZ Futura Entera",
+      date: "2027-09-18",
+      venue: "ZZ Bodega",
+      city: "Bogota",
+      lineup: "ZZ DJ",
+      startTime: "22:00",
+      endTime: "04:00",
+      doorPriceCop: "45.000",
+    });
+    chk("una futura con hora y precio se crea", futura.status === 201, JSON.stringify(futura));
+
+    const htmlDespues = await (await fetch(`${BASE}/eventos`)).text();
+    const k = htmlDespues.indexOf(">ZZ Futura Entera<");
+    const tf = k < 0 ? null : htmlDespues.slice(k, htmlDespues.indexOf("</article>", k));
+    chk("la futura aparece en la página", tf !== null, "no aparece");
+    if (tf) {
+      chk("muestra su hora", /22:00/.test(tf), tf.slice(0, 300));
+      chk("y su duración de 6 h", /6 h/.test(tf), tf.slice(0, 300));
+      chk("Y SIGUE mostrando Taquilla", /Taquilla/.test(tf), tf.slice(0, 500));
+      chk("con el precio", /45\.000/.test(tf), tf.slice(0, 500));
+      chk("y NO dice FINALIZADO", !/FINALIZADO/.test(tf), tf.slice(0, 500));
+    }
+
+    /**
+     * Y EL CASO QUE LA SECCIÓN 5 DEJA SERVIDO, que es el cuarto cuadrante: una fiesta
+     * FUTURA SIN horas pero CON precio. Tiene que mostrar el precio y ninguna hora.
+     * Las cuatro combinaciones de (pasado/futuro) x (con horas/sin horas) quedan
+     * medidas entre esta sección y la 7.
+     */
+    const futuraPelada = htmlDespues.indexOf(">ZZ Hora Edit 2<");
+    const tfp =
+      futuraPelada < 0
+        ? null
+        : htmlDespues.slice(futuraPelada, htmlDespues.indexOf("</article>", futuraPelada));
+    chk("la futura sin horas aparece", tfp !== null, "no aparece");
+    if (tfp) {
+      chk("no muestra hora", !/\b([01]?\d|2[0-3]):[0-5]\d\b/.test(tfp), tfp.slice(0, 300));
+      chk("pero SÍ el precio", /Taquilla/.test(tfp), tfp.slice(0, 500));
+      chk("y no dice FINALIZADO", !/FINALIZADO/.test(tfp), tfp.slice(0, 500));
+    }
+  }
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);

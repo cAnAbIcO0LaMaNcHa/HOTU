@@ -145,6 +145,44 @@ function EventCard({
           className="mt-2 line-clamp-2 font-mono text-[10px] text-muted-foreground"
         />
 
+        {/*
+          LA HORA Y LA DURACIÓN, SOLO SI ESTÁN — Y EN LOS PASADOS TAMBIÉN.
+
+          La hora se formatea en Bogotá y no como la vería el navegador de
+          quien mire: una fiesta de las 23:00 en Bogotá no son las 23:00 en
+          Madrid, y lo que hay que mostrar es a qué hora abre la puerta.
+
+          La duración solo aparece cuando existen LOS DOS extremos. No se
+          estima: un número inventado acá termina en el press kit de alguien.
+
+          ESTE BLOQUE VIVÍA ADENTRO DE LA RAMA DE EVENTO NO PASADO, junto al
+          precio y al botón, y por eso un evento terminado no decía ni a qué
+          hora empezó ni cuánto duró. Se descubrió queriendo verificar en
+          producción que un evento sin hora no muestra hora: los tres eventos
+          de main ya habían pasado, así que el condicional no se evaluaba
+          nunca y no había nada que observar.
+
+          SE SACÓ DE AHÍ PORQUE LA HORA NO ES UNA CONDICIÓN DE VENTA. El
+          precio y el botón sí dependen de que la fiesta no haya pasado —una
+          fiesta terminada no es stock— pero la hora es un HECHO, y HOTU es
+          archivo. Y el dato importa dos veces: la duración de un evento
+          pasado es exactamente de donde STATS saca las horas tocadas, así
+          que esconderla en la página era esconder justo lo que el press kit
+          va a mostrar.
+
+          PARA UN EVENTO FUTURO NO CAMBIA NADA: el bloque queda en el mismo
+          lugar visual, antes del precio, y con el mismo markup. Lo único que
+          cambió es que los pasados ahora lo alcanzan.
+        */}
+        {e.startsAt && (
+          <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">
+            {horaEnBogota(e.startsAt)}
+            {duracionEnPalabras(e.startsAt, e.endAt)
+              ? ` · ${duracionEnPalabras(e.startsAt, e.endAt)}`
+              : ""}
+          </div>
+        )}
+
         {past ? (
           // No price and no button: the party already happened.
           <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">
@@ -166,25 +204,6 @@ function EventCard({
               if (doorPriceCop) una fiesta de entrada libre desaparecería del
               anuncio como si nadie hubiera dicho nada.
             */}
-            {/*
-              LA HORA Y LA DURACIÓN, SOLO SI ESTÁN.
-
-              La hora se formatea en Bogotá y no como la vería el navegador de
-              quien mire: una fiesta de las 23:00 en Bogotá no son las 23:00 en
-              Madrid, y lo que hay que mostrar es a qué hora abre la puerta.
-
-              La duración solo aparece cuando existen LOS DOS extremos. No se
-              estima: un número inventado acá termina en el press kit de alguien.
-            */}
-            {e.startsAt && (
-              <div className="mt-3 font-mono text-[10px] tracking-widest text-muted-foreground">
-                {horaEnBogota(e.startsAt)}
-                {duracionEnPalabras(e.startsAt, e.endAt)
-                  ? ` · ${duracionEnPalabras(e.startsAt, e.endAt)}`
-                  : ""}
-              </div>
-            )}
-
             {e.doorPriceCop !== null && (
               <div className="mt-3 font-mono text-sm font-bold">
                 {e.doorPriceCop === 0 ? (
