@@ -324,6 +324,38 @@ LOS AGENTES DE .claude/agents/ SE INVOCAN PASANDO EL .md COMO ESPECIFICACIÓN. E
 
 VENUE Y COLECTIVO COMPARTEN TABLA, Y EL UMBRAL PARA REVISARLO SON LOS CONDICIONALES. TANDA-3 §5.2 dice que si compartir tabla obliga a llenar el código de condicionales, hay que separar y avisar. Al cerrar la pieza C había 32 condicionales de entity_kind repartidos en 7 archivos: create-collective-button 7, collective-info-editor 6, db.ts 5, collectives-write 5, collective-join-button 4, collective-inbox 3, membership-inbox 2. Eso sigue del lado bueno — la alternativa era duplicar membresías, press kit y permisos enteros—, pero es el número contra el que hay que comparar. Las dos piezas que más lo pueden empujar son convocatorias (§7) y métricas de colectivo y venue (§13). Si al agregarlas un solo archivo pasa de ~10, o el total pasa de ~50, volver a mirar si conviene separar. Contar así: grep -rc "esVenue|entityKind === \"venue\"|kind === \"venue\"" sobre components/, lib/collectives-write.ts y lib/db.ts.
 
+ESE UMBRAL DE 50/10 YA SE PASÓ, Y LA DECISIÓN FUE NO SEPARAR. El grep viejo da 60 líneas en 15 archivos, con panel-colectivo.tsx en 14. Queda escrito así, sin borrar el párrafo de arriba: un umbral que se pasa y no deja rastro de que se pasó no es un umbral.
+
+LA MEDICIÓN AHORA ES OTRA, Y EL COMANDO OFICIAL ES UN SCRIPT:
+
+    node scripts/metrica-entity-kind.mjs            el informe
+    node scripts/metrica-entity-kind.mjs --detalle  los 60 casos, uno por uno
+    node scripts/metrica-entity-kind.mjs --probar   se prueba a sí misma (28 chequeos)
+
+LÍMITE NUEVO: 30 RAMAS EN TOTAL, 7 POR ARCHIVO. Hoy da 19 en 9 archivos, con panel-colectivo en 5. El script sale con código 1 si se pasa, así que sirve de puerta.
+
+QUÉ ES UNA RAMA, QUE ES TODA LA DIFERENCIA. La unidad es la línea, igual que el grep viejo, para que los dos números se comparen. Si una línea tiene varias menciones y alguna es rama, la línea es rama.
+
+    RAMA         CUENTA. El código hace algo DISTINTO: un if, un bloque que aparece o no,
+                 campos distintos en el payload, una consulta que se saltea, datos que se
+                 filtran, otro estado inicial.
+    VOCABULARIO  NO cuenta. Un ternario cuyas DOS ramas son un literal de string o
+                 template: cambia la palabra, no el flujo. esVenue ? "venue" : "colectivo".
+                 Separar la tabla NO eliminaría ninguna: seguirían siendo dos textos.
+    DECLARACION  NO cuenta. Introduce o tipa la bandera: const esVenue = ..., esVenue?:
+                 boolean, un default de destructuring, un campo que se mapea.
+    COMENTARIO   NO cuenta. No es código.
+
+ES CONSERVADORA A PROPÓSITO: ANTE LA DUDA, RAMA. Un ternario con una sola rama no-literal cuenta como rama aunque en los hechos sea un texto —publicar-evento tiene esVenue ? destino.name : "Dónde es", que es un placeholder— porque la alternativa es que el clasificador opine sobre qué expresión "es en el fondo" una palabra, y ahí la métrica vuelve a ser un juicio. Si se equivoca, tiene que equivocarse disparando de más.
+
+Y EL INFORME SIGUE IMPRIMIENDO LA MEDICIÓN VIEJA, CON SU LÍMITE Y SU ESTADO. Arranca con "60 líneas, PASADA (total 60 > 50) (un archivo 14 > 10)" y abajo "DECISIÓN TOMADA: no separar". No se reemplaza ni se corrige. SI ALGUNA VEZ EL SCRIPT DEJA DE IMPRIMIRLA, LA MÉTRICA NUEVA PIERDE TODO SU VALOR COMO ARGUMENTO: cambiar cómo se mide, justo después de que la medición vieja disparó, es la forma más común de apagar una alarma sin decir que se la apaga.
+
+POR ESO EL LÍMITE NUEVO SE DERIVÓ DEL VIEJO Y NO SE ELIGIÓ. El viejo daba 1,5625x la línea de base (50 sobre 32) y 1,4286x el peor archivo (10 sobre 7). Los mismos factores sobre la base nueva de 19 y 5 dan 29,7 y 7,1, redondeados HACIA ABAJO. La misma holgura, medida distinto.
+
+Y SE PRUEBA A SÍ MISMA porque hacía falta: hoy dice "dentro", y eso puede significar que el código está bien o que el clasificador no clasifica nada. --probar ejercita cada forma contra su clase y corre el pipeline completo contra un fixture de 8 ramas en un archivo, verificando que sale con 1, que nombra el archivo, que cuenta 8 y no el vocabulario, y que sigue imprimiendo la medición vieja. Mismo razonamiento que arnes.mjs sobre el barrido que daba cero.
+
+DOS DEFECTOS DEL GREP VIEJO, MEDIDOS, que no cambian su conclusión pero explican por qué no servía para decidir: CUENTA UN COMENTARIO como condicional —el de like-button.tsx:15, que justamente dice que un if ahí sería una copia disfrazada, o sea que el comentario que explica por qué NO hay rama se cuenta como rama—, y CUENTA LÍNEAS DICIENDO "condicionales": hay 68 menciones en 60 líneas, porque las ocho líneas const esVenue = entityKind === "venue" matchean los dos patrones. Si alguien lo "arreglara" para contar menciones, el total subiría a 68 sin que el código cambie una coma.
+
 LA TRANSICIÓN NUNCA DEJA UNA PÁGINA PEOR QUE ANTES. Cuando algo se reemplaza por etapas —un filtro por otro, una columna por otra, un vocabulario por otro—, el estado intermedio tiene que ser al menos tan bueno como el de partida. No alcanza con que el destino sea mejor: entre medio hay gente usando el sitio.
 
 El caso que la originó: el filtro de distritos pasó a ser el de géneros, y /colectivos quedó con CERO filtros, porque el filtro nuevo se apoya en datos que todavía nadie cargó y el viejo ya se había sacado. El destino es mejor y el camino era peor. La forma de resolverlo NO es apurar el destino: es que lo viejo quede de SUPLENTE de lo nuevo, y se retire solo cuando lo nuevo tenga con qué. Ahí el filtro 2 viejo se renderiza únicamente si no hay tags que ofrecer.
