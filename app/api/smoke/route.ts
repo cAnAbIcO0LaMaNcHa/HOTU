@@ -80,8 +80,10 @@ import {
   getAllSets,
   getAllTracks,
   getAllVenues,
+  getArtistBySlug,
   getArtistsInReview,
   getBannedAccounts,
+  countArtistLikes,
   getBranchesWithContent,
   getCensored,
   getVinculos,
@@ -90,6 +92,12 @@ import {
   getLineupsByEvent,
   getLineupsPendientes,
   getNewsInReview,
+  getPhotosByArtist,
+  getPressByArtist,
+  getProfileGenres,
+  getSetsByArtist,
+  getTracksByArtist,
+  getGigsByArtist,
 } from "@/lib/db";
 import { getAllOrdersAdmin, getMerchCatalog } from "@/lib/orders";
 import { getAllRoleAssignments } from "@/lib/roles";
@@ -178,6 +186,56 @@ export async function GET(request: Request) {
     await correr("/", "getLineupsByEvent", () => getLineupsByEvent(idsDeEventos));
   } else {
     omitir("/", "getLineupsByEvent", "no hay eventos con los que probarla");
+  }
+
+  /**
+   * ============================================================
+   * EL PERFIL DE ARTISTA NO TENÍA NI UNA LECTURA ACÁ
+   * ============================================================
+   *
+   * /artistas/[slug] es la página más grande del sitio —el EPK entero— y ninguno de sus
+   * seis lectores había corrido nunca contra producción desde este chequeo. Es la misma
+   * forma exacta del caso que originó este archivo: /admin estuvo 500 durante 66 commits
+   * porque sus lecturas no estaban en esta lista.
+   *
+   * Se descubrió agregando galería y prensa: la regla dice "si agregás una página, agregá
+   * sus lecturas", y al ir a sumar las dos nuevas no había ninguna a la que sumarlas.
+   *
+   * NECESITA UN SLUG REAL, así que sale del primer artista publicado. Si no hay ninguno se
+   * OMITE en vez de pasar vacío — alimentar a getArtistBySlug con un slug inventado haría
+   * que devuelva null sin tocar las columnas que importan, y el OK no diría nada.
+   */
+  let slugDeArtista: string | null = null;
+  try {
+    const artistas = await getAllArtists();
+    slugDeArtista = artistas[0]?.slug ?? null;
+  } catch {
+    /* getAllArtists se reporta igual más arriba, con su error */
+  }
+
+  if (slugDeArtista) {
+    const s = slugDeArtista;
+    await correr("/artistas/[slug]", "getArtistBySlug", () => getArtistBySlug(s));
+    await correr("/artistas/[slug]", "getSetsByArtist", () => getSetsByArtist(s));
+    await correr("/artistas/[slug]", "getTracksByArtist", () => getTracksByArtist(s));
+    await correr("/artistas/[slug]", "getGigsByArtist", () => getGigsByArtist(s));
+    await correr("/artistas/[slug]", "getPhotosByArtist", () => getPhotosByArtist(s));
+    await correr("/artistas/[slug]", "getPressByArtist", () => getPressByArtist(s));
+    await correr("/artistas/[slug]", "countArtistLikes", () => countArtistLikes(s));
+    await correr("/artistas/[slug]", "getProfileGenres", () => getProfileGenres("artist", s));
+  } else {
+    for (const lector of [
+      "getArtistBySlug",
+      "getSetsByArtist",
+      "getTracksByArtist",
+      "getGigsByArtist",
+      "getPhotosByArtist",
+      "getPressByArtist",
+      "countArtistLikes",
+      "getProfileGenres",
+    ]) {
+      omitir("/artistas/[slug]", lector, "no hay artistas publicados con los que probarlas");
+    }
   }
 
   await correr("/colectivos", "getAllCollectives", () => getAllCollectives());

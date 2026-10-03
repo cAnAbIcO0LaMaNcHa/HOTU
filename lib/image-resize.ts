@@ -23,6 +23,18 @@ export const IMAGE_TARGETS = {
    * hacerlo sin tocar de paso las portadas del EPK.
    */
   flyer: 1600,
+  /**
+   * LA GALERÍA ES EL TARGET MÁS GRANDE, y el motivo está en para qué existe la sección:
+   * son fotos EN ALTA para que un organizador arme un flyer con ellas. Bajarlas al
+   * presupuesto de una portada las haría inservibles justo para su único uso — un flyer
+   * impreso o una historia a pantalla completa necesitan más lado que una tarjeta del
+   * sitio.
+   *
+   * 2400 y no más: sigue siendo una reducción frente a una foto de cámara, y el navegador
+   * la re-encodea a webp antes de que salga del dispositivo, así que lo que llega al store
+   * son unos cientos de KB y no los megas del original.
+   */
+  galeria: 2400,
 } as const;
 
 export type ImageTarget = keyof typeof IMAGE_TARGETS;

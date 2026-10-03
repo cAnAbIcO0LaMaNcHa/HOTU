@@ -34,7 +34,7 @@ export function EpkImageField({
   /** Where the upload route files it. Must match the route's KINDS.
    *  "flyer" autoriza por colectivo, no por artista: ahí el slug es el
    *  del colectivo o venue que publica. */
-  kind: "avatar" | "cover" | "track-cover" | "flyer";
+  kind: "avatar" | "cover" | "track-cover" | "flyer" | "galeria";
   /** Which longest-edge budget to resize to. */
   target: ImageTarget;
   value: string;

@@ -7,6 +7,8 @@ import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
 import { EpkStats } from "@/components/epk-stats";
+import { EpkGaleria } from "@/components/epk-galeria";
+import { EpkPrensa } from "@/components/epk-prensa";
 import { EpkRider } from "@/components/epk-rider";
 import { LikeButton } from "@/components/like-button";
 import { FranjaCensura } from "@/components/franja-censura";
@@ -23,6 +25,8 @@ import {
   getGenreTags,
   getProfileGenres,
   getGigsByArtist,
+  getPhotosByArtist,
+  getPressByArtist,
   getSetsByArtist,
   getTracksByArtist,
   hasLikedArtist,
@@ -60,11 +64,16 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
 
   // Same check the API route runs before accepting a write. Hiding the edit
   // controls is presentation; the route is what actually protects the data.
-  const [canEdit, sets, tracks, gigs, likeCount, liked] = await Promise.all([
+  /** Las fotos y la prensa van en el MISMO Promise.all que el resto, no en dos awaits
+   *  sueltos: cada sql del driver HTTP de Neon es su propio round-trip, y dos secciones
+   *  nuevas en serie le suman latencia a cada visita del perfil. */
+  const [canEdit, sets, tracks, gigs, photos, press, likeCount, liked] = await Promise.all([
     canEditArtist(slug, email),
     getSetsByArtist(slug),
     getTracksByArtist(slug),
     getGigsByArtist(slug),
+    getPhotosByArtist(slug),
+    getPressByArtist(slug),
     countArtistLikes(slug),
     email ? hasLikedArtist(email, slug) : Promise.resolve(false),
   ]);
@@ -213,6 +222,8 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
           muestra es derivado de los toques, y la regla es que los números del press kit no
           los pueda tocar el artista. */}
       <EpkStats gigs={gigs} />
+      <EpkGaleria photos={photos} canEdit={canEdit} artistSlug={slug} />
+      <EpkPrensa items={press} canEdit={canEdit} artistSlug={slug} />
       <EpkRider artist={artist} canEdit={canEdit} />
     </section>
   );

@@ -524,6 +524,68 @@ export async function getSetsByArtist(slug: string): Promise<DjSet[]> {
   return rows.map(mapDjSet);
 }
 
+/* ===================================================================
+ * GALERÍA Y PRENSA DEL EPK
+ * =================================================================== */
+
+export type ArtistPhoto = {
+  id: number;
+  url: string;
+  /** El crédito del fotógrafo, opcional: muchas fotos de fiesta no lo tienen. */
+  credit: string | null;
+  sortOrder: number | null;
+};
+
+export type ArtistPressItem = {
+  id: number;
+  /** El medio, texto libre: la escena publica en blogs y en Instagram. */
+  outlet: string;
+  url: string;
+  /** Nullable a propósito: una nota vieja puede no tener fecha, y no se inventa. */
+  publishedAt: string | null;
+  sortOrder: number | null;
+};
+
+/**
+ * SIN FILTRO DE status NI DE censored_at, al revés que los sets y los tracks, y la
+ * diferencia tiene razón: esas dos tablas tienen columnas editoriales porque además del
+ * perfil se listan en /sets y /discografia, así que necesitan poder esconderse por su
+ * cuenta. Fotos y prensa no tienen otra vitrina —se ven solo dentro del perfil— y
+ * getArtistBySlug ya trata un perfil censurado o con dueño baneado como inexistente para
+ * todo el mundo menos su dueño. Esconder el perfil se las lleva.
+ *
+ * El orden es el mismo de siempre: sort_order ASC NULLS LAST y después la fecha DESC, para
+ * que el que nunca reordena nada vea lo más nuevo primero.
+ */
+export async function getPhotosByArtist(slug: string): Promise<ArtistPhoto[]> {
+  const rows = await sql`
+    SELECT id, url, credit, sort_order FROM artist_photos
+    WHERE artist_slug = ${slug}
+    ORDER BY sort_order ASC NULLS LAST, created_at DESC
+  `;
+  return rows.map((r) => ({
+    id: r.id as number,
+    url: r.url as string,
+    credit: (r.credit as string | null) ?? null,
+    sortOrder: (r.sort_order as number | null) ?? null,
+  }));
+}
+
+export async function getPressByArtist(slug: string): Promise<ArtistPressItem[]> {
+  const rows = await sql`
+    SELECT id, outlet, url, published_at, sort_order FROM artist_press
+    WHERE artist_slug = ${slug}
+    ORDER BY sort_order ASC NULLS LAST, published_at DESC NULLS LAST
+  `;
+  return rows.map((r) => ({
+    id: r.id as number,
+    outlet: r.outlet as string,
+    url: r.url as string,
+    publishedAt: r.published_at ? toISODate(r.published_at) : null,
+    sortOrder: (r.sort_order as number | null) ?? null,
+  }));
+}
+
 /** The EPK's TRACKS section — the real tracks rows, not artists.top_tracks. */
 export async function getTracksByArtist(slug: string): Promise<Track[]> {
   const rows = await sql`

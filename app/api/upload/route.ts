@@ -12,7 +12,7 @@
  *   slug  — el perfil al que pertenece, y quién puede subirlo. Para
  *           "flyer" es el slug de un COLECTIVO o VENUE; para el resto,
  *           el de un artista.
- *   kind  — "avatar" | "cover" | "track-cover" | "flyer"
+ *   kind  — "avatar" | "cover" | "track-cover" | "flyer" | "galeria"
  */
 
 import { NextResponse } from "next/server";
@@ -38,7 +38,7 @@ export const dynamic = "force-dynamic";
  * "track-cover" covers artwork for both TRACKS and DJ SETS rows — one
  * budget, one folder, since both render at the same square size.
  */
-const KINDS = ["avatar", "cover", "track-cover", "flyer"] as const;
+const KINDS = ["avatar", "cover", "track-cover", "flyer", "galeria"] as const;
 type Kind = (typeof KINDS)[number];
 
 export async function POST(request: Request) {
