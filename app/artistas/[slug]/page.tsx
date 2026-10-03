@@ -6,6 +6,7 @@ import { EpkAbout } from "@/components/epk-about";
 import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
+import { EpkStats } from "@/components/epk-stats";
 import { EpkRider } from "@/components/epk-rider";
 import { LikeButton } from "@/components/like-button";
 import { FranjaCensura } from "@/components/franja-censura";
@@ -204,9 +205,14 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
         sinResidencia={sinResidencia}
       />
       <EpkEvents gigs={gigs} canEdit={canEdit} currentYear={new Date().getFullYear()} />
-      {/* El RIDER va último, que es el orden de secciones de AGENTS.md: cabecera, sobre mí,
-          sets, tracks, events, stats, galería, prensa, rider. Las que todavía no existen
-          —stats, galería, prensa— van a entrar entre events y este. */}
+      {/* El orden de secciones de AGENTS.md: cabecera, sobre mí, sets, tracks, events,
+          stats, galería, prensa, rider. Galería y prensa todavía no existen y van a entrar
+          entre STATS y el RIDER; su migración está escrita y sin correr en main.
+
+          STATS no recibe canEdit, y no es un olvido: no hay nada que editar. Todo lo que
+          muestra es derivado de los toques, y la regla es que los números del press kit no
+          los pueda tocar el artista. */}
+      <EpkStats gigs={gigs} />
       <EpkRider artist={artist} canEdit={canEdit} />
     </section>
   );

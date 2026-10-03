@@ -328,7 +328,7 @@ export type ReadOptions = {
 // components import straight from "@/lib/date-utils" to avoid pulling
 // the database client (and DATABASE_URL) into the browser bundle.
 export { toISODate, formatShortDate, eventHasEnded } from "./date-utils";
-import { toISODate } from "./date-utils";
+import { toISODate, duracionEnMinutos } from "./date-utils";
 
 function mapMeta(r: Record<string, unknown>): ContentMeta {
   return {
@@ -652,7 +652,8 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
 
   const deLineup = await sql`
     SELECT el.id, el.role, el.b2b_with,
-           e.id AS event_id, e.title, e.flyer_url, e.venue, e.city, e.event_date
+           e.id AS event_id, e.title, e.flyer_url, e.venue, e.city, e.event_date,
+           e.starts_at, e.end_at
     FROM event_lineup el
     JOIN events e ON e.id = el.event_id
     WHERE el.artist_slug = ${slug} AND e.status = 'published' AND e.censored_at IS NULL
@@ -689,7 +690,23 @@ export async function getGigsByArtist(slug: string): Promise<ArtistGig[]> {
     gigDate: toISODate(r.event_date),
     role: (r.role as string | null) ?? null,
     b2bWith: (r.b2b_with as string | null) ?? null,
-    durationMinutes: null,
+    /**
+     * LA DURACIÓN DE UN TOQUE DE HOTU SALE DEL EVENTO, y hasta ahora estaba en null fijo
+     * con el comentario de que "un toque de HOTU no tiene duración propia todavía". Ya la
+     * tiene: events.starts_at y end_at existen desde la migración de la hora.
+     *
+     * Solo cuando están LOS DOS. duracionEnMinutos devuelve null si falta alguno, y eso es
+     * lo correcto: estimar la duración de una fiesta por su fecha sería inventar un número
+     * que después aparece en el press kit de alguien como si fuera un dato.
+     *
+     * Hoy en dev hay 0 eventos con las dos horas, así que esto devuelve null en los 9
+     * toques de lineup. No es código muerto: se enciende solo el día que un organizador
+     * cargue el horario, sin que haya que volver acá.
+     */
+    durationMinutes: duracionEnMinutos(
+      r.starts_at ? new Date(r.starts_at as string).toISOString() : null,
+      r.end_at ? new Date(r.end_at as string).toISOString() : null
+    ),
     source: "hotu" as const,
   }));
 
