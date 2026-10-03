@@ -1,6 +1,48 @@
-/** Postgres DATE columns come back as Date objects; normalise to YYYY-MM-DD. */
+/**
+ * Una columna DATE de Postgres vuelve como objeto Date; se normaliza a YYYY-MM-DD.
+ *
+ * ============================================================
+ * NO PASA POR toISOString(), Y ESA ES TODA LA FUNCIÓN
+ * ============================================================
+ *
+ * Decía `value.toISOString().slice(0, 10)` y eso SE CORRE UN DÍA en cualquier server
+ * adelantado de UTC.
+ *
+ * El mecanismo, medido y no razonado: el driver de Neon construye el Date en MEDIANOCHE
+ * LOCAL —comprobado contra dev, getHours() da 0 y getUTCHours() da 5— así que
+ * toISOString() lo convierte a UTC y, si el offset local es positivo, cae en el día
+ * anterior. Con offset -05:00 da 2026-02-14, con +00:00 da 2026-02-14, y con +02:00 da
+ * 2026-02-13.
+ *
+ * NO PODÍA DISPARARSE HOY: Vercel corre en UTC y el desarrollo en Bogotá, los dos con
+ * offset <= 0. Eso es exactamente lo que lo hacía peligroso — una línea correcta por
+ * accidente geográfico, que se rompe el día que alguien despliegue en otra región o corra
+ * las pruebas desde otro país, y que se rompe CALLADA: una fecha un día antes no tira
+ * ningún error, solo queda mal.
+ *
+ * LA FORMA CORRECTA ES LEER LAS PARTES LOCALES, que es simétrico con cómo el driver armó
+ * el objeto. Un calendario no tiene zona: el 14 de febrero es el 14 de febrero, y
+ * convertirlo a un instante para después recortarlo es el paso que introduce el error.
+ *
+ * Es la misma familia que el bug de cinco horas de end_at: ahí un string sin offset se
+ * parseaba en la zona del servidor; acá un Date local se imprime en UTC. Las dos veces el
+ * error entra al cruzar entre "fecha de calendario" e "instante" sin decidir en qué zona.
+ *
+ * LAS NUEVE COLUMNAS QUE PASAN POR ACÁ SON date, NINGUNA ES timestamptz: medido contra
+ * information_schema —joined_at, released_at, recorded_at, published_at, gig_date,
+ * event_date, news_date, from_date, to_date. Importa porque para un timestamptz las
+ * partes locales NO serían la respuesta: ahí habría que elegir una zona explícita, como
+ * hace armarInstante con Bogotá. Si alguna vez se le pasa una marca de tiempo a esta
+ * función, esto deja de ser correcto.
+ */
 export function toISODate(value: unknown): string {
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    /** Partes LOCALES, nunca UTC. El padStart es porque getMonth() devuelve 0-11. */
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
   return String(value).slice(0, 10);
 }
 
