@@ -6,6 +6,7 @@ import { EpkAbout } from "@/components/epk-about";
 import { EpkSets } from "@/components/epk-sets";
 import { EpkTracks } from "@/components/epk-tracks";
 import { EpkEvents } from "@/components/epk-events";
+import { EpkRider } from "@/components/epk-rider";
 import { LikeButton } from "@/components/like-button";
 import { FranjaCensura } from "@/components/franja-censura";
 import { FranjaRevision } from "@/components/franja-revision";
@@ -203,6 +204,10 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
         sinResidencia={sinResidencia}
       />
       <EpkEvents gigs={gigs} canEdit={canEdit} currentYear={new Date().getFullYear()} />
+      {/* El RIDER va último, que es el orden de secciones de AGENTS.md: cabecera, sobre mí,
+          sets, tracks, events, stats, galería, prensa, rider. Las que todavía no existen
+          —stats, galería, prensa— van a entrar entre events y este. */}
+      <EpkRider artist={artist} canEdit={canEdit} />
     </section>
   );
 }

@@ -55,6 +55,7 @@ export {
 } from "./socials";
 
 import type { ArtistSocials } from "./socials";
+import { normalizarRider, type ArtistRider } from "./rider";
 
 export type Artist = ContentMeta & {
   slug: string;
@@ -80,6 +81,12 @@ export type Artist = ContentMeta & {
    *  Matched case-insensitively: CAMILA and camila are the same code. */
   djCode?: string;
   socials: ArtistSocials;
+  /**
+   * El rider técnico, SIEMPRE un objeto y nunca undefined: la columna es jsonb y arranca
+   * en {}, así que el lector normaliza en vez de dejar que cada página decida qué hacer
+   * con un nulo. Se pregunta con riderVacio(), no comparando contra null.
+   */
+  rider: ArtistRider;
   /**
    * Dónde está en la cola de aprobación. Es distinto de `status`, que es
    * la visibilidad editorial: uno dice si es público y el otro dónde está
@@ -357,6 +364,13 @@ function mapArtist(r: Record<string, unknown>): Artist {
     bpmMax: r.bpm_max === null || r.bpm_max === undefined ? undefined : Number(r.bpm_max),
     djCode: (r.dj_code as string) ?? undefined,
     socials: (r.socials ?? {}) as ArtistSocials,
+    /**
+     * SE NORMALIZA AL LEER, con la misma función que valida al escribir. La columna es
+     * jsonb: lo que hay guardado puede tener cualquier forma, incluida la de una versión
+     * anterior del editor, y renderizar eso sin normalizar es cómo un campo que ya no
+     * existe termina en la página.
+     */
+    rider: normalizarRider(r.rider),
     // Las filas anteriores a la migración no tienen la columna en algunos
     // lectores viejos; 'aprobado' es el default seguro porque es el que la
     // migración le puso a todo lo que ya estaba publicado.

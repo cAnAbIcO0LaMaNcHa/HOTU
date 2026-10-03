@@ -11,6 +11,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { SOCIAL_PLATFORMS, type ArtistSocials, type SocialPlatform } from "./socials";
+import { normalizarRider, riderVacio, type ArtistRider } from "./rider";
 import { deleteOwnBlob } from "./blob";
 import { isModerator, isSuperAdmin } from "./roles-check";
 // El WriteResult de este archivo no es genérico y no contempla 409, que
@@ -45,6 +46,12 @@ export type ArtistProfilePatch = {
   bpmMin?: number | null;
   bpmMax?: number | null;
   socials?: ArtistSocials;
+  /**
+   * El rider técnico. Se manda ENTERO, no por campo: es una ficha chica que el editor
+   * guarda de una, y un patch parcial sobre un jsonb obligaría a leer-modificar-escribir,
+   * que es una carrera entre dos guardados del mismo DJ en dos pestañas.
+   */
+  rider?: ArtistRider;
 };
 
 export type WriteResult =
@@ -228,7 +235,30 @@ export async function updateArtistProfile(
     return { ok: false, status: 400, error: "socials must be an object of platform -> URL" };
   }
 
-  if (Object.keys(values).length === 0 && socials === undefined) {
+  /**
+   * EL RIDER PASA POR normalizarRider Y NUNCA SE GUARDA CRUDO. Es la misma función que lo
+   * lee, así que lo que entra y lo que sale tienen la misma forma por construcción. Un
+   * campo que no reconoce se descarta en silencio en vez de dar 400: el editor manda la
+   * ficha entera, y rechazar el guardado porque sobró una clave le haría perder al DJ lo
+   * que sí escribió.
+   *
+   * No valida que haya ALGO: un rider vacío es un guardado legítimo —así se borra el
+   * rider— y guardarlo como {} es exactamente lo que riderVacio() lee después.
+   */
+  const rider =
+    patch.rider === undefined
+      ? undefined
+      : (() => {
+          if (patch.rider === null || typeof patch.rider !== "object" || Array.isArray(patch.rider)) {
+            return null;
+          }
+          return normalizarRider(patch.rider);
+        })();
+  if (patch.rider !== undefined && rider === null) {
+    return { ok: false, status: 400, error: "rider must be an object" };
+  }
+
+  if (Object.keys(values).length === 0 && socials === undefined && rider === undefined) {
     return { ok: false, status: 400, error: "Nothing to update" };
   }
 
@@ -248,7 +278,8 @@ export async function updateArtistProfile(
       cover_url     = CASE WHEN ${"coverUrl" in values} THEN ${values.coverUrl ?? null}::text ELSE cover_url END,
       bpm_min       = CASE WHEN ${"bpmMin" in values} THEN ${values.bpmMin ?? null}::smallint ELSE bpm_min END,
       bpm_max       = CASE WHEN ${"bpmMax" in values} THEN ${values.bpmMax ?? null}::smallint ELSE bpm_max END,
-      socials       = CASE WHEN ${socials !== undefined} THEN ${JSON.stringify(socials ?? {})}::jsonb ELSE socials END
+      socials       = CASE WHEN ${socials !== undefined} THEN ${JSON.stringify(socials ?? {})}::jsonb ELSE socials END,
+      rider         = CASE WHEN ${rider !== undefined} THEN ${JSON.stringify(rider ?? {})}::jsonb ELSE rider END
     WHERE slug = ${slug}
   `;
 
