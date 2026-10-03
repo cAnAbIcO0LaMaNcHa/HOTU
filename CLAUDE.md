@@ -19,7 +19,7 @@ Orden obligatorio de toda migración: primero en dev desde localhost, verificar,
 Toda migración tiene que ser idempotente: se corre dos veces seguidas y la segunda devuelve ok:true igual. Esa es la prueba de que se puede reaplicar en main sin romper nada.
 SCHEMA — LA FOTO DE LA TANDA 2 (18 tablas). LO QUE SIGUE ES ESA FOTO, NO EL ESTADO DE HOY.
 
-Hoy hay 38 en dev y 38 en main, Y NO SON LAS MISMAS 38: dev tiene zz_test_lock —infraestructura de pruebas, no va a main— y ya NO tiene collective_ownership; main es al revés. Dos bases pueden dar el mismo número y tener tablas distintas, así que el número solo no alcanza: PREGUNTALE A LA BASE, no a este archivo. Lo que este listado NO menciona, agregado después: collective_ownership (BORRADA en dev, todavía en main) y artist_collectives.can_edit (§8), collective_likes, account_removals (§8), y todo el sistema de géneros y tags de la tanda 4 (genre_branches, genre_tags, genre_aliases, cross_tags, artist_genres, artist_genre_tags, artist_cross_tags y sus tres equivalentes de collective_), más content_collaborators, content_placements y event_lineup.
+Hoy hay 38 en dev y 37 en main, y la ÚNICA diferencia es zz_test_lock —infraestructura de pruebas, no va a main—. Las dos bases quedaron en la misma forma el 2 de octubre de 2026, cuando se corrieron en main las tres migraciones de deuda (cédula, collective_ownership y las cuatro columnas muertas). Medido: dev 359 columnas, main 354, y 359 menos las 5 de zz_test_lock da 354. Esa IGUALDAD es la que prueba la convergencia, y hace falta decirla porque el comparador de post-deploy NO la ve: recorre dev buscando qué le falta a main, así que una columna de más en main no la reporta. El número cambia seguido: PREGUNTALE A LA BASE, no a este archivo. Lo que este listado NO menciona, agregado después: artist_collectives.can_edit (§8), collective_likes, account_removals, profile_ownership (§8), y todo el sistema de géneros y tags de la tanda 4 (genre_branches, genre_tags, genre_aliases, cross_tags, artist_genres, artist_genre_tags, artist_cross_tags y sus tres equivalentes de collective_), más content_collaborators, content_placements y event_lineup.
 
 Se deja la foto vieja en vez de reescribirla porque lo que describe —las PK de texto, los FK, las decisiones y por qué— sigue siendo cierto y es lo que hace falta leer. Pero el número engañaba: decía 18 y son 34. Si necesitás el estado real, preguntale a la base, no a este archivo.
 
@@ -30,16 +30,16 @@ Importante: las PKs NO son todas integer.
 Contenido editorial
 
 artists — PK es slug TEXT, no id. Campos: name, genre, district, city, photo, bio, joined_at.
-  sets jsonb y top_tracks jsonb siguen existiendo pero están DEPRECADOS: nadie los lee ni los escribe, y no están en el tipo Artist. Eran placeholders del prototipo (las 28 entradas tenían url "#", sin fecha, sin distrito, sin slug). NO se migraron a dj_sets/tracks a propósito: copiarlos con fechas inventadas habría metido basura en las tablas buenas. Los DJs reales cargan lo suyo.
+  sets jsonb y top_tracks jsonb YA NO EXISTEN: se borraron en las dos branches con /api/setup-borrar-columnas-muertas (dev y main, 2 de octubre de 2026). Eran placeholders del prototipo —url "#", sin fecha, sin distrito, sin slug— y NO se migraron a dj_sets/tracks a propósito: copiarlos con fechas inventadas habría metido basura en las tablas buenas. Lo que tenían se perdió para siempre y eso estaba decidido: main tenía 12 filas en cada una y se verificó en Neon que fueran todas url "#" ANTES de confirmar. Los DJs reales cargan lo suyo. Si ves código que las nombre, es código muerto.
   Tanda 1 agregó: owner_email → user_profiles(email), contact_email, dj_code, bpm_min, bpm_max, origin, cover_url, socials jsonb, rider jsonb, show_sales_to_organizers.
   city = dónde vive. origin = de dónde es. Son distintos, no unificar.
   owner_email = la cuenta que puede editar el perfil. contact_email = el mail público del EPK. Tampoco son lo mismo.
   dj_code tiene índice único sobre upper(dj_code) — artists_dj_code_upper_idx. Se teclea a mano en el checkout, así que camila y CAMILA son el mismo código.
 collectives — PK es slug TEXT. Campos: name, type, sector, bio, district.
   Tanda 1 agregó: owner_email → user_profiles(email).
-  status_membership está DEPRECADA desde tanda 3: el mínimo de 3 DJs con 2+ miembros se eliminó, no hay estado activo/incompleto y nadie lo recalcula. La columna sigue en la tabla, congelada, pero no se lee ni se escribe y no está en el tipo Collective. recalcMembership() fue BORRADA, no dejada sin uso: una regla que sigue en el código es una regla que alguien vuelve a llamar.
+  status_membership YA NO EXISTE: borrada en las dos branches el 2 de octubre de 2026. Guardaba el estado de una regla derogada en la tanda 3 —el mínimo de 3 DJs con 2+ miembros—, que se eliminó y que nadie recalculaba desde entonces. recalcMembership() fue BORRADA en su momento, no dejada sin uso: una regla que sigue en el código es una regla que alguien vuelve a llamar.
   sector ya NO agrupa nada (tanda 3). Es una etiqueta de origen dentro de la tarjeta. La ciudad de verdad llega con la pieza 4.
-  artist_slugs jsonb sigue existiendo pero está DEPRECADO: no se lee ni se escribe, y no está en el tipo Collective. La fuente de verdad de las membresías es artist_collectives (ver abajo).
+  artist_slugs jsonb YA NO EXISTE: borrada en las dos branches el 2 de octubre de 2026. Su contenido se había migrado a artist_collectives en la tanda 2, así que lo que se borró era una copia. La fuente de verdad de las membresías es artist_collectives (ver abajo).
 events — PK id SERIAL. event_date, city, venue, title, lineup, district, flyer_url, end_at.
 dj_sets — PK slug TEXT. title, artist_name, artist_slug, district, duration, recorded_at, url.
   Tanda 2 agregó: cover_url, sort_order, y el FK artist_slug → artists(slug) ON UPDATE CASCADE ON DELETE SET NULL. Más el índice dj_sets_artist_slug_idx.
@@ -56,11 +56,11 @@ Sobre sort_order: NULL = sin posición manual. Los lectores ordenan por sort_ord
 
 Cuentas y perfiles
 
-user_profiles — PK es email TEXT. ES LA TABLA DE CUENTAS. phone, cedula (deprecada), consent_at.
+user_profiles — PK es email TEXT. ES LA TABLA DE CUENTAS. phone, consent_at.
   Tanda 1 agregó: birth_date, display_name, avatar_url, password_hash, auth_provider ('google' | 'credentials').
   Una sola cuenta con roles activables: las credenciales viven acá y en ningún otro lado. artists NO tiene password_hash.
   password_hash queda NULL en las cuentas creadas con Google.
-  cedula está deprecada: no escribirla más. La columna se borra en una migración posterior.
+  cedula YA NO EXISTE: vaciada y borrada en las dos branches con /api/setup-borrar-cedula (main el 2 de octubre de 2026, con backup previo). Era dato sensible bajo la Ley 1581 de 2012 y HOTU decidió no guardarla: para verificar mayoría de edad basta birth_date. Main tenía 1 fila con dato y quedó contada con RETURNING antes de borrarla, que es el único motivo por el que el UPDATE previo existía. lib/crypto.ts quedó sin ningún uso y se dejó A PROPÓSITO: es un sobre AES-256-GCM reutilizable, no acoplado a esa columna.
 user_roles — email, role, country_code, UNIQUE(email, role, country_code).
 
 Comercio y boletería
@@ -76,7 +76,7 @@ Tablas creadas en la tanda 1
 (artist_collectives ya tiene datos desde la migración de tanda 2. Las otras tres siguen en 0 filas en producción hasta que arranque tanda 3.)
 
 artist_collectives — id SERIAL. artist_slug→artists, collective_slug→collectives, kind ('residente' | 'miembro'), from_date, to_date, accepted_at, rejected_at, canceled_at, requested_by, created_at.
-  ES LA FUENTE DE VERDAD DE LAS MEMBRESÍAS desde tanda 2. Nadie lee collectives.artist_slugs.
+  ES LA FUENTE DE VERDAD DE LAS MEMBRESÍAS desde tanda 2, y desde el 2 de octubre de 2026 es la única: collectives.artist_slugs ya no existe.
   VOCABULARIO DESDE §8 FASE 2:
     residente — el colectivo principal del DJ. UNO SOLO, y solo un colectivo, nunca un venue.
                 NO ES UNA ETIQUETA: ES PERMISO PARA EDITAR EL COLECTIVO.
@@ -147,8 +147,8 @@ Decisiones que se derivan del schema real
 
 HECHO (tanda 2) — NO crear artist_recordings ni artist_tracks. Se reusaron dj_sets y tracks, con FK real a artists(slug) y los campos de orden manual, sello y portada.
 HECHO (tanda 2) — Los tres jsonb quedaron deprecados. collectives.artist_slugs se migró a artist_collectives; artists.sets y top_tracks NO se migraron (eran placeholders) y solo se dejó de escribirlos. Ninguna columna se borró: son la red por si hubiera que reintentar.
-PENDIENTE — Borrar las tres columnas jsonb. Es otra migración, en otro momento, después de que esto lleve un tiempo andando sin sorpresas. Hasta entonces se quedan congeladas con lo que tenían.
-EN CURSO — user_profiles.cedula se deprecia. birth_date DATE ya existe. No se escribe más. Falta VACIARLA y borrar la columna, en ese orden: main tiene 1 fila con dato. La migración está preparada y sin correr en main.
+HECHO (2 de octubre de 2026) — Las tres columnas jsonb borradas, más status_membership, en UNA transacción: o las cuatro o ninguna. /api/setup-borrar-columnas-muertas, corrida dos veces en dev y dos en main. Contó cuántas filas tenía cada una ANTES de borrarla, porque "estaban vacías" conviene poder decirlo con un número y después del DROP ya no se puede preguntar.
+HECHO (2 de octubre de 2026) — user_profiles.cedula vaciada y borrada, en ese orden y en una transacción. birth_date DATE la reemplaza desde la tanda 1. También se borró collective_ownership, que profile_ownership había reemplazado en §8 y que estaba congelada esperando: la migración se NIEGA con 409 si tiene filas, porque filas ahí serían cesiones que el código viejo escribió en la ventana del deploy. Dio 0 y salió limpia.
 HECHO (tanda 1) — next-auth con Google Y un Credentials provider (email + contraseña) conviviendo. user_profiles.auth_provider marca el origen de cada cuenta, y password_hash queda NULL en las de Google.
 HECHO (tanda 1) — tickets no tenía FK declaradas a orders/events. Ya están las tres.
 
@@ -501,7 +501,7 @@ Migración /api/setup-profiles:
 
 user_profiles: agregar birth_date DATE, display_name, avatar_url
 artists: agregar email, password_hash, owner_email, dj_code UNIQUE, bpm_min, bpm_max, origin, cover_url, socials jsonb, rider jsonb, show_sales_to_organizers BOOLEAN DEFAULT TRUE
-collectives: agregar owner_email, status_membership (DEPRECADA en tanda 3, y PENDIENTE DE BORRAR)
+collectives: agregar owner_email, status_membership (DEPRECADA en tanda 3 y BORRADA el 2 de octubre de 2026 — queda acá porque esto es el alcance histórico de la tanda 1, no el estado de hoy)
 NUEVA artist_collectives: artist_slug, collective_slug, kind (renombrado a 'casa' | 'residente' en tanda 3, y 'residente'→'miembro' en la fase 1 de §8), from_date, to_date, accepted_at
 NUEVA ticket_attributions: ticket_id, seller_artist_slug (nullable = HOTU), seller_collective_slug (CONGELADO al momento de la venta), event_id, amount_cop, created_at
 NUEVA artist_gigs: artist_slug, event_id (nullable), external_name, flyer_url, venue, city, gig_date, district, role, b2b_with, duration_minutes, source ('hotu' | 'declarado')
@@ -538,7 +538,7 @@ Es la única acción de moderación que no se deshace. El ban se levanta, la cen
 Qué pasa con cada cosa NO lo decide el código: lo decide el SCHEMA, que es donde una regla así no se puede olvidar. Medido contra la base, no supuesto:
 
     CASCADE  — artist_likes, collective_likes, user_roles. Se van con la cuenta. Un like y un rol no significan nada sin la persona.
-    SET NULL — artists.owner_email, collectives.owner_email, collective_ownership.from_email/to_email, y TODAS las marcas de moderación (censored_by, reviewed_by, banned_by). El perfil queda DESAMPARADO y sigue en pie.
+    SET NULL — artists.owner_email, collectives.owner_email, profile_ownership.from_email/to_email, y TODAS las marcas de moderación (censored_by, reviewed_by, banned_by). El perfil queda DESAMPARADO y sigue en pie. (Decía collective_ownership, que se borró el 2 de octubre de 2026; la que manda es profile_ownership.)
     RESTRICT — orders y tickets. La base NIEGA borrar una cuenta que tenga pedidos o boletas.
 
 Ese RESTRICT es el que importa: una boleta es prueba de un pago. Lo que hay que hacer con esa cuenta es BANEARLA, que no borra nada y se deshace.
