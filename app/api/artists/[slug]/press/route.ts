@@ -1,37 +1,57 @@
 /**
  * POST /api/artists/[slug]/press — agrega una nota de prensa al EPK.
- * El trabajo vive en lib/epk-galeria-write.ts; esto hace auth y forma.
+ * PUT  /api/artists/[slug]/press — reemplaza el ORDEN de la lista entera.
+ *
+ * Mismo criterio que las fotos: el reorden es un PUT a la colección, porque mover una nota
+ * cambia la posición de varias.
  */
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { crearNota } from "@/lib/epk-galeria-write";
+import { crearNota, reordenarNotas } from "@/lib/epk-galeria-write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  const { slug } = await params;
+type Ctx = { params: Promise<{ slug: string }> };
 
-  const session = await auth();
-  const email = session?.user?.email;
-  if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-
+async function cuerpo(request: Request) {
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
+    return { error: "Body must be JSON" as const };
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
+    return { error: "Body must be a JSON object" as const };
   }
+  return { body: body as Record<string, unknown> };
+}
 
-  const result = await crearNota(slug, body, email);
+export async function POST(request: Request, { params }: Ctx) {
+  const { slug } = await params;
+  const session = await auth();
+  const email = session?.user?.email;
+  if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
+  const c = await cuerpo(request);
+  if ("error" in c) return NextResponse.json({ error: c.error }, { status: 400 });
+
+  const result = await crearNota(slug, c.body, email);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-
   return NextResponse.json({ ok: true, id: result.value.id }, { status: 201 });
+}
+
+export async function PUT(request: Request, { params }: Ctx) {
+  const { slug } = await params;
+  const session = await auth();
+  const email = session?.user?.email;
+  if (!email) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
+  const c = await cuerpo(request);
+  if ("error" in c) return NextResponse.json({ error: c.error }, { status: 400 });
+
+  const result = await reordenarNotas(slug, c.body.ids, email);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  return NextResponse.json({ ok: true, movidas: result.value.movidas });
 }

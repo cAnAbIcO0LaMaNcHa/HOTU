@@ -318,6 +318,115 @@ try {
     chk("al dueño SÍ se le muestran vacías", comoDueno.includes("GALERÍA") && comoDueno.includes("PRENSA"), "no se le muestran");
   }
 
+  console.log("\n=== 10. EL REORDEN: LA LISTA ENTERA, DE UNA ===");
+  {
+    await sql`DELETE FROM artist_photos WHERE artist_slug = ${ART}`;
+    const ids = [];
+    for (const n of ["uno", "dos", "tres", "cuatro"]) {
+      const r = await req("d", "POST", `/api/artists/${ART}/photos`, { url: `https://example.com/zz-ord-${n}.webp` });
+      ids.push(r.data.id);
+    }
+    chk("cuatro fotos creadas", ids.length === 4 && ids.every(Boolean), JSON.stringify(ids));
+
+    const alRevés = [...ids].reverse();
+    const r = await req("d", "PUT", `/api/artists/${ART}/photos`, { ids: alRevés });
+    chk("PUT con el orden invertido -> 200", r.status === 200, JSON.stringify(r));
+    chk("dice que movió las cuatro", r.data?.movidas === 4, JSON.stringify(r.data));
+
+    const leidas = await sql`
+      SELECT id, sort_order FROM artist_photos WHERE artist_slug = ${ART}
+      ORDER BY sort_order ASC NULLS LAST, created_at DESC`;
+    chk(
+      "EL LECTOR LAS DEVUELVE EN EL ORDEN NUEVO",
+      JSON.stringify(leidas.map((x) => x.id)) === JSON.stringify(alRevés),
+      JSON.stringify(leidas.map((x) => x.id))
+    );
+    chk("y el sort_order quedó 0,1,2,3 sin huecos", JSON.stringify(leidas.map((x) => x.sort_order)) === "[0,1,2,3]", JSON.stringify(leidas.map((x) => x.sort_order)));
+
+    /**
+     * EXIGE LA LISTA COMPLETA. Mandar de menos dejaría a las que faltan con su sort_order
+     * viejo, y la lista quedaría mezclada de dos órdenes distintos. Suele significar que la
+     * página estaba vieja, y ahí lo correcto es recargar y no escribir a medias.
+     */
+    const incompleto = await req("d", "PUT", `/api/artists/${ART}/photos`, { ids: ids.slice(0, 2) });
+    chk("mandar solo 2 de 4 -> 409", incompleto.status === 409, JSON.stringify(incompleto));
+    chk("y el mensaje manda a recargar", /recarg/i.test(incompleto.data?.error ?? ""), incompleto.data?.error);
+
+    const conAjeno = await req("d", "PUT", `/api/artists/${ART}/photos`, { ids: [...ids.slice(0, 3), 999999] });
+    chk("con un id que no es de este perfil -> 409", conAjeno.status === 409, JSON.stringify(conAjeno));
+
+    const repetido = await req("d", "PUT", `/api/artists/${ART}/photos`, { ids: [ids[0], ids[0], ids[1], ids[2]] });
+    chk("con un id repetido -> 400", repetido.status === 400, JSON.stringify(repetido));
+
+    for (const [b, que] of [
+      [{ ids: [] }, "lista vacía"],
+      [{ ids: "no-es-lista" }, "no es lista"],
+      [{}, "sin ids"],
+      [{ ids: [1, "abc"] }, "un id que no es número"],
+      [{ ids: [1, 0] }, "un id en cero"],
+    ]) {
+      const bad = await req("d", "PUT", `/api/artists/${ART}/photos`, b);
+      chk(`${que} -> 400`, bad.status === 400, JSON.stringify(bad));
+    }
+
+    /** Y después de todos los rechazos, el orden bueno sigue intacto. */
+    const despues = await sql`
+      SELECT id FROM artist_photos WHERE artist_slug = ${ART}
+      ORDER BY sort_order ASC NULLS LAST, created_at DESC`;
+    chk(
+      "NINGÚN RECHAZO TOCÓ EL ORDEN",
+      JSON.stringify(despues.map((x) => x.id)) === JSON.stringify(alRevés),
+      JSON.stringify(despues.map((x) => x.id))
+    );
+  }
+
+  console.log("\n=== 11. EL REORDEN DE PRENSA, Y SUS PERMISOS ===");
+  {
+    await sql`DELETE FROM artist_press WHERE artist_slug = ${ART}`;
+    const ids = [];
+    for (const m of ["ZZ Medio Alfa", "ZZ Medio Beta", "ZZ Medio Gama"]) {
+      const r = await req("d", "POST", `/api/artists/${ART}/press`, { outlet: m, url: `https://example.com/${encodeURIComponent(m)}` });
+      ids.push(r.data.id);
+    }
+    chk("tres notas creadas", ids.every(Boolean), JSON.stringify(ids));
+
+    const nuevo = [ids[2], ids[0], ids[1]];
+    const r = await req("d", "PUT", `/api/artists/${ART}/press`, { ids: nuevo });
+    chk("PUT del orden -> 200", r.status === 200, JSON.stringify(r));
+    const leidas = await sql`
+      SELECT id FROM artist_press WHERE artist_slug = ${ART}
+      ORDER BY sort_order ASC NULLS LAST, published_at DESC NULLS LAST`;
+    chk("quedaron en el orden pedido", JSON.stringify(leidas.map((x) => x.id)) === JSON.stringify(nuevo), JSON.stringify(leidas.map((x) => x.id)));
+
+    const sin = await req(null, "PUT", `/api/artists/${ART}/press`, { ids: nuevo });
+    chk("reordenar sin sesión -> 401", sin.status === 401, JSON.stringify(sin));
+    const tercero = await req("o", "PUT", `/api/artists/${ART}/press`, { ids: nuevo });
+    chk("un tercero reordenando lo ajeno -> 403", tercero.status === 403, JSON.stringify(tercero));
+    const fotosAjenas = await req("o", "PUT", `/api/artists/${ART}/photos`, { ids: [1] });
+    chk("y las fotos ajenas tampoco -> 403", fotosAjenas.status === 403, JSON.stringify(fotosAjenas));
+  }
+
+  console.log("\n=== 12. LAS FLECHAS EXISTEN EN EL HTML, NO SOLO EL ARRASTRE ===");
+  {
+    /**
+     * El arrastre nativo NO FUNCIONA EN TOUCH, así que una lista que solo se reordena
+     * arrastrando no se reordena en un celular. Esto comprueba que los botones están en el
+     * HTML que recibe el dueño: es lo único de la accesibilidad del reorden que se puede
+     * medir sin un navegador.
+     */
+    const html = await (await fetch(`${BASE}/artistas/${ART}`, { headers: { cookie: ck("d") } })).text();
+    chk("hay botón de mover una foto antes", html.includes("Mover la foto antes"), "no está");
+    chk("y después", html.includes("Mover la foto despu"), "no está");
+    chk("hay botón de subir una nota", /Subir la nota de/.test(html), "no está");
+    chk("y de bajarla", /Bajar la nota de/.test(html), "no está");
+    chk("y las filas quedan arrastrables", /draggable="true"/.test(html), "no hay nada draggable");
+
+    /** A un visitante NO: draggable sin permiso de editar solo despega la imagen. */
+    const visitante = await (await fetch(`${BASE}/artistas/${ART}`)).text();
+    chk("un visitante no recibe botones de mover", !visitante.includes("Mover la foto antes"), "los recibe");
+    chk("ni filas arrastrables", !/draggable="true"/.test(visitante), "las recibe");
+  }
+
   await sql`DELETE FROM artist_photos WHERE artist_slug = ${ART_AJENO}`;
   await sql`DELETE FROM artists WHERE slug = ${ART_AJENO}`;
 } finally {

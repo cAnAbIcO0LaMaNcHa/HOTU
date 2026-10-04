@@ -197,28 +197,93 @@ export async function borrarFoto(
   return { ok: true, value: { borrada: true } };
 }
 
-export async function reordenarFoto(
+/* ===================================================================
+ * REORDENAR: LA LISTA ENTERA, DE UNA, Y EN UNA SOLA SENTENCIA
+ * =================================================================== */
+
+/**
+ * SE MANDA EL ORDEN COMPLETO Y NO "mové esta foto a la posición 3".
+ *
+ * Mover el tercer elemento al primer lugar cambia el sort_order de VARIOS, no de uno. Con
+ * un PATCH por fila habría que mandar N requests, y entre uno y el siguiente la lista queda
+ * en un estado que nadie eligió: dos fotos compartiendo posición, o un hueco. Si encima el
+ * navegador se cierra a mitad, queda así para siempre.
+ *
+ * Mandando el arreglo entero, el orden que el usuario ve es exactamente el que se guarda, y
+ * se guarda o no se guarda.
+ *
+ * Y SE APLICA EN UNA SOLA SENTENCIA, con unnest WITH ORDINALITY. No hace falta transacción
+ * porque no hay dos sentencias: una sola UPDATE asigna las N posiciones, y el driver HTTP de
+ * Neon la manda en un request. Es el mismo criterio que el conteo adentro del INSERT del
+ * tope: si se puede expresar en una sentencia, la atomicidad sale gratis.
+ *
+ * EXIGE LA LISTA COMPLETA, y eso es una guarda y no una molestia: si llegaran solo algunos
+ * ids, los que faltan conservarían su sort_order viejo y la lista quedaría mezclada de dos
+ * órdenes distintos. Mandar de menos suele significar que la página estaba vieja —alguien
+ * borró una foto en otra pestaña— y lo correcto ahí es recargar, no escribir a medias.
+ */
+async function aplicarOrden(
+  tabla: "artist_photos" | "artist_press",
   artistSlug: string,
-  fotoId: number,
-  sortOrder: unknown,
+  ids: unknown,
   actorEmail?: string | null
-): Promise<WriteResult<{ id: number }>> {
+): Promise<WriteResult<{ movidas: number }>> {
   const auth = await autorizar(artistSlug, actorEmail);
   if (!auth.ok) return auth;
 
-  const orden = limpiarOrden(sortOrder);
-  if (orden === undefined) {
-    return { ok: false, status: 400, error: "sortOrder must be a whole number or null" };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { ok: false, status: 400, error: "ids must be a non-empty array" };
+  }
+  const limpios: number[] = [];
+  for (const x of ids) {
+    const n = typeof x === "number" ? x : Number(x);
+    if (!Number.isInteger(n) || n <= 0) {
+      return { ok: false, status: 400, error: "every id must be a positive whole number" };
+    }
+    limpios.push(n);
+  }
+  if (new Set(limpios).size !== limpios.length) {
+    return { ok: false, status: 400, error: "ids must not repeat" };
   }
 
-  const filas = await sql`
-    UPDATE artist_photos SET sort_order = ${orden}
-    WHERE id = ${fotoId} AND artist_slug = ${artistSlug}
-    RETURNING id
-  `;
-  if (filas.length === 0) return { ok: false, status: 404, error: "Photo not found" };
-  return { ok: true, value: { id: filas[0].id as number } };
+  /**
+   * La lista tiene que ser EXACTAMENTE la del artista: ni le falta ninguna ni trae una
+   * ajena. Un id de otro perfil no podría escribirse —el artist_slug va en el WHERE— pero
+   * se rechaza antes para que la respuesta diga qué pasó en vez de reportar que movió menos
+   * de lo que se le pidió.
+   */
+  const actuales = await sql(`SELECT id FROM ${tabla} WHERE artist_slug = $1`, [artistSlug]);
+  const suyos = new Set(actuales.map((r) => r.id as number));
+  if (suyos.size !== limpios.length || limpios.some((id) => !suyos.has(id))) {
+    return {
+      ok: false,
+      status: 409,
+      error: `El orden tiene que incluir las ${suyos.size} de este perfil y ninguna más. Recargá la página.`,
+    };
+  }
+
+  const movidas = await sql(
+    `UPDATE ${tabla} AS t
+     SET sort_order = o.pos - 1
+     FROM unnest($1::int[]) WITH ORDINALITY AS o(id, pos)
+     WHERE t.id = o.id AND t.artist_slug = $2
+     RETURNING t.id`,
+    [limpios, artistSlug]
+  );
+
+  /**
+   * Se compara lo MEDIDO con lo pedido en vez de confiar. Si alguien borró una fila entre
+   * la comprobación y el UPDATE, movieron menos: no es un error —el orden de las que quedan
+   * es correcto— pero el llamador tiene que poder saberlo y recargar.
+   */
+  return { ok: true, value: { movidas: movidas.length } };
 }
+
+export const reordenarFotos = (artistSlug: string, ids: unknown, actorEmail?: string | null) =>
+  aplicarOrden("artist_photos", artistSlug, ids, actorEmail);
+
+export const reordenarNotas = (artistSlug: string, ids: unknown, actorEmail?: string | null) =>
+  aplicarOrden("artist_press", artistSlug, ids, actorEmail);
 
 /* ===================================================================
  * PRENSA

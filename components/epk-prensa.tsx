@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, GripVertical, Trash2 } from "lucide-react";
 import { EpkSection, Field } from "./epk-editable-section";
 import type { ArtistPressItem } from "@/lib/db";
+import { usarOrden } from "./usar-orden";
 
 /**
  * PRENSA — links a notas, con el medio y la fecha.
@@ -35,6 +36,21 @@ export function EpkPrensa({
   const [outlet, setOutlet] = useState("");
   const [url, setUrl] = useState("");
   const [fecha, setFecha] = useState("");
+
+  /** Mismo hook que la galería, para no tener dos copias de la lógica de arrastre. */
+  const orden = usarOrden(items, async (ids) => {
+    const res = await fetch(`/api/artists/${artistSlug}/press`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (res.ok) {
+      router.refresh();
+      return { ok: true };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error };
+  });
 
   const agregar = async () => {
     setError(null);
@@ -86,7 +102,7 @@ export function EpkPrensa({
     <EpkSection
       title="PRENSA"
       anchor="prensa"
-      isEmpty={items.length === 0}
+      isEmpty={orden.items.length === 0}
       canEdit={canEdit}
       hint="Si te entrevistaron o reseñaron un track, pegá el link. Una nota de un medio dice algo que tu propia bio no puede decir."
       action={
@@ -136,19 +152,35 @@ export function EpkPrensa({
         </div>
       )}
 
-      {error && (
-        <p className="mt-3 font-mono text-[10px] tracking-widest text-destructive">{error}</p>
+      {/** Los dos errores: el del alta y el del reorden. */}
+      {(error ?? orden.error) && (
+        <p className="mt-3 font-mono text-[10px] tracking-widest text-destructive">
+          {error ?? orden.error}
+        </p>
       )}
 
-      {items.length > 0 && (
+      {orden.items.length > 0 && (
         <ul className="mt-6 space-y-2">
-          {items.map((p) => (
-            <li key={p.id} className="flex items-center gap-3">
+          {orden.items.map((p, i) => (
+            <li
+              key={p.id}
+              {...(canEdit ? orden.props(i) : {})}
+              className={`flex items-center gap-3 ${canEdit ? "cursor-grab" : ""} ${
+                orden.arrastrando === i ? "opacity-40" : ""
+              }`}
+            >
+              {canEdit && (
+                <span aria-hidden className="shrink-0 text-muted-foreground" title="Arrastrá para reordenar">
+                  <GripVertical className="h-3 w-3" />
+                </span>
+              )}
               <a
                 href={p.url}
                 target="_blank"
                 rel="noreferrer"
                 className="sheen border-chrome flex min-w-0 flex-1 items-center gap-3 p-3 transition-colors hover:border-primary"
+                /** Sin esto el navegador arrastra el LINK en vez de la fila. */
+                draggable={false}
               >
                 <ExternalLink className="h-3 w-3 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1 truncate font-bold">{p.outlet}</span>
@@ -161,15 +193,37 @@ export function EpkPrensa({
                 )}
               </a>
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => borrar(p.id)}
-                  disabled={busy}
-                  aria-label={`Borrar la nota de ${p.outlet}`}
-                  className="shrink-0 p-1 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                <>
+                  {/* Las flechas: el camino que funciona en touch y con teclado. El
+                      arrastre nativo no existe en el celular. */}
+                  <button
+                    type="button"
+                    onClick={() => orden.subir(i)}
+                    disabled={orden.esPrimero(i) || orden.guardandoAhora}
+                    aria-label={`Subir la nota de ${p.outlet}`}
+                    className="shrink-0 p-1 disabled:opacity-30"
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => orden.bajar(i)}
+                    disabled={orden.esUltimo(i) || orden.guardandoAhora}
+                    aria-label={`Bajar la nota de ${p.outlet}`}
+                    className="shrink-0 p-1 disabled:opacity-30"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => borrar(p.id)}
+                    disabled={busy || orden.guardandoAhora}
+                    aria-label={`Borrar la nota de ${p.outlet}`}
+                    className="shrink-0 p-1 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </>
               )}
             </li>
           ))}

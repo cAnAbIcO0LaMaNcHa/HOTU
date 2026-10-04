@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import { EpkSection, Field } from "./epk-editable-section";
 import { EpkImageField } from "./epk-image-field";
 import type { ArtistPhoto } from "@/lib/db";
 import { MAX_FOTOS } from "@/lib/galeria-limites";
+import { usarOrden } from "./usar-orden";
 
 /**
  * GALERÍA — fotos en alta para que el organizador arme flyers.
@@ -37,6 +38,26 @@ export function EpkGaleria({
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [credit, setCredit] = useState("");
+
+  /**
+   * EL ORDEN ES ESTADO LOCAL CON GUARDADO DIFERIDO, y el hook lo encapsula para que la
+   * galería y la prensa no tengan dos copias de la misma lógica de arrastre. Ver
+   * components/usar-orden.ts, que además explica por qué hay flechas y no solo arrastre.
+   */
+  const orden = usarOrden(photos, async (ids) => {
+    const res = await fetch(`/api/artists/${artistSlug}/photos`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (res.ok) {
+      /** Se refresca para que el orden del servidor sea el que manda de acá en adelante. */
+      router.refresh();
+      return { ok: true };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error };
+  });
 
   const lleno = photos.length >= MAX_FOTOS;
 
@@ -89,7 +110,7 @@ export function EpkGaleria({
     <EpkSection
       title="GALERÍA"
       anchor="galeria"
-      isEmpty={photos.length === 0}
+      isEmpty={orden.items.length === 0}
       canEdit={canEdit}
       hint="Subí fotos en alta. Son las que un organizador va a usar para armar el flyer de su fiesta, así que cuanto mejores, más fácil es que te programen."
       action={
@@ -136,14 +157,33 @@ export function EpkGaleria({
         </div>
       )}
 
-      {error && (
-        <p className="mt-3 font-mono text-[10px] tracking-widest text-destructive">{error}</p>
+      {/**
+        * LOS DOS ERRORES, no uno. Al meter el reorden reemplacé este bloque por el del
+        * hook y dejé el del alta sin renderizar: el 409 del tope de 12 —que trae su propio
+        * mensaje con el número— se habría perdido en silencio. El typecheck no lo ve,
+        * porque setError sigue existiendo y nadie lee la variable.
+        */}
+      {(error ?? orden.error) && (
+        <p className="mt-3 font-mono text-[10px] tracking-widest text-destructive">
+          {error ?? orden.error}
+        </p>
       )}
 
-      {photos.length > 0 && (
+      {orden.items.length > 0 && (
         <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {photos.map((p) => (
-            <figure key={p.id} className="group relative">
+          {orden.items.map((p, i) => (
+            <figure
+              key={p.id}
+              /**
+               * El arrastre solo se activa para quien puede editar. Para un visitante
+               * draggable:true haría que la foto se "despegue" al arrastrarla sin que eso
+               * sirva para nada, que es peor que no tenerlo.
+               */
+              {...(canEdit ? orden.props(i) : {})}
+              className={`group relative ${
+                canEdit ? "cursor-grab" : ""
+              } ${orden.arrastrando === i ? "opacity-40" : ""}`}
+            >
               {/* Link directo al archivo: el punto de la sección es que el organizador se
                   lleve la foto en alta, así que tiene que poder abrirla sola. */}
               <a href={p.url} target="_blank" rel="noreferrer">
@@ -152,6 +192,10 @@ export function EpkGaleria({
                   src={p.url}
                   alt={p.credit ? `Foto de ${p.credit}` : ""}
                   className="aspect-square w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                  /** Arrastrar una imagen arrastra la imagen, no la figura: el navegador la
+                   *  trata como contenido arrastrable por default y se come el drag del
+                   *  contenedor. */
+                  draggable={false}
                 />
               </a>
               {p.credit && (
@@ -160,15 +204,47 @@ export function EpkGaleria({
                 </figcaption>
               )}
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => borrar(p.id)}
-                  disabled={busy}
-                  aria-label="Borrar la foto"
-                  className="absolute right-1 top-1 bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                <>
+                  {/* LAS FLECHAS, que son el camino que funciona en TODAS PARTES: el
+                      arrastre nativo no existe en touch, y esta audiencia es de celular.
+                      Ver components/usar-orden.ts. */}
+                  <div className="absolute bottom-1 left-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => orden.subir(i)}
+                      disabled={orden.esPrimero(i) || orden.guardandoAhora}
+                      aria-label="Mover la foto antes"
+                      className="bg-background/80 p-1 disabled:opacity-30"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => orden.bajar(i)}
+                      disabled={orden.esUltimo(i) || orden.guardandoAhora}
+                      aria-label="Mover la foto después"
+                      className="bg-background/80 p-1 disabled:opacity-30"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <span
+                    aria-hidden
+                    className="absolute bottom-1 right-1 bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Arrastrá para reordenar"
+                  >
+                    <GripVertical className="h-3 w-3" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => borrar(p.id)}
+                    disabled={busy || orden.guardandoAhora}
+                    aria-label="Borrar la foto"
+                    className="absolute right-1 top-1 bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </>
               )}
             </figure>
           ))}
