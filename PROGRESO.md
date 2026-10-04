@@ -187,32 +187,32 @@ queda MEDIDO, no supuesto.
 Recién después: la migración que la borra. Otro día, cuando esto lleve
 tiempo andando sin sorpresas.
 
-### PENDIENTE EN MAIN: el CHECK de `door_price_cop` todavía tiene tope
+### ~~PENDIENTE EN MAIN: el CHECK de `door_price_cop` todavía tiene tope~~ — RESUELTO
 
-**Y el comparador de esquemas NO puede verlo.** `scripts/post-deploy.mjs` compara
-tablas y columnas, no CHECK constraints, así que esta diferencia entre dev y main
-es invisible para el chequeo post-deploy. Por eso está acá: si no, se pierde.
+**Lo resolvió `setup-event-time`, corrida en main el 1 de octubre de 2026**, que era
+justamente el plan: iba a viajar con la próxima migración que tocara `events`, con
+DROP + ADD en una transacción. Así viajó.
 
-    dev:   CHECK (((door_price_cop IS NULL) OR (door_price_cop >= 0)))
-    main:  CHECK (((door_price_cop IS NULL) OR ((door_price_cop >= 0) AND (door_price_cop <= 10000000))))
+Medido en main el 4 de octubre de 2026, con `/api/schema-fingerprint`:
 
-Main corrió `setup-door-price` con la versión que tenía tope de 10.000.000. El
-tope se sacó después —el precio es del organizador, no de la plataforma— y la
-ruta ya quedó con la forma nueva, pero **no se corre una migración en main solo
-por esto**.
+    main:  CHECK (((door_price_cop IS NULL) OR (door_price_cop >= 0)))
 
-**Va con la próxima migración que toque `events`** —probablemente la de hora de
-inicio, punto 17— con DROP + ADD en UNA transacción, como todo swap de constraint.
-Re-correr `setup-door-price` en main también lo arreglaría, y es la opción de
-respaldo si el punto 17 se demora.
+Sin tope, igual que dev. El precio es del organizador.
 
-**Mientras tanto no hay nada roto, y vale saber por qué:** el CHECK de main es
-MÁS estricto que el de dev. Todo lo que pasa la validación del servidor pasa el
-CHECK de main, salvo un precio por encima de diez millones — el único caso que
-main rechazaría con un error de constraint y dev aceptaría. Si alguien anuncia una
-entrada de más de diez millones antes de que esto se arregle, va a recibir un 500
-en vez de un mensaje; es improbable y es el costo aceptado de no correr una
-migración de más.
+**POR QUÉ ESTA SECCIÓN SE QUEDA EN VEZ DE BORRARSE:** lo que la originó sigue siendo
+cierto y sigue siendo la única razón por la que esto no se perdió. `scripts/post-deploy.mjs`
+compara tablas y columnas, **no CHECK constraints**, así que una diferencia de constraint
+entre dev y main es INVISIBLE para el chequeo post-deploy. No la vio el comparador: la vio
+esta nota.
+
+Y de paso quedó medido el modo de falla de confiar en el documento: esta sección dijo
+"PENDIENTE" durante tres días después de estar resuelta, y se descubrió verificando contra
+main en vez de copiarla. Un pendiente que ya no es pendiente es la misma clase de mentira
+que un comentario falso.
+
+**Lo que SIGUE sin resolverse es el punto ciego, no el CHECK.** Si hace falta otra
+diferencia de constraint entre las dos branches, hay que anotarla a mano otra vez — o
+agregarle constraints al comparador, que es una pieza aparte y nadie la pidió.
 
 ### El CASCADE se lleva la historia: `profile_ownership` y `residency_offers`
 
