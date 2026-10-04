@@ -291,14 +291,47 @@ try {
      */
     await sql`DELETE FROM artist_photos WHERE artist_slug = ${ART}`;
     await sql`DELETE FROM artist_press WHERE artist_slug = ${ART}`;
-    await req("d", "POST", `/api/artists/${ART}/photos`, { url: "https://example.com/zz-pag.webp", credit: "ZZ Credito Visible" });
-    await req("d", "POST", `/api/artists/${ART}/press`, {
+    /**
+     * SE CHEQUEA QUE EL FIXTURE SE HAYA CREADO, y esto no estaba. Sin el chequeo, si el POST
+     * fallaba el test seguía igual y después reportaba "la sección GALERÍA no aparece" —que
+     * es cierto, pero la causa era otra y el mensaje mandaba a buscarla en el lugar
+     * equivocado. Apareció como un fallo intermitente de 2 MAL en 1 de cada ~12 corridas, y
+     * costó un loop de doce para verlo porque el síntoma no nombraba la causa.
+     *
+     * Un test que no verifica su propio fixture no falla: acusa a otro.
+     */
+    const fotoPag = await req("d", "POST", `/api/artists/${ART}/photos`, { url: "https://example.com/zz-pag.webp", credit: "ZZ Credito Visible" });
+    chk("el fixture de la foto se creó", fotoPag.status === 201, JSON.stringify(fotoPag));
+    const notaPag = await req("d", "POST", `/api/artists/${ART}/press`, {
       outlet: "ZZ Medio Fechado",
       url: "https://example.com/zz-fechada",
       publishedAt: "2026-02-14",
     });
+    chk("y el de la nota", notaPag.status === 201, JSON.stringify(notaPag));
 
-    const html = await (await fetch(`${BASE}/artistas/${ART}`)).text();
+    /**
+     * EL CONTROL POSITIVO ANTES DE LAS AUSENCIAS, que es exactamente lo que le exigí al
+     * script de producción y no me había exigido acá.
+     *
+     * "La sección GALERÍA no aparece" también es cierto si la página devolvió 404, si
+     * devolvió 500, o si el artista quedó censurado por una sección anterior. Las tres se
+     * ven idénticas al bug de la sección. Sin esto, un fallo intermitente de 2 MAL no decía
+     * NADA sobre su causa, y me costó dos loops de doce corridas para ni siquiera acotarlo.
+     *
+     * Ahora el fallo nombra la mitad que se rompió: el estado HTTP, que el perfil renderice,
+     * y cuántas filas ve la base en ese momento.
+     */
+    const res = await fetch(`${BASE}/artistas/${ART}`);
+    const html = await res.text();
+    const [{ n: fotosEnBase }] = await sql`SELECT COUNT(*)::int n FROM artist_photos WHERE artist_slug = ${ART} AND censored_at IS NULL`;
+    const [{ n: notasEnBase }] = await sql`SELECT COUNT(*)::int n FROM artist_press WHERE artist_slug = ${ART} AND censored_at IS NULL`;
+    const [art] = await sql`SELECT status, censored_at FROM artists WHERE slug = ${ART}`;
+
+    chk(`la página responde 200`, res.status === 200, `HTTP ${res.status}`);
+    chk(`el perfil renderiza (aparece SOBRE MÍ o DJ SETS)`, /SOBRE MÍ|DJ SETS/.test(html), `${html.length} bytes`);
+    chk(`el artista está publicado y sin censura`, art?.status === "published" && art?.censored_at === null, JSON.stringify(art));
+    chk(`la base ve 1 foto y 1 nota`, fotosEnBase === 1 && notasEnBase === 1, `fotos=${fotosEnBase} notas=${notasEnBase}`);
+
     chk("la sección GALERÍA aparece", html.includes("GALERÍA"), "no aparece");
     chk("la sección PRENSA aparece", html.includes("PRENSA"), "no aparece");
     chk("el medio se ve", html.includes("ZZ Medio Fechado"), "no está el medio");
@@ -425,6 +458,91 @@ try {
     const visitante = await (await fetch(`${BASE}/artistas/${ART}`)).text();
     chk("un visitante no recibe botones de mover", !visitante.includes("Mover la foto antes"), "los recibe");
     chk("ni filas arrastrables", !/draggable="true"/.test(visitante), "las recibe");
+  }
+
+  console.log("\n=== 13. CENSURA POR FILA: REVERSIBLE, Y CON MOTIVO ===");
+  {
+    /**
+     * El punto entero de la pieza: bajar UNA foto sin censurar el perfil, y poder
+     * levantarla. Antes las únicas salidas eran censurar el EPK completo o borrar la foto
+     * para siempre.
+     */
+    await sql`DELETE FROM artist_photos WHERE artist_slug = ${ART}`;
+    await sql`DELETE FROM artist_press WHERE artist_slug = ${ART}`;
+    const f = await req("d", "POST", `/api/artists/${ART}/photos`, { url: "https://example.com/zz-cens.webp", credit: "ZZ Credito Censurable" });
+    chk("se crea la foto a censurar", f.status === 201, JSON.stringify(f));
+    const nt = await req("d", "POST", `/api/artists/${ART}/press`, { outlet: "ZZ Medio Censurable", url: "https://example.com/zz-cens-nota" });
+    chk("y la nota", nt.status === 201, JSON.stringify(nt));
+
+    const MOD = "moderador@test.hotu.local";
+    await sql`INSERT INTO user_profiles (email, display_name, password_hash, auth_provider)
+              VALUES (${MOD}, 'ZZ Moderador', (SELECT password_hash FROM user_profiles WHERE email = ${DUENO}), 'credentials')
+              ON CONFLICT (email) DO NOTHING`;
+    await sql`INSERT INTO user_roles (email, role, country_code) VALUES (${MOD}, 'MODERATOR', 'COL')
+              ON CONFLICT DO NOTHING`;
+    chk("login del moderador", (await login("m", MOD)) === MOD);
+
+    /** Un MODERATOR no es dueño del perfil: no puede editarlo, y eso no cambia. */
+    const editar = await req("m", "PATCH", `/api/artists/${ART}`, { bio: "ZZ intento de moderador, suficientemente largo." });
+    chk("el moderador NO puede editar el perfil -> 403", editar.status === 403, JSON.stringify(editar));
+
+    const CONTENIDO = "/api/admin/moderation/content";
+    const bajar = await req("m", "PATCH", CONTENIDO, { accion: "censurar", tipo: "photo", clave: f.data.id, motivo: "Contenido que no corresponde al perfil." });
+    chk("PERO SÍ CENSURAR LA FOTO -> 200", bajar.status === 200, JSON.stringify(bajar));
+
+    const [fila] = await sql`SELECT censored_at, censor_reason, censored_by FROM artist_photos WHERE id = ${f.data.id}`;
+    chk("quedó censurada en la base", fila?.censored_at !== null, JSON.stringify(fila));
+    chk("con su motivo", (fila?.censor_reason ?? "").includes("no corresponde"), fila?.censor_reason);
+    chk("y con quién la bajó", fila?.censored_by === MOD, fila?.censored_by);
+
+    /** Y LO QUE IMPORTA: la foto desaparece y el PERFIL sigue en pie. */
+    const html = await (await fetch(`${BASE}/artistas/${ART}`)).text();
+    chk("la foto ya no se ve", !html.includes("ZZ Credito Censurable"), "sigue visible");
+    chk("EL PERFIL SIGUE PUBLICADO", /SOBRE MÍ|DJ SETS/.test(html), "el perfil desapareció: se censuró de más");
+    chk("y la nota de prensa sigue visible", html.includes("ZZ Medio Censurable"), "se llevó la nota también");
+
+    /** REVERSIBLE, que es el principio que justificó la migración. */
+    const levantar = await req("m", "PATCH", CONTENIDO, { accion: "levantar", tipo: "photo", clave: f.data.id });
+    chk("levantar la censura -> 200", levantar.status === 200, JSON.stringify(levantar));
+    const [vuelta] = await sql`SELECT censored_at, censor_reason FROM artist_photos WHERE id = ${f.data.id}`;
+    chk("censored_at volvió a NULL", vuelta?.censored_at === null, JSON.stringify(vuelta));
+    const html2 = await (await fetch(`${BASE}/artistas/${ART}`)).text();
+    chk("Y LA FOTO VOLVIÓ A LA PÁGINA", html2.includes("ZZ Credito Censurable"), "no volvió");
+
+    /** El CHECK de la base: censurar sin motivo no puede entrar por ningún camino. */
+    const sinMotivo = await req("m", "PATCH", CONTENIDO, { accion: "censurar", tipo: "photo", clave: f.data.id, motivo: "no" });
+    chk("un motivo de dos letras -> 400", sinMotivo.status === 400, JSON.stringify(sinMotivo));
+    let rompio = null;
+    try {
+      await sql`UPDATE artist_photos SET censored_at = now(), censor_reason = NULL WHERE id = ${f.data.id}`;
+      rompio = "entró";
+    } catch (e) {
+      rompio = String(e?.code ?? e).slice(0, 40);
+    }
+    chk("y UN UPDATE CRUDO sin motivo LO RECHAZA LA BASE", rompio !== "entró", `el CHECK no frenó nada: ${rompio}`);
+
+    /** La nota también, y por la misma puerta. */
+    const bajarNota = await req("m", "PATCH", CONTENIDO, { accion: "censurar", tipo: "press", clave: nt.data.id, motivo: "El link no lleva a ninguna nota." });
+    chk("censurar la nota -> 200", bajarNota.status === 200, JSON.stringify(bajarNota));
+    const html3 = await (await fetch(`${BASE}/artistas/${ART}`)).text();
+    chk("la nota ya no se ve", !html3.includes("ZZ Medio Censurable"), "sigue visible");
+
+    /** Y aparece en la cola de moderación, que es de donde se levanta. */
+    const cola = await req("m", "GET", `/api/admin/moderation/galeria?slug=${ART}`);
+    chk("el buscador del admin la lista -> 200", cola.status === 200, JSON.stringify(cola).slice(0, 200));
+    const laNota = (cola.data?.prensa ?? []).find((x) => x.id === nt.data.id);
+    chk("y la muestra CENSURADA, para poder levantarla", laNota?.censuradoEn !== null && laNota?.censuradoEn !== undefined, JSON.stringify(laNota));
+
+    /** Un no-moderador no llega al buscador ni a la censura. */
+    const ajeno = await req("d", "GET", `/api/admin/moderation/galeria?slug=${ART}`);
+    chk("el dueño del perfil NO entra al buscador del admin -> 403", ajeno.status === 403, JSON.stringify(ajeno));
+    const sinSesion = await req(null, "GET", `/api/admin/moderation/galeria?slug=${ART}`);
+    chk("sin sesión -> 401", sinSesion.status === 401, JSON.stringify(sinSesion));
+    const inexistente = await req("m", "GET", `/api/admin/moderation/galeria?slug=zz-no-existe-este`);
+    chk("un artista inexistente -> 404", inexistente.status === 404, JSON.stringify(inexistente));
+
+    await sql`DELETE FROM user_roles WHERE email = ${MOD}`;
+    await sql`DELETE FROM user_profiles WHERE email = ${MOD}`;
   }
 
   await sql`DELETE FROM artist_photos WHERE artist_slug = ${ART_AJENO}`;

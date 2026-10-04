@@ -146,16 +146,51 @@ export async function crearFoto(
   }
 
   /**
-   * EL TOPE, ADENTRO DEL INSERT. El SELECT del WHERE y el INSERT son la misma sentencia, así
-   * que dos subidas simultáneas no pueden ver las dos el mismo conteo: la segunda ve el
-   * efecto de la primera o no inserta.
+   * EL TOPE, CON LA FILA DEL ARTISTA BLOQUEADA.
+   *
+   * ============================================================
+   * LA PRIMERA VERSIÓN NO ERA ATÓMICA, Y YO AFIRMÉ QUE SÍ
+   * ============================================================
+   *
+   * Era un solo INSERT ... SELECT con el conteo en su propio WHERE, y el comentario decía
+   * que eso daba atomicidad gratis. Es FALSO, y lo cazó la propia batería: con 20 subidas
+   * simultáneas entraron 13.
+   *
+   * El error de razonamiento, que conviene nombrar porque es fácil de repetir: ATÓMICO NO
+   * ES SERIALIZABLE. La sentencia es atómica —entra entera o no entra— pero en READ
+   * COMMITTED, el default de Postgres, el COUNT del subquery lee un snapshot tomado al
+   * empezar la sentencia y NO ve las filas que otra transacción concurrente todavía no
+   * commiteó. Dos subidas ven 11 las dos, las dos pasan el WHERE, y queda 13. El subquery
+   * no bloquea nada.
+   *
+   * ============================================================
+   * LO QUE SÍ SERIALIZA: FOR UPDATE SOBRE LA FILA DEL ARTISTA
+   * ============================================================
+   *
+   * Las dos sentencias van en una sql.transaction, que el driver HTTP manda en UN request.
+   * La primera toma el lock de la fila de artists; la segunda recién corre cuando lo tiene,
+   * y como en READ COMMITTED cada sentencia toma un snapshot NUEVO, su COUNT ya ve lo que
+   * la competidora commiteó antes de soltar el lock.
+   *
+   * SE BLOQUEA artists Y NO artist_photos porque lo que hay que serializar es "las subidas
+   * de ESTE artista", y un lock sobre las filas existentes no impide que entre una nueva:
+   * no se puede bloquear una fila que todavía no existe. La fila del padre sí existe
+   * siempre, y es el único punto por el que las dos subidas tienen que pasar.
+   *
+   * NO ES UN ADVISORY LOCK, y no podría serlo: los advisory locks son de SESIÓN y el driver
+   * HTTP de Neon no tiene sesión — cada consulta es su propio request, así que
+   * pg_try_advisory_lock daría true siempre. Es la misma razón por la que el candado de las
+   * pruebas es una fila y no un advisory lock.
    */
-  const filas = await sql`
-    INSERT INTO artist_photos (artist_slug, url, credit, sort_order)
-    SELECT ${artistSlug}, ${url}, ${credit}, ${sortOrder}
-    WHERE (SELECT COUNT(*) FROM artist_photos WHERE artist_slug = ${artistSlug}) < ${MAX_FOTOS}
-    RETURNING id
-  `;
+  const [, filas] = await sql.transaction([
+    sql`SELECT 1 FROM artists WHERE slug = ${artistSlug} FOR UPDATE`,
+    sql`
+      INSERT INTO artist_photos (artist_slug, url, credit, sort_order)
+      SELECT ${artistSlug}, ${url}, ${credit}, ${sortOrder}
+      WHERE (SELECT COUNT(*) FROM artist_photos WHERE artist_slug = ${artistSlug}) < ${MAX_FOTOS}
+      RETURNING id
+    `,
+  ]);
 
   if (filas.length === 0) {
     /**
