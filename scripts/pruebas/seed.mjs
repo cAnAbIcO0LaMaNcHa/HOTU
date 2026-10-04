@@ -210,6 +210,22 @@ const TABLAS_VOLATILES = [
   ["artist_gigs", "id::text"],
   ["artist_likes", "artist_slug || '|' || user_email"],
   ["collective_likes", "collective_slug || '|' || user_email"],
+  /**
+   * artist_photos y artist_press ENTRARON TARDE, y por lo mismo que mail_outbox y
+   * edit_log: la batería de galería y prensa les crea filas, ninguna batería las borra a
+   * mano, y las filas quedaban colgadas de los artistas del SEED —que no aparecen en
+   * ninguna diferencia de claves porque ya existían— así que se acumulaban corrida tras
+   * corrida. Medido: 4 fotos y 3 notas sobrevivieron a una suite entera.
+   *
+   * La guarda del FK no las atrapó, y vale entender por qué: el barrido falla ruidosamente
+   * si una tabla que falta referencia a otra que SÍ se borra, y la batería borraba su
+   * artista de prueba a mano antes de llegar ahí. La propiedad del arnés es correcta; lo
+   * que la tapó fue la limpieza manual.
+   *
+   * Van ANTES de artists, que es a quien referencian.
+   */
+  ["artist_photos", "id::text"],
+  ["artist_press", "id::text"],
   ["dj_sets", "slug"],
   ["tracks", "slug"],
   ["news", "id::text"],
