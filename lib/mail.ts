@@ -297,26 +297,40 @@ export type MailRegistrado = {
   id: number;
   tipo: string;
   para: string;
-  asunto: string;
+  /**
+   * NULL cuando la fila se purgó por retención. Era `string` a secas, y la migración de los
+   * 90 días lo volvió mentiroso: `asunto` pasó a NULLABLE y el tipo seguía prometiendo que
+   * siempre hay uno. Hoy el único consumidor es el smoke, que no lo imprime, así que nadie
+   * se habría roto — y eso es exactamente lo que lo hace peligroso: el próximo que lo lea
+   * va a confiar en el tipo.
+   */
+  asunto: string | null;
   estado: string;
   motivo: string | null;
   referencia: string | null;
   creadoEn: string;
+  /**
+   * Cuándo se vació el contenido, o NULL si todavía lo tiene. Va en el tipo porque un asunto
+   * en NULL sin esto sería ambiguo: no se podría distinguir "se purgó a los 90 días" de
+   * "nunca tuvo asunto". El CHECK de la base garantiza que las dos cosas van juntas.
+   */
+  purgadoEn: string | null;
 };
 
 export async function getMailOutbox(limite = 100): Promise<MailRegistrado[]> {
   const filas = await sql`
-    SELECT id, tipo, para, asunto, estado, motivo, referencia, creado_en
+    SELECT id, tipo, para, asunto, estado, motivo, referencia, creado_en, purgado_en
     FROM mail_outbox ORDER BY creado_en DESC, id DESC LIMIT ${limite}
   `;
   return filas.map((f) => ({
     id: Number(f.id),
     tipo: f.tipo as string,
     para: f.para as string,
-    asunto: f.asunto as string,
+    asunto: (f.asunto as string | null) ?? null,
     estado: f.estado as string,
     motivo: (f.motivo as string | null) ?? null,
     referencia: (f.referencia as string | null) ?? null,
     creadoEn: String(f.creado_en),
+    purgadoEn: f.purgado_en ? new Date(f.purgado_en as string).toISOString() : null,
   }));
 }
