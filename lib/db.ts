@@ -56,6 +56,9 @@ export {
 
 import type { ArtistSocials } from "./socials";
 import { normalizarRider, type ArtistRider } from "./rider";
+/** El tipo, no un valor: lib/moderation-write.ts llama neon() a nivel de módulo igual que
+ *  este archivo, así que importar solo el tipo no agrega nada en runtime. */
+import type { TipoContenido } from "./moderation-write";
 
 export type Artist = ContentMeta & {
   slug: string;
@@ -547,12 +550,23 @@ export type ArtistPressItem = {
 };
 
 /**
- * SIN FILTRO DE status NI DE censored_at, al revés que los sets y los tracks, y la
- * diferencia tiene razón: esas dos tablas tienen columnas editoriales porque además del
- * perfil se listan en /sets y /discografia, así que necesitan poder esconderse por su
- * cuenta. Fotos y prensa no tienen otra vitrina —se ven solo dentro del perfil— y
- * getArtistBySlug ya trata un perfil censurado o con dueño baneado como inexistente para
- * todo el mundo menos su dueño. Esconder el perfil se las lleva.
+ * SIN FILTRO DE status, PERO SÍ DE censored_at, y la diferencia entre las dos mitades es la
+ * que importa.
+ *
+ * status es editorial —borrador, publicado— y estas dos tablas no lo tienen, porque no se
+ * listan en ningún lado fuera del perfil: no hay un /galeria donde un borrador tendría
+ * sentido. Eso sigue siendo cierto.
+ *
+ * LA CENSURA SÍ, y la primera versión de este comentario decía que tampoco hacía falta.
+ * Estaba mal, y el razonamiento era el mismo que el de la migración que creó las tablas:
+ * trataba "se lista" y "se modera" como un solo eje. Una foto puede ser abusiva por sí
+ * sola, sin que el perfil que la contiene tenga nada de malo, y censurar el perfil entero
+ * por una foto es desproporcionado.
+ *
+ * SE FILTRA SIEMPRE, TAMBIÉN PARA EL DUEÑO, igual que getSetsByArtist y getTracksByArtist.
+ * Tiene un costo: al dueño la foto le desaparece sin explicación. Es el comportamiento que
+ * ya tienen los sets y los tracks, y cambiarlo acá solo haría que la galería se comporte
+ * distinto del resto del EPK por ninguna razón.
  *
  * El orden es el mismo de siempre: sort_order ASC NULLS LAST y después la fecha DESC, para
  * que el que nunca reordena nada vea lo más nuevo primero.
@@ -560,7 +574,7 @@ export type ArtistPressItem = {
 export async function getPhotosByArtist(slug: string): Promise<ArtistPhoto[]> {
   const rows = await sql`
     SELECT id, url, credit, sort_order FROM artist_photos
-    WHERE artist_slug = ${slug}
+    WHERE artist_slug = ${slug} AND censored_at IS NULL
     ORDER BY sort_order ASC NULLS LAST, created_at DESC
   `;
   return rows.map((r) => ({
@@ -574,7 +588,7 @@ export async function getPhotosByArtist(slug: string): Promise<ArtistPhoto[]> {
 export async function getPressByArtist(slug: string): Promise<ArtistPressItem[]> {
   const rows = await sql`
     SELECT id, outlet, url, published_at, sort_order FROM artist_press
-    WHERE artist_slug = ${slug}
+    WHERE artist_slug = ${slug} AND censored_at IS NULL
     ORDER BY sort_order ASC NULLS LAST, published_at DESC NULLS LAST
   `;
   return rows.map((r) => ({
@@ -584,6 +598,69 @@ export async function getPressByArtist(slug: string): Promise<ArtistPressItem[]>
     publishedAt: r.published_at ? toISODate(r.published_at) : null,
     sortOrder: (r.sort_order as number | null) ?? null,
   }));
+}
+
+
+/**
+ * LA GALERÍA Y LA PRENSA DE UN ARTISTA **PARA MODERAR**, censuradas incluidas.
+ *
+ * Es una lectura distinta de getPhotosByArtist y getPressByArtist, y tiene que serlo: esas
+ * dos filtran censored_at porque alimentan la página pública, y acá hace falta justamente
+ * lo contrario — ver lo censurado para poder LEVANTARLO. Una cola de moderación que no
+ * muestra lo que ya bajó no deja deshacer nada.
+ *
+ * Y EXISTE PORQUE EL id NO SE VE EN NINGÚN LADO. Las otras piezas censurables se nombran
+ * por slug, que está en la URL: un moderador puede censurar /sets/mi-set sin preguntarle
+ * nada a nadie. Una foto se identifica por un entero que no aparece ni en la página ni en
+ * la URL, así que sin esta lectura el panel pediría un id que el moderador no tiene forma
+ * de averiguar — una función inusable, no una función incompleta.
+ *
+ * NO LLEVA GUARDA ADENTRO, a propósito: la ruta de admin comprueba isModerator antes de
+ * llamarla, igual que queAdministraElDuenoDe. Un lector con guarda propia invita a
+ * llamarlo desde cualquier lado creyendo que se cuida solo.
+ */
+export type FilaModerable = {
+  id: number;
+  /** La url de la foto, o la de la nota. Lo único que identifica la fila a ojo. */
+  url: string;
+  /** El crédito en una foto; el medio en una nota. */
+  etiqueta: string | null;
+  censuradoEn: string | null;
+  motivo: string | null;
+  censuradoPor: string | null;
+};
+
+export async function getGaleriaPrensaParaModerar(
+  slug: string
+): Promise<{ existe: boolean; fotos: FilaModerable[]; prensa: FilaModerable[] }> {
+  const [artista] = await sql`SELECT slug FROM artists WHERE slug = ${slug}`;
+  if (!artista) return { existe: false, fotos: [], prensa: [] };
+
+  const fotos = await sql`
+    SELECT id, url, credit, censored_at, censor_reason, censored_by FROM artist_photos
+    WHERE artist_slug = ${slug}
+    ORDER BY sort_order ASC NULLS LAST, created_at DESC
+  `;
+  const prensa = await sql`
+    SELECT id, url, outlet, censored_at, censor_reason, censored_by FROM artist_press
+    WHERE artist_slug = ${slug}
+    ORDER BY sort_order ASC NULLS LAST, published_at DESC NULLS LAST
+  `;
+
+  const mapear = (r: Record<string, unknown>, etiqueta: string): FilaModerable => ({
+    id: r.id as number,
+    url: r.url as string,
+    etiqueta: (r[etiqueta] as string | null) ?? null,
+    censuradoEn: r.censored_at ? new Date(r.censored_at as string).toISOString() : null,
+    motivo: (r.censor_reason as string | null) ?? null,
+    censuradoPor: (r.censored_by as string | null) ?? null,
+  });
+
+  return {
+    existe: true,
+    fotos: fotos.map((r) => mapear(r, "credit")),
+    prensa: prensa.map((r) => mapear(r, "outlet")),
+  };
 }
 
 /** The EPK's TRACKS section — the real tracks rows, not artists.top_tracks. */
@@ -1974,9 +2051,17 @@ export async function getNewsInReview(): Promise<NoticiaEnRevision[]> {
   }));
 }
 
-/** Una pieza bajada del sitio por un moderador. */
+/**
+ * Una pieza bajada del sitio por un moderador.
+ *
+ * EL TIPO SE DERIVA DE TipoContenido Y NO SE ESCRIBE A MANO. Era una unión literal de seis
+ * valores, copiada del mapa OBJETIVOS de lib/moderation-write.ts, y agregar `photo` y
+ * `press` allá la dejó corta: dos definiciones de la misma lista es exactamente cómo las dos
+ * se desincronizan. Ahora agregar un tipo censurable rompe el typecheck acá hasta que esta
+ * lectura también lo contemple, que es la dirección correcta del error.
+ */
 export type PiezaCensurada = {
-  tipo: "artist" | "collective" | "event" | "news" | "set" | "track";
+  tipo: TipoContenido;
   clave: string;
   titulo: string;
   motivo: string;
@@ -2001,6 +2086,14 @@ export async function getCensored(): Promise<PiezaCensurada[]> {
     { tipo: "news", tabla: "news", clave: "id", titulo: "title" },
     { tipo: "set", tabla: "dj_sets", clave: "slug", titulo: "title" },
     { tipo: "track", tabla: "tracks", clave: "slug", titulo: "title" },
+    /**
+     * LA GALERÍA Y LA PRENSA. El "título" de una foto es su crédito y el de una nota es su
+     * medio: no tienen un campo title, y usar la url como título llenaría la cola de
+     * moderación de enlaces largos. Un crédito vacío cae al "(sin título)" de abajo, que es
+     * lo correcto — una foto sin crédito no tiene nombre.
+     */
+    { tipo: "photo", tabla: "artist_photos", clave: "id", titulo: "credit" },
+    { tipo: "press", tabla: "artist_press", clave: "id", titulo: "outlet" },
   ];
   const todo: PiezaCensurada[] = [];
   for (const p of partes) {

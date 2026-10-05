@@ -82,6 +82,21 @@ const OBJETIVOS = {
   news: { tabla: "news", clave: "id", tipoClave: "int", que: "la noticia" },
   set: { tabla: "dj_sets", clave: "slug", tipoClave: "text", que: "el set" },
   track: { tabla: "tracks", clave: "slug", tipoClave: "text", que: "el track" },
+  /**
+   * LA GALERÍA Y LA PRENSA DEL EPK, por fila.
+   *
+   * Entran acá para que una foto abusiva se baje SIN censurar el perfil entero, que era la
+   * única salida reversible que había. La otra era que un SUPER_ADMIN la borrara, y un
+   * borrado no se levanta: el principio de toda la moderación del repo es que el ban se
+   * levanta, la censura se levanta, un traspaso se vuelve a traspasar.
+   *
+   * SU CLAVE ES UN id ENTERO y no un slug, como events y news. Eso tiene una consecuencia
+   * de usabilidad que el panel tiene que resolver: un slug se ve en la URL y un id de foto
+   * no se ve en ningún lado, así que sin una forma de listarlas el moderador no podría
+   * nombrar la que quiere bajar.
+   */
+  photo: { tabla: "artist_photos", clave: "id", tipoClave: "int", que: "la foto" },
+  press: { tabla: "artist_press", clave: "id", tipoClave: "int", que: "la nota de prensa" },
 } as const;
 
 export type TipoContenido = keyof typeof OBJETIVOS;

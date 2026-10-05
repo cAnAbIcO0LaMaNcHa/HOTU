@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRightLeft, EyeOff, RotateCcw, UserX } from "lucide-react";
 import type { CuentaBaneada, PiezaCensurada } from "@/lib/db";
+import { BuscadorGaleria } from "./buscador-galeria";
 
 /** Las dos listas del traspaso tienen la misma forma. */
 type Lista = {
@@ -19,6 +20,18 @@ const TIPOS: Array<{ id: PiezaCensurada["tipo"]; label: string; donde: string; c
   { id: "news", label: "NOTICIA", donde: "/noticias", clave: "id" },
   { id: "set", label: "SET", donde: "/sets", clave: "slug" },
   { id: "track", label: "TRACK", donde: "/discografia", clave: "slug" },
+  /**
+   * LA GALERÍA Y LA PRENSA DEL EPK, por fila, para no tener que censurar un perfil entero
+   * por una foto.
+   *
+   * El campo `donde` queda vacío porque no hay una página propia a la que linkear: una foto
+   * vive adentro del perfil. Y la clave es un id ENTERO que no se ve en ninguna parte, lo
+   * que hace estos dos tipos distintos de todos los demás: para los otros el moderador ya
+   * tiene la clave —está en la URL de la pieza— y acá no la puede averiguar. Lo resuelve el
+   * buscador que está abajo de este formulario.
+   */
+  { id: "photo", label: "FOTO DE GALERÍA", donde: "", clave: "id" },
+  { id: "press", label: "NOTA DE PRENSA", donde: "", clave: "id" },
 ];
 
 /**
@@ -200,7 +213,15 @@ export function PanelModeracion({
           </label>
           <label className="block">
             <span className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">
-              {elTipo.clave === "id" ? "ID (el número de la URL)" : "SLUG (el de la URL)"}
+              {/* EL RÓTULO NO PUEDE DECIR "el número de la URL" PARA TODOS. Para un evento o
+                  una noticia el id SÍ está en la dirección; para una foto o una nota de
+                  prensa no está en ninguna parte, y mandar a buscarlo ahí es mandar a un
+                  lugar donde no está. Ahí el rótulo manda al buscador de abajo. */}
+              {elTipo.clave !== "id"
+                ? "SLUG (el de la URL)"
+                : tipo === "photo" || tipo === "press"
+                  ? "ID (buscalo abajo)"
+                  : "ID (el número de la URL)"}
             </span>
             <input
               value={clave}
@@ -298,6 +319,20 @@ export function PanelModeracion({
           </div>
         )}
       </section>
+
+      {/* ---------------- BUSCAR UNA FOTO O UNA NOTA ---------------- */}
+      {/* Va JUSTO DEBAJO del formulario de censura y no en otra pantalla: lo único que hace
+          es rellenarlo, así que separarlos obligaría a ir y volver con un número en la
+          cabeza. Elegir una fila deja el tipo y el id puestos arriba; el motivo se escribe
+          ahí, donde siempre. */}
+      <BuscadorGaleria
+        onElegir={(t, id) => {
+          setTipo(t);
+          setClave(String(id));
+          setError(null);
+          setAviso(`Listo: ${t === "photo" ? "foto" : "nota"} #${id}. Escribí el motivo arriba.`);
+        }}
+      />
 
       {/* ---------------- BANEAR ---------------- */}
       <section>
