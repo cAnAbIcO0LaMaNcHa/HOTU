@@ -251,63 +251,125 @@ export async function getLineupsByEvent(
   return porEvento;
 }
 
-/** Las métricas de un colectivo o venue (§4.4). */
+/** Las métricas de un colectivo o venue (§4.4 y §13). */
 export type MetricasColectivo = {
   eventos: number;
   venues: number;
   ciudades: number;
+  /**
+   * Minutos sumados de los eventos que tienen LOS DOS extremos. Separado de `eventos` a
+   * propósito: es el denominador, y sin él una suma parcial se lee como un total.
+   */
+  minutos: number;
+  /** De cuántos de los `eventos` salieron esos minutos. */
+  eventosConHorario: number;
+  /** DJs distintos que tocaron en sus eventos, del lineup. */
+  djs: number;
+  /** Vínculos activos hoy. No es histórico: es con quién cuenta ahora. */
+  residentes: number;
+  miembros: number;
 };
 
 /**
- * Las métricas de un colectivo o un venue (§4.4).
+ * Las métricas de un colectivo o un venue (§4.4 y §13).
  *
- * SOLO DE EVENTOS QUE ORGANIZÓ. Nunca la suma de los toques de sus
- * miembros: un colectivo de diez DJs acumularía miles de horas que no
- * son suyas. Por eso todo sale de events.organizer_slug y no hay un solo
- * JOIN contra artist_collectives acá.
+ * LOS EVENTOS, LOS VENUES, LAS CIUDADES Y LAS HORAS SALEN SOLO DE LO QUE ORGANIZÓ. Nunca de
+ * la suma de los toques de sus miembros: un colectivo de diez DJs acumularía miles de horas
+ * que no son suyas. Todo eso sale de events.organizer_slug.
  *
- * Sirve igual para un venue, porque organizer_slug apunta a la tabla que
- * guarda los dos y §5 le da métricas propias al venue.
+ * LOS DJs Y LAS MEMBRESÍAS SÍ MIRAN OTRAS TABLAS, y la diferencia tiene razón: no son
+ * actividad del colectivo, son su composición. "Cuántos DJs pasaron por sus fiestas" sale del
+ * lineup de SUS eventos —sigue siendo lo que organizó— y "con cuántos cuenta hoy" sale de
+ * artist_collectives, que es la fuente de verdad de las membresías.
  *
  * ============================================================
- * DOS DE LAS CUATRO MÉTRICAS DE §4.4 CAMBIARON, Y NO POR CAPRICHO
+ * SIN ASISTENTES, Y NO ES QUE FALTE EL DATO
  * ============================================================
  *
- * §4.3 punto 6 pedía "horas, eventos, distritos, venues". De esas:
+ * La atribución de ventas está POSPUESTA por decisión de producto y la venta online está
+ * apagada detrás de VENTA_ONLINE. ticket_attributions tiene filas en dev, pero son del seed:
+ * promediarlas pondría un número de prueba en lo que un colectivo le muestra a un
+ * organizador para que lo contrate.
  *
- * DISTRITOS YA NO EXISTE. El sistema de distritos se retiró entero en la
- * tanda 4 §3: las columnas quedaron congeladas y nadie las lee. Contar
- * distritos hoy sería resucitar un concepto muerto para llenar un
- * casillero. En su lugar va CIUDADES, que es lo que esa métrica quería
- * decir —en cuántos lugares distintos armaron algo— y que sí es un dato
- * vivo.
+ * Y no aparece como una celda vacía. "ASISTENTES —" se lee como "este colectivo no lleva
+ * gente", que es una afirmación sobre ellos; lo cierto es que la plataforma todavía no lo
+ * mide. Entre decir algo falso y no decir nada, no se dice nada.
  *
- * HORAS NO SE PUEDE CALCULAR, y por eso no está. No es que falte el
- * dato: falta la COLUMNA. events.event_date es un DATE —sin hora— así
- * que un evento no guarda a qué hora empezó. Con solo end_at, la resta
- * mide desde la MEDIANOCHE del día del evento, no desde que empezó la
- * fiesta: una prueba con un cierre ocho horas después del inicio devolvió
- * 13 horas.
+ * ============================================================
+ * DOS DE LAS CUATRO MÉTRICAS DE §4.4 CAMBIARON, Y UNA VOLVIÓ
+ * ============================================================
  *
- * Un número equivocado es peor que ninguno — más todavía en una métrica
- * que un colectivo va a mostrarle a un organizador para que lo contrate.
- * Queda anotado en PROGRESO.md: para tener horas hace falta una hora de
- * inicio en events, y eso es modelo nuevo, no un cálculo.
+ * §4.3 punto 6 pedía "horas, eventos, distritos, venues".
+ *
+ * DISTRITOS YA NO EXISTE. El sistema de distritos se retiró entero en la tanda 4 §3: las
+ * columnas quedaron congeladas y nadie las lee. Contar distritos sería resucitar un concepto
+ * muerto para llenar un casillero. En su lugar va CIUDADES, que es lo que esa métrica quería
+ * decir —en cuántos lugares distintos armaron algo— y que sí es un dato vivo.
+ *
+ * HORAS VOLVIÓ, Y EL COMENTARIO QUE DECÍA QUE NO SE PODÍA YA ERA FALSO. Decía: "no es que
+ * falte el dato, falta la COLUMNA. events.event_date es un DATE —sin hora— así que un evento
+ * no guarda a qué hora empezó". Eso era cierto cuando se escribió y dejó de serlo con la
+ * migración de la hora de inicio: events.starts_at existe. El comentario sobrevivió a su
+ * motivo, que es la forma más común de que un archivo mienta.
+ *
+ * SOLO DONDE ESTÁN LOS DOS EXTREMOS, y el conteo de con cuántos se midió viaja en el mismo
+ * objeto para que la UI no pueda mostrar la suma sin él. Es la misma regla que STATS en el
+ * EPK: un parcial presentado como total es cómo un press kit miente sin que nadie escriba
+ * una mentira.
  */
 export async function getMetricasColectivo(slug: string): Promise<MetricasColectivo> {
   const [r] = await sql`
     SELECT
       COUNT(*)::int AS eventos,
       COUNT(DISTINCT lower(venue))::int AS venues,
-      COUNT(DISTINCT lower(city))::int AS ciudades
+      COUNT(DISTINCT lower(city))::int AS ciudades,
+      /* La resta entre dos timestamptz es un interval; a minutos con EPOCH, que da segundos.
+         COALESCE porque SUM sobre cero filas devuelve NULL y acá 0 es la respuesta. */
+      COALESCE(SUM(
+        CASE WHEN starts_at IS NOT NULL AND end_at IS NOT NULL
+             THEN EXTRACT(EPOCH FROM (end_at - starts_at)) / 60
+        END
+      ), 0)::int AS minutos,
+      COUNT(*) FILTER (WHERE starts_at IS NOT NULL AND end_at IS NOT NULL)::int AS con_horario
     FROM events
     WHERE organizer_slug = ${slug} AND status = 'published' AND censored_at IS NULL
+  `;
+
+  /**
+   * LOS DJs, DEL LINEUP DE SUS EVENTOS. Va en su propia consulta y no como un JOIN del SELECT
+   * de arriba: un JOIN contra event_lineup multiplicaría las filas de events por sus
+   * integrantes, y entonces COUNT(*) AS eventos contaría un evento de cinco DJs como cinco.
+   * Es el bug que un COUNT(DISTINCT) taparía a medias y que un conteo aparte no tiene.
+   */
+  const [d] = await sql`
+    SELECT COUNT(DISTINCT el.artist_slug)::int AS djs
+    FROM event_lineup el
+    JOIN events e ON e.id = el.event_id
+    WHERE e.organizer_slug = ${slug} AND e.status = 'published' AND e.censored_at IS NULL
+  `;
+
+  /**
+   * LAS MEMBRESÍAS ACTIVAS. to_date IS NULL es el vínculo abierto y accepted_at IS NOT NULL
+   * descarta las invitaciones sin responder: contar una invitación pendiente como miembro
+   * inflaría el número con gente que todavía no dijo sí.
+   */
+  const [m] = await sql`
+    SELECT
+      COUNT(*) FILTER (WHERE kind = 'residente')::int AS residentes,
+      COUNT(*) FILTER (WHERE kind = 'miembro')::int   AS miembros
+    FROM artist_collectives
+    WHERE collective_slug = ${slug} AND to_date IS NULL AND accepted_at IS NOT NULL
   `;
 
   return {
     eventos: (r?.eventos as number) ?? 0,
     venues: (r?.venues as number) ?? 0,
     ciudades: (r?.ciudades as number) ?? 0,
+    minutos: (r?.minutos as number) ?? 0,
+    eventosConHorario: (r?.con_horario as number) ?? 0,
+    djs: (d?.djs as number) ?? 0,
+    residentes: (m?.residentes as number) ?? 0,
+    miembros: (m?.miembros as number) ?? 0,
   };
 }
 
