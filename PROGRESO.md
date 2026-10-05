@@ -656,6 +656,214 @@ Vale decirlo porque cambia el tamaño del trabajo:
 
 ---
 
+
+# ================================================================
+# PLAN DE CONVOCATORIAS (§7) — PARA APROBAR, NO CONSTRUIDO
+# ================================================================
+
+Lo decidido: **abre y decide el dueño** (`puedeAdministrarColectivo`). La postulación
+lleva el perfil del DJ, un mensaje corto y disponibilidad. **Aceptar suma al DJ al
+lineup del evento.**
+
+## LO QUE YA ESTÁ Y NO HAY QUE INVENTAR
+
+Medido antes de diseñar, porque la mitad de esta pieza existe:
+
+- `event_lineup` ya es la relación real entre un evento y sus DJs, con `artist_slug`,
+  `raw_name` NOT NULL, `role` y `b2b_with`. Aceptar una postulación es **un INSERT acá**,
+  no un modelo nuevo.
+- `puedeAdministrarColectivo` ya es la puerta de "membresías y plata" del colectivo, que
+  es exactamente el escalón que corresponde: el residente edita contenido y NO administra.
+- `events.organizer_slug` ya dice de quién es el evento, así que "qué convocatorias puedo
+  abrir" sale de eso y no necesita una columna nueva.
+- El patrón de oferta/respuesta con su índice único parcial ya está resuelto dos veces
+  —`residency_offers` y las invitaciones de `artist_collectives`— y conviene copiarlo en
+  vez de inventar un tercero.
+
+## LA TABLA, Y POR QUÉ DOS Y NO UNA
+
+**`event_calls`** — la convocatoria. Una por evento, abierta por el dueño.
+
+    id SERIAL PK
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE
+    collective_slug TEXT NOT NULL REFERENCES collectives(slug) ON UPDATE CASCADE
+    cupos INTEGER                  -- NULL = sin tope declarado
+    cierra_en TIMESTAMPTZ          -- NULL = abierta hasta que la cierren a mano
+    cerrada_en TIMESTAMPTZ         -- NULL = abierta
+    abierta_por TEXT REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL
+    nota TEXT                      -- qué busca: género, horario, formato
+    creada_en TIMESTAMPTZ NOT NULL DEFAULT now()
+
+**`event_applications`** — la postulación.
+
+    id SERIAL PK
+    call_id INTEGER NOT NULL REFERENCES event_calls(id) ON DELETE CASCADE
+    artist_slug TEXT NOT NULL REFERENCES artists(slug) ON UPDATE CASCADE ON DELETE CASCADE
+    mensaje TEXT NOT NULL           -- el "mensaje corto", con CHECK de largo
+    disponibilidad TEXT NOT NULL    -- texto libre: "después de las 2", "solo sábados"
+    resuelta_en TIMESTAMPTZ         -- NULL = pendiente
+    resultado TEXT                  -- 'aceptada' | 'rechazada' | 'retirada'
+    resuelta_por TEXT REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL
+    creada_en TIMESTAMPTZ NOT NULL DEFAULT now()
+
+**DOS TABLAS Y NO UNA** porque son dos ciclos de vida: la convocatoria se abre y se
+cierra una vez; las postulaciones son muchas y cada una se resuelve por separado. Meterlas
+en una sola obligaría a un jsonb de postulantes, y eso es la deuda que los tres jsonb de
+la tanda 2 vinieron a pagar.
+
+**EL PERFIL DEL DJ NO SE COPIA.** La postulación "lleva el perfil" por el FK a
+`artists(slug)`: el EPK se lee en el momento de mirarla. Congelar nombre, bio y géneros
+dentro de la fila sería una copia que envejece — al revés de `ticket_attributions`, donde
+congelar es correcto porque lo que se guarda es un hecho del pasado. Una postulación se
+juzga con el perfil de HOY.
+
+## LOS DOS ÍNDICES QUE HACEN FALTA
+
+    event_calls_una_abierta_idx      UNIQUE (event_id) WHERE cerrada_en IS NULL
+    event_applications_una_idx       UNIQUE (call_id, artist_slug) WHERE resuelta_en IS NULL
+
+El primero impide dos convocatorias abiertas para el mismo evento; el segundo, dos
+postulaciones pendientes del mismo DJ. Los dos son **parciales**, igual que
+`residency_offers_una_abierta_idx`, y por la misma razón: el histórico tiene que poder
+tener varias filas cerradas.
+
+## ACEPTAR, QUE ES LA PARTE DELICADA
+
+Aceptar hace **dos escrituras**: resuelve la postulación y mete al DJ en `event_lineup`.
+Van en **una sola sentencia con un CTE que modifica datos**, igual que la creación de
+eventos: si fueran dos, un fallo entre medio deja una postulación aceptada sin DJ en el
+lineup, y nadie se enteraría hasta la noche de la fiesta.
+
+Y hay dos guardas que el schema **no puede** dar, así que van en el write path:
+
+1. **Que la convocatoria siga abierta.** `cerrada_en IS NULL` va en el WHERE de la
+   sentencia, no en una comprobación previa: si no, dos aceptaciones simultáneas sobre el
+   último cupo pasan las dos. Es exactamente el error que cometí con el tope de 12 fotos
+   — atómico no es serializable — y acá lo resuelvo desde el principio con la guarda
+   dentro del WHERE más `FOR UPDATE` sobre la fila de `event_calls`.
+2. **Que no exceda los cupos**, cuando `cupos` no es NULL. Un CHECK no puede contar filas
+   de otra tabla, así que es la misma forma: el conteo adentro del WHERE, con la fila de
+   la convocatoria bloqueada.
+
+**RECHAZAR NO BORRA**, por lo mismo que `residency_offers`: lo que registra es quién
+decidió qué, y esa pregunta tiene que seguir teniendo respuesta.
+
+## LO QUE NECESITO QUE DECIDAS
+
+1. **¿Un DJ puede postularse a un evento de un colectivo del que YA es miembro?**
+   Recomiendo **sí**: ser miembro no es estar programado, y prohibirlo obligaría al dueño
+   a agregarlo a mano rompiendo el flujo que esta pieza viene a ordenar.
+2. **¿La convocatoria es pública o solo para miembros?** Recomiendo **pública** y que el
+   dueño filtre al decidir: una convocatoria cerrada a los de adentro no es una
+   convocatoria, es una invitación, y eso ya existe.
+3. **¿El DJ ve que lo rechazaron, y con motivo?** Recomiendo **que vea el resultado sin
+   motivo obligatorio**. Un rechazo silencioso es por donde la gente se va; un motivo
+   obligatorio hace que el dueño no cierre postulaciones para no tener que escribirlo.
+4. **¿Qué pasa con las pendientes cuando la convocatoria se cierra?** Recomiendo
+   **resolverlas todas como 'rechazada' en la misma transacción que el cierre**, para que
+   no queden colgadas para siempre. Lo contrario —dejarlas pendientes— deja al DJ
+   esperando una respuesta que no va a llegar.
+
+## MIGRACIÓN
+
+Una, `setup-convocatorias`: las dos tablas, los dos índices parciales, y los CHECK de
+largo del mensaje y de `resultado`. **Sin backfill**: no hay convocatorias previas que
+interpretar.
+
+# ================================================================
+# PLAN DE WRAPS (§5) — PARA APROBAR, NO CONSTRUIDO
+# ================================================================
+
+Lo decidido: el año cierra el **31/12 23:59 America/Bogota**, **snapshot congelado**, se
+**publica en enero**. DJ: toques, horas, venues, ciudades, géneros. Colectivo: eventos,
+DJs, venues. Usuario: likes y eventos.
+
+## LA PIEZA CENTRAL: POR QUÉ UN SNAPSHOT Y NO UNA CONSULTA
+
+Un wrap calculado al vuelo **cambia solas**. Si un DJ borra un toque en marzo, su wrap de
+2026 pasa de 20 a 19 eventos, y lo que compartió en enero deja de coincidir con lo que la
+página dice. Eso no es un detalle: un wrap es algo que la gente **manda por WhatsApp**, y
+un número que se mueve después vuelve mentiroso lo que ya compartió.
+
+Así que se congela. Y congelar significa una tabla, no un caché.
+
+    wraps
+      id SERIAL PK
+      anio INTEGER NOT NULL
+      sujeto_tipo TEXT NOT NULL        -- 'artist' | 'collective' | 'user'
+      sujeto_clave TEXT NOT NULL       -- slug o email, SIN FK (ver abajo)
+      datos JSONB NOT NULL             -- los números ya calculados
+      generado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+
+    wraps_uno_por_sujeto_idx  UNIQUE (anio, sujeto_tipo, sujeto_clave)
+
+**SIN FK, A PROPÓSITO**, y es la misma decisión que `account_removals` y `edit_log`: el
+wrap de 2026 de un DJ tiene que sobrevivir a que ese perfil se borre. Un FK con CASCADE se
+lo llevaría; con SET NULL quedaría un wrap sin dueño. Lo que vale es que el año pasó así.
+
+**`datos` ES JSONB Y NO COLUMNAS** porque los tres sujetos guardan cosas distintas —un
+usuario no tiene horas tocadas— y porque la forma del wrap va a cambiar año a año. Columnas
+obligarían a una migración por cada métrica nueva, y a tener la unión de las tres formas
+con dos tercios en NULL siempre.
+
+## EL CIERRE DEL AÑO, QUE ES DONDE ESTÁ EL BUG FÁCIL
+
+**31/12 23:59 America/Bogota**, y eso **no** es `EXTRACT(YEAR FROM fecha)`. Vercel corre en
+UTC: las 23:59 del 31 en Bogotá son las 04:59 del **1 de enero** en UTC. Un wrap que
+filtre por año UTC se come las últimas cinco horas del año — y en esta escena esas cinco
+horas son **la fiesta de fin de año**, probablemente el evento más grande del wrap.
+
+Así que el corte va con el offset explícito, como `armarInstante`:
+
+    creado_en >= '2026-01-01T00:00:00-05:00' AND creado_en < '2027-01-01T00:00:00-05:00'
+
+Y la regla de la madrugada ya resuelta en `events.starts_at` juega a favor: una fiesta del
+31 que termina el 1 cuenta en el año del 31, que es lo que la gente diría.
+
+## LO QUE SE PUEDE CALCULAR HOY, MEDIDO
+
+| wrap | métrica | de dónde | hoy |
+|---|---|---|---|
+| DJ | toques | `event_lineup` + `artist_gigs` | **sí** |
+| DJ | horas | `starts_at`/`end_at` y `duration_minutes` | **parcial**, con denominador |
+| DJ | venues, ciudades | los toques | **sí** |
+| DJ | géneros | `artist_genres` + `artist_genre_tags` | **sí** |
+| Colectivo | eventos, DJs, venues | `organizer_slug` + `event_lineup` | **sí** |
+| Usuario | likes | `artist_likes` + `collective_likes` | **sí** |
+| Usuario | eventos | `tickets` | **NO: la venta está apagada** |
+
+**EL WRAP DE USUARIO ES EL PROBLEMA.** "A cuántos eventos fuiste" sale de las boletas, y
+con `VENTA_ONLINE` apagado nadie tiene boletas. O sea que hoy el wrap de usuario sería
+"diste N likes" y nada más, que no es un wrap.
+
+## LO QUE NECESITO QUE DECIDAS
+
+1. **¿El wrap de usuario entra ahora con solo likes, o espera a que haya venta?**
+   Recomiendo **esperar**. Un wrap de fin de año que dice solo "diste 12 likes" se lee como
+   que la plataforma no sabe nada de vos, y es la primera impresión de una función que se
+   comparte.
+2. **¿Quién dispara la generación?** Recomiendo **una ruta de mantenimiento con
+   `MIGRATE_SECRET`**, corrida a mano en enero, como la purga de `mail_outbox`. Un cron es
+   una pieza de infraestructura que todavía no existe en este repo, y una función que se
+   corre una vez al año no la justifica.
+3. **¿Se puede regenerar un wrap ya generado?** Recomiendo **sí, pero explícito**: con un
+   `&forzar=1` que lo diga, y que sin eso sea idempotente y no toque lo ya generado. Si se
+   descubre un error de cálculo en enero hay que poder corregirlo; si se regenera por
+   accidente en marzo, los números cambian y eso es lo que el snapshot vino a evitar.
+4. **¿Un wrap es público o solo del sujeto?** Recomiendo **público para DJ y colectivo**
+   —es press kit— y **privado para el usuario**, que es un perfil privado por decisión del
+   modelo de perfiles.
+5. **¿Mes más movido y mejor fiesta?** El modelo original los pedía para el DJ. Los dos se
+   pueden calcular hoy. Pero **"mejor fiesta" necesita un criterio**, y sin asistentes el
+   único disponible sería la duración, que no significa "mejor". Recomiendo **dejarlos
+   afuera hasta que haya atribución**, en vez de elegir un criterio que no mide lo que la
+   palabra promete.
+
+## MIGRACIÓN
+
+Una, `setup-wraps`: la tabla, el índice único, y el CHECK de `sujeto_tipo`. Sin backfill:
+no hay años anteriores que congelar — HOTU no tuvo un 2025 con datos.
+
 # ================================================================
 # DE ACÁ PARA ABAJO: TANDA 4, YA EN PRODUCCIÓN
 # ================================================================
