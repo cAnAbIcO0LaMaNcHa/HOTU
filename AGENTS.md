@@ -262,6 +262,52 @@ NO HAY CHECK que ate starts_at a event_date, y no lo va a haber: dependería de 
 La regla vive en el write path. SÍ hay CHECK de end_at > starts_at, que compara dos instantes
 y por lo tanto significa lo mismo en cualquier zona.
 
+
+UNA FECHA DE CALENDARIO NO PASA POR toISOString(). NUNCA.
+
+toISODate en lib/date-utils.ts hacía `value.toISOString().slice(0, 10)`, y eso CORRE UN DÍA
+PARA ATRÁS en cualquier server adelantado de UTC. Arreglado el 4 de octubre de 2026: lee las
+partes LOCALES.
+
+El mecanismo, medido y no razonado: el driver de Neon construye el Date en MEDIANOCHE LOCAL
+—comprobado contra dev, getHours() da 0 y getUTCHours() da 5 en Bogotá— así que toISOString lo
+convierte a UTC y, con offset positivo, cae en el día anterior. Con -05:00 da bien, con +00:00
+da bien, con +02:00 da el día anterior.
+
+NO PODÍA DISPARARSE, Y ESO ERA LO PELIGROSO: Vercel corre en UTC y el desarrollo en Bogotá, los
+dos con offset <= 0. Una línea correcta por accidente geográfico, que se rompe el día que
+alguien despliegue en otra región o corra las pruebas desde otro país — y se rompe CALLADA: una
+fecha un día antes no tira ningún error.
+
+POR QUÉ LAS PARTES LOCALES SON LA RESPUESTA: el driver ESCRIBE las partes en la zona del
+server y la función las LEE en la MISMA zona, así que las dos mitades se cancelan y el
+resultado es correcto en cualquier zona. El viejo toISOString rompía esa simetría: escribía en
+local y leía en UTC.
+
+Es la misma familia que el bug de cinco horas de end_at: las dos veces el error entra al cruzar
+entre "fecha de calendario" e "instante" sin decidir en qué zona. Un calendario no tiene zona —
+el 14 de febrero es el 14 de febrero — y convertirlo a un instante para después recortarlo es el
+paso que introduce el error.
+
+LAS NUEVE COLUMNAS QUE PASAN POR ESA FUNCIÓN SON date, NINGUNA timestamptz: joined_at,
+released_at, recorded_at, published_at, gig_date, event_date, news_date, from_date, to_date.
+Importa porque para una marca de tiempo las partes locales NO serían la respuesta — ahí habría
+que elegir una zona explícita, como hace armarInstante con Bogotá. scripts/pruebas/fechas.mjs
+lo afirma, así que el día que alguien le pase un timestamptz, falla ruidosamente.
+
+Y ESA BATERÍA FALLA CON EL CÓDIGO VIEJO, que es lo único que la vuelve una prueba: tiene la
+implementación vieja al lado y corre las dos contra los tres offsets, así que en la misma
+corrida se ve la vieja dando el día anterior. Además exige que la vieja falle al menos una vez:
+si dejara de fallar, esa copia ya no sería la que había y la prueba estaría comparando la nueva
+contra sí misma.
+
+OJO CON CÓMO SE SIMULA OTRA ZONA, que es donde me equivoqué dos veces. TZ=Europe/Madrid NO toma
+efecto en Windows: Intl sigue reportando America/Bogota, así que la prueba se cree en otra zona
+sin estarlo. Y construir el Date desde un instante con offset explícito es PEOR, porque parece
+andar: crea un instante, pero la mitad que LEE sigue usando la zona del proceso, así que hasta
+la implementación nueva "falla". Lo que funciona es MODELAR el objeto que el driver devolvería
+en esa zona —partes locales por un lado, instante por el otro— y decir que es un modelo.
+
 CADA EDICIÓN DE UN COLECTIVO QUEDA REGISTRADA, Y SI NO SE PUEDE REGISTRAR NO SE APLICA.
 
 edit_log guarda quién editó qué, con actor_rol en ('dueno','residente','super_admin','moderador').
@@ -284,6 +330,43 @@ cualquier colectivo. No lo tiene y no lo gana.
 
 Y LA RAMA DE "ROL NO RESOLUBLE" ES INALCANZABLE POR LA API, por construcción: cada puerta que
 deja pasar tiene todos sus miembros resolubles. Queda como defensa para una puerta futura.
+
+
+LA RETENCIÓN DE mail_outbox — 90 DÍAS DE CONTENIDO, REGISTRO PARA SIEMPRE.
+
+Decidido y HECHO el 5 de octubre de 2026. La tabla guarda direcciones y EL TEXTO de lo que se
+le dijo a cada persona: dato personal bajo la Ley 1581, la misma razón por la que no se guarda
+la cédula.
+
+NO ES UN BORRADO, y esa es toda la decisión. Las dos mitades sirven para cosas distintas:
+
+    el CUERPO responde "¿qué le dijimos exactamente?" cuando alguien reclama que nunca le
+    avisaron. A los 90 días ya no hace falta.
+
+    QUE SE MANDÓ, a quién y cuándo es la PRUEBA de que el aviso salió, y no puede caducar.
+    Borrar la fila se llevaría eso también, y al día 91 HOTU no podría demostrar que avisó —
+    que es justamente el reclamo del que la tabla protege.
+
+Así que a los 90 días se vacían asunto y cuerpo y se conserva el resto. Lo hace
+/api/mantenimiento-mail-outbox, con MIGRATE_SECRET —ESCRIBE, y lo que escribe es
+irreversible— y con dryRun, porque antes de vaciar conviene ver cuántas filas se lleva.
+
+purgado_en EXISTE PARA QUE UN NULL NO SEA AMBIGUO: sin esa columna, un cuerpo en NULL
+significaría "se purgó" y "nunca tuvo" sin poder distinguirlos. Mismo criterio que
+account_removals.measured.
+
+Y EL CHECK ATA LAS TRES EN LOS DOS SENTIDOS, porque permitir NULL no alcanza: hay que impedir
+los estados intermedios, que son los que deja una purga que se cae a mitad. purgado_en NULL
+exige asunto y cuerpo presentes; purgado_en puesto exige los dos en NULL. Las dos mitades
+están medidas contra la base.
+
+LA GUARDA DE LA PURGA ES purgado_en IS NULL Y NO UNA FECHA. Filtrar solo por edad volvería a
+"purgar" las mismas filas ya vacías en cada corrida y el conteo mentiría para siempre. Y NO es
+el patrón prohibido de guardar sobre un valor que la propia migración escribe: eso es peligroso
+cuando el código normal también lo escribe, y acá nada más lo pone.
+
+EL PLAZO ESTÁ PROBADO EN LOS DOS BORDES: 91 días se purga, 89 NO. Un off-by-one acá destruye
+contenido antes de tiempo y no vuelve.
 
 Todo el contenido es district-aware.
 
@@ -332,7 +415,7 @@ LA MEDICIÓN AHORA ES OTRA, Y EL COMANDO OFICIAL ES UN SCRIPT:
     node scripts/metrica-entity-kind.mjs --detalle  los 60 casos, uno por uno
     node scripts/metrica-entity-kind.mjs --probar   se prueba a sí misma (28 chequeos)
 
-LÍMITE NUEVO: 30 RAMAS EN TOTAL, 7 POR ARCHIVO. Hoy da 19 en 9 archivos, con panel-colectivo en 5. El script sale con código 1 si se pasa, así que sirve de puerta.
+LÍMITE NUEVO: 30 RAMAS EN TOTAL, 7 POR ARCHIVO. Hoy da 20 en 9 archivos, con panel-colectivo en 5. Subió de 19 a 20 con las métricas de colectivo (§13), que era una de las dos piezas que el umbral señalaba como las que más lo podían empujar — y se midió al cerrarla, no después. El script sale con código 1 si se pasa, así que sirve de puerta.
 
 QUÉ ES UNA RAMA, QUE ES TODA LA DIFERENCIA. La unidad es la línea, igual que el grep viejo, para que los dos números se comparen. Si una línea tiene varias menciones y alguna es rama, la línea es rama.
 
@@ -413,13 +496,37 @@ Sobre mí — origen, rango de BPM, géneros/distritos, biografía.
 DJ SETS — grabaciones de sets. Barras horizontales con play + forma de onda. "MORE..." abajo a la izquierda. Tabla dj_sets.
 TRACKS — producciones propias. Cuadrados en fila con portada, sello y fecha. "MORE →" al final de la fila. Tabla tracks. DJ SETS y TRACKS van SEPARADOS, no en tabs. Portada y sello ya existen desde tanda 2 (cover_url, label); sin portada cae a un placeholder con el tinte del distrito.
 EVENTS — carrusel horizontal de flyers, cada uno linkea al evento. Resumen debajo: "20 EVENTOS, 10 EN 2026".
-STATS — público. Promedio de asistentes, tabla de asistentes por fiesta, horas tocadas.
-         PENDIENTE. Las horas salen de starts_at y end_at y solo donde existan los DOS;
-         los asistentes dependen de la atribución, que está pospuesta.
-Galería — fotos en alta para que el organizador arme flyers. PENDIENTE.
-Prensa — links a notas con medio y fecha. PENDIENTE.
-Rider técnico — marca y cantidad de CDJs, mixer, monitores. La columna artists.rider jsonb
-         existe desde la tanda 1 y está VACÍA: nadie la lee ni la escribe.
+STATS — público y NO EDITABLE. HECHO el 3 de octubre de 2026. Horas, venues y ciudades, con
+         EL DENOMINADOR A LA VISTA: "Medido en 1 de 2 toques". Las horas van PARTIDAS por
+         origen —las que fijó el organizador en el evento y las que declaró el DJ— porque no
+         son la misma clase de dato y juntarlas haría leer las auto-declaradas como
+         verificadas. Los ASISTENTES no están y no aparecen como fila vacía: salen de la
+         atribución, que está pospuesta, y "ASISTENTES —" se lee como una afirmación sobre el
+         artista. No tiene editor ni write path: la garantía de que el DJ no toca sus números
+         no es un botón escondido, es que no existe el camino.
+Galería — fotos en alta para que el organizador arme flyers. HECHA el 3 de octubre de 2026,
+         tabla artist_photos. Tope de 12 por artista, con crédito opcional del fotógrafo.
+         EL TOPE VIVE EN EL WRITE PATH y es ATÓMICO con SELECT ... FOR UPDATE sobre la fila
+         del artista: un CHECK no puede contar filas, y el COUNT dentro del INSERT NO
+         alcanzaba — está MEDIDO que sin el lock, 1 de cada 10 rondas de 20 subidas
+         simultáneas mete 13. Atómico no es serializable.
+Prensa — links a notas con medio y fecha. HECHA el 3 de octubre de 2026, tabla artist_press.
+         El medio es TEXTO LIBRE y la fecha es OPCIONAL: la escena publica en blogs y en
+         Instagram, y una nota vieja puede no tener fecha.
+         Las dos se reordenan arrastrando en escritorio Y CON FLECHAS en todas partes: el
+         arrastre nativo de HTML5 no dispara en touch, así que una lista que solo se reordena
+         arrastrando no se reordena en un celular. El orden se manda COMPLETO, en una sola
+         sentencia con unnest WITH ORDINALITY.
+         Y LAS DOS SE CENSURAN POR FILA desde §13: censored_at, censor_reason y censored_by,
+         con el mismo CHECK censura_con_motivo de las otras seis. Antes la única salida
+         reversible era censurar el perfil entero por una foto. El id de una foto no se ve en
+         ningún lado, así que el panel de moderación tiene un buscador por artista.
+Rider técnico — marca y cantidad de CDJs, mixer, monitores. HECHO el 3 de octubre de 2026,
+         en la columna artists.rider jsonb que existía desde la tanda 1 sin un solo lector.
+         HÍBRIDO: campos fijos para CDJs, mixer y monitores, más una línea libre de "otros".
+         La CANTIDAD solo está donde significa algo —un mixer es uno— y eso se valida del
+         lado del SERVIDOR, no escondiendo un input. Una sola función normaliza al escribir
+         Y al leer, porque la columna es jsonb y lo guardado puede tener cualquier forma.
 
 Regla de UI: el perfil crece con el artista. Las secciones vacías NO se muestran; en su lugar, al dueño se le sugiere qué completar. Un DJ con tres toques no puede ver ocho secciones vacías.
 
