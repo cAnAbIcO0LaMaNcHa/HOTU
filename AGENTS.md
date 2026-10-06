@@ -368,6 +368,42 @@ cuando el código normal también lo escribe, y acá nada más lo pone.
 EL PLAZO ESTÁ PROBADO EN LOS DOS BORDES: 91 días se purga, 89 NO. Un off-by-one acá destruye
 contenido antes de tiempo y no vuelve.
 
+QUIÉN DISPARA LA PURGA: UN CRON DE VERCEL, DIARIO, A LAS 07:00 UTC.
+
+Declarado en vercel.json. Y existe porque la pieza estuvo HECHA Y DESCONECTADA: la ruta
+andaba, estaba probada y documentada, y NADA la llamaba — o sea que la retención de 90 días
+no pasaba nunca. Una política que nadie ejecuta es peor que ninguna, porque el archivo afirma
+que hay una. Es la misma forma que el tope de 12 fotos: funcionaba y no estaba conectado.
+
+LA LLAVE ES CRON_SECRET Y NO MIGRATE_SECRET, y no es prolijidad: NO HAY FORMA de que un cron
+de Vercel mande un query param secreto. Los crons van en vercel.json, que SE COMMITEA, así
+que un ?secret=... ahí publicaría la llave que altera el esquema de producción y que es la
+segunda llave de la limpieza que borra pedidos y boletas. Vercel manda
+`Authorization: Bearer ${CRON_SECRET}` —verificado en su documentación— y ese es el camino que
+no deja el secreto en ningún archivo. Mismo criterio que MIGRATE_SECRET contra SMOKE_SECRET:
+poderes distintos, llaves distintas.
+
+DOS PUERTAS CON PODERES DISTINTOS: a mano con MIGRATE_SECRET se puede simular y purgar; el
+scheduler SOLO purga. Y el cron pidiendo dryRun da 400 en vez de ignorarse, porque ignorarlo
+tiene dos formas malas y las dos son silenciosas — si simula, la retención no pasa nunca; si
+purga, quien lo configuró creyó que simulaba.
+
+FALLA CERRADO: sin CRON_SECRET en el entorno, la puerta del scheduler no existe.
+
+07:00 UTC, QUE EN BOGOTÁ ES ENTRE 02:00 Y 03:00. El rango no es descuido: el plan admite
+cron diario con PRECISIÓN DE ±59 MINUTOS, así que la hora exacta no se puede prometer. Cae de
+madrugada a propósito —la fiesta ya terminó y nadie está mirando el sitio— y el margen de una
+hora no cambia nada para un plazo de 90 días. Los schedules de Vercel son en UTC.
+
+DIARIO Y NO MENSUAL: con diario el contenido vive como máximo 91 días, que es lo decidido. Con
+mensual podría vivir 120 y el número del documento dejaría de ser cierto.
+
+Y HOY PURGA CERO, a propósito. mail_outbox está en 0 filas en main y lib/mail.ts no tiene
+proveedor, así que no hay nada que vaciar. Se configuró igual: un cron que purga cero durante
+meses es gratis, y uno configurado tarde ya llegó tarde — el primer contenido real se
+acumularía sin plazo y nadie se acordaría hasta que a los 90 días hubiera texto de gente real
+que debería haberse ido.
+
 Todo el contenido es district-aware.
 
 EL DEV SERVER SE LEVANTA SIEMPRE CON `npm run dev`, Y CON NADA MÁS. No `next dev`, no `npx next dev`, no un nohup con un redirect a mano. Ese único camino es `scripts/dev-start.mjs`, y hace cuatro cosas que ninguna invocación a mano hace:

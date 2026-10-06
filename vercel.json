@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/mantenimiento-mail-outbox",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}

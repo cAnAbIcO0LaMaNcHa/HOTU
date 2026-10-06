@@ -748,21 +748,25 @@ Y hay dos guardas que el schema **no puede** dar, así que van en el write path:
 **RECHAZAR NO BORRA**, por lo mismo que `residency_offers`: lo que registra es quién
 decidió qué, y esa pregunta tiene que seguir teniendo respuesta.
 
-## LO QUE NECESITO QUE DECIDAS
+## LAS CUATRO DECISIONES — TOMADAS el 6 de octubre de 2026
 
-1. **¿Un DJ puede postularse a un evento de un colectivo del que YA es miembro?**
-   Recomiendo **sí**: ser miembro no es estar programado, y prohibirlo obligaría al dueño
-   a agregarlo a mano rompiendo el flujo que esta pieza viene a ordenar.
-2. **¿La convocatoria es pública o solo para miembros?** Recomiendo **pública** y que el
-   dueño filtre al decidir: una convocatoria cerrada a los de adentro no es una
-   convocatoria, es una invitación, y eso ya existe.
-3. **¿El DJ ve que lo rechazaron, y con motivo?** Recomiendo **que vea el resultado sin
-   motivo obligatorio**. Un rechazo silencioso es por donde la gente se va; un motivo
-   obligatorio hace que el dueño no cierre postulaciones para no tener que escribirlo.
-4. **¿Qué pasa con las pendientes cuando la convocatoria se cierra?** Recomiendo
-   **resolverlas todas como 'rechazada' en la misma transacción que el cierre**, para que
-   no queden colgadas para siempre. Lo contrario —dejarlas pendientes— deja al DJ
-   esperando una respuesta que no va a llegar.
+Se dejan escritas como decisiones y no como preguntas, con su razón: el día que alguien
+quiera cambiar una, lo que importa es por qué se eligió, no que se eligió.
+
+1. **Un DJ SÍ puede postularse a un evento de un colectivo del que ya es miembro.** Ser
+   miembro no es estar programado, y prohibirlo obligaría al dueño a agregarlo a mano
+   rompiendo el flujo que esta pieza viene a ordenar.
+2. **La convocatoria es PÚBLICA**, y el dueño filtra al decidir. Una convocatoria cerrada a
+   los de adentro no es una convocatoria, es una invitación — y eso ya existe en
+   artist_collectives.
+3. **El DJ VE el resultado, y el motivo es OPCIONAL.** Un rechazo silencioso es por donde la
+   gente se va de una plataforma; un motivo obligatorio hace que el dueño no cierre
+   postulaciones para no tener que escribirlo. Las dos puntas importan y esta es la que las
+   deja a las dos en pie.
+4. **Al cerrar la convocatoria, las pendientes se resuelven TODAS como 'rechazada', en la
+   MISMA transacción que el cierre.** Dejarlas pendientes deja al DJ esperando una respuesta
+   que no va a llegar nunca. Y va en la misma transacción porque un cierre que no alcanza a
+   resolverlas deja exactamente el estado que esto viene a evitar.
 
 ## MIGRACIÓN
 
@@ -836,28 +840,28 @@ Y la regla de la madrugada ya resuelta en `events.starts_at` juega a favor: una 
 con `VENTA_ONLINE` apagado nadie tiene boletas. O sea que hoy el wrap de usuario sería
 "diste N likes" y nada más, que no es un wrap.
 
-## LO QUE NECESITO QUE DECIDAS
+## LAS CINCO DECISIONES — TOMADAS el 6 de octubre de 2026
 
-1. **¿El wrap de usuario entra ahora con solo likes, o espera a que haya venta?**
-   Recomiendo **esperar**. Un wrap de fin de año que dice solo "diste 12 likes" se lee como
-   que la plataforma no sabe nada de vos, y es la primera impresión de una función que se
-   comparte.
-2. **¿Quién dispara la generación?** Recomiendo **una ruta de mantenimiento con
-   `MIGRATE_SECRET`**, corrida a mano en enero, como la purga de `mail_outbox`. Un cron es
-   una pieza de infraestructura que todavía no existe en este repo, y una función que se
-   corre una vez al año no la justifica.
-3. **¿Se puede regenerar un wrap ya generado?** Recomiendo **sí, pero explícito**: con un
-   `&forzar=1` que lo diga, y que sin eso sea idempotente y no toque lo ya generado. Si se
-   descubre un error de cálculo en enero hay que poder corregirlo; si se regenera por
-   accidente en marzo, los números cambian y eso es lo que el snapshot vino a evitar.
-4. **¿Un wrap es público o solo del sujeto?** Recomiendo **público para DJ y colectivo**
-   —es press kit— y **privado para el usuario**, que es un perfil privado por decisión del
-   modelo de perfiles.
-5. **¿Mes más movido y mejor fiesta?** El modelo original los pedía para el DJ. Los dos se
-   pueden calcular hoy. Pero **"mejor fiesta" necesita un criterio**, y sin asistentes el
-   único disponible sería la duración, que no significa "mejor". Recomiendo **dejarlos
-   afuera hasta que haya atribución**, en vez de elegir un criterio que no mide lo que la
-   palabra promete.
+1. **El wrap de USUARIO ESPERA a que haya venta.** Hoy "a cuántos eventos fuiste" sale de las
+   boletas y con VENTA_ONLINE apagado nadie tiene ninguna, así que diría solo "diste N likes"
+   — que se lee como que la plataforma no sabe nada de vos, y es la primera impresión de una
+   función que se comparte.
+2. **Lo dispara una RUTA DE MANTENIMIENTO con MIGRATE_SECRET**, corrida a mano en enero. Un
+   cron es para algo que pasa seguido; esto pasa una vez al año y no justifica el disparador.
+   (Ojo con la asimetría respecto de la purga de mail_outbox, que SÍ va por cron: esa tiene
+   que correr sola todos los días o el plazo de 90 días no se cumple. Un wrap que se genera
+   tres días tarde no le hace daño a nadie.)
+3. **Se puede regenerar, pero EXPLÍCITO: con &forzar=1.** Sin eso es idempotente y no toca lo
+   ya generado. Hay que poder corregir un error de cálculo en enero; y hay que que un
+   accidente en marzo NO mueva los números, que es justo lo que el snapshot vino a evitar.
+4. **Público para DJ y colectivo; PRIVADO para el usuario.** Los dos primeros son press kit.
+   El del usuario es un perfil privado por el modelo de perfiles, y un wrap no lo cambia.
+5. **"Mes más movido" y "mejor fiesta" NO entran hasta que haya atribución.** Los dos se
+   pueden calcular hoy, y ahí está la trampa: **"mejor fiesta" necesita un CRITERIO**, y sin
+   asistentes el único disponible sería la duración, que no significa "mejor". Elegirlo haría
+   que la palabra prometa algo que el número no mide — la misma falla que un parcial
+   presentado como total, pero peor, porque acá el número estaría bien calculado y mal
+   nombrado.
 
 ## MIGRACIÓN
 
