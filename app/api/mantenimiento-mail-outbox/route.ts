@@ -33,12 +33,85 @@ import { DIAS_DE_RETENCION, purgarMailOutbox } from "@/lib/mail-retencion";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * ============================================================
+ * DOS PUERTAS, CON PODERES DISTINTOS A PROPÓSITO
+ * ============================================================
+ *
+ * A MANO, con MIGRATE_SECRET en la query: puede hacer dryRun y puede purgar.
+ * EL SCHEDULER, con Authorization: Bearer CRON_SECRET: SOLO puede purgar.
+ *
+ * ============================================================
+ * POR QUÉ UNA TERCERA LLAVE Y NO MIGRATE_SECRET
+ * ============================================================
+ *
+ * No es prolijidad: es que NO HAY FORMA de que un cron de Vercel mande un query param
+ * secreto. Los crons se declaran en vercel.json, que se COMMITEA al repo, así que poner
+ * ?secret=... ahí publicaría la llave que altera el esquema de producción y que es la
+ * segunda llave de la limpieza que borra pedidos y boletas.
+ *
+ * Vercel manda `Authorization: Bearer ${CRON_SECRET}` en cada invocación —verificado en su
+ * documentación, no de memoria— y ese es el camino que no deja el secreto en ningún archivo.
+ *
+ * Y es la misma decisión que el repo ya tomó dos veces: MIGRATE_SECRET abre el esquema y la
+ * plata, SMOKE_SECRET solo lee. Poderes distintos, llaves distintas. Un scheduler que corre
+ * solo todos los días no tiene por qué cargar la llave con la que se borran boletas.
+ *
+ * SIRVE IGUAL PARA UN GITHUB ACTION, y por eso este código no depende de cuál gane: un
+ * Action manda el mismo header con la llave desde los secrets del repo. El disparador se
+ * elige afuera; la puerta es la misma.
+ *
+ * ============================================================
+ * FALLA CERRADO
+ * ============================================================
+ *
+ * Si CRON_SECRET no está en el entorno, la puerta del scheduler NO EXISTE: `!cronSecret`
+ * corta antes de comparar. El default de un camino automático que destruye contenido es
+ * "no", igual que VENTA_ONLINE.
+ *
+ * Y el `!authHeader` no alcanza solo: sin el `!cronSecret`, un entorno sin la variable
+ * compararía `"Bearer undefined"` contra el header, que es exactamente el tipo de
+ * comparación que un día alguien satisface por accidente.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  if (!process.env.MIGRATE_SECRET || searchParams.get("secret") !== process.env.MIGRATE_SECRET) {
+  const dryRunPedido = searchParams.get("dryRun") === "1";
+
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+  const esCron = Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+
+  const esManual =
+    Boolean(process.env.MIGRATE_SECRET) &&
+    searchParams.get("secret") === process.env.MIGRATE_SECRET;
+
+  if (!esCron && !esManual) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const dryRun = searchParams.get("dryRun") === "1";
+
+  /**
+   * EL CRON NO PUEDE PEDIR dryRun, Y SE LE DICE EN VEZ DE IGNORARLO.
+   *
+   * Ignorarlo sería peor: alguien que configure el cron apuntando a ?dryRun=1 creería estar
+   * simulando y en realidad estaría purgando. Y al revés —tratarlo como simulación— dejaría
+   * un cron que corre todos los días sin purgar nunca, que es el agujero que esta pieza
+   * vino a tapar: una retención que no pasa.
+   *
+   * Un 400 ruidoso al primer intento es la única de las tres opciones que se nota.
+   */
+  if (esCron && dryRunPedido) {
+    return NextResponse.json(
+      {
+        error:
+          "El scheduler no puede pedir dryRun: o simula y entonces la retención no pasa " +
+          "nunca, o purga y entonces quien lo configuró creyó que simulaba. Sacá dryRun del " +
+          "path del cron, o corré la simulación a mano con MIGRATE_SECRET.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const dryRun = dryRunPedido && esManual;
   const sql = neon(process.env.DATABASE_URL!);
   const log: string[] = [];
 

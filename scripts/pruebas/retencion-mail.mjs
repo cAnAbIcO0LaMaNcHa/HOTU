@@ -20,6 +20,7 @@
  */
 
 import { neon } from "@neondatabase/serverless";
+import { readFileSync } from "fs";
 import { abrirCorrida } from "./seed.mjs";
 
 const BASE = "http://localhost:3000";
@@ -188,7 +189,114 @@ try {
     }
   }
 
+
+  console.log("\n=== 7. LA PUERTA DEL SCHEDULER: CRON_SECRET, NUNCA MIGRATE_SECRET ===");
+  {
+    const C = process.env.CRON_SECRET;
+    chk("CRON_SECRET está en el entorno de dev", Boolean(C), "sin ella no se puede probar esta puerta");
+
+    const conHeader = (valor) =>
+      fetch(`${BASE}/api/mantenimiento-mail-outbox`, {
+        headers: valor === null ? {} : { Authorization: valor },
+      });
+
+    /** SIN LLAVE. */
+    chk("sin ningún header ni secreto -> 401", (await conHeader(null)).status === 401);
+
+    /** LLAVE MALA, en sus tres formas de estar mal. */
+    for (const [v, que] of [
+      ["Bearer zz-no-es-la-llave", "un Bearer equivocado"],
+      [`Bearer ${C}x`, "la llave con un carácter de más"],
+      [C ?? "", "la llave SIN el prefijo Bearer"],
+      ["Bearer undefined", "el literal 'Bearer undefined'"],
+    ]) {
+      chk(`${que} -> 401`, (await conHeader(v)).status === 401, que);
+    }
+
+    /**
+     * Y LA LLAVE DE MIGRACIONES NO ABRE ESTA PUERTA POR HEADER. Son poderes distintos: el
+     * scheduler no tiene por qué cargar la llave con la que se borran boletas, y si una
+     * abriera la otra la separación no existiría.
+     */
+    const M = process.env.MIGRATE_SECRET;
+    if (M && M !== C) {
+      chk("MIGRATE_SECRET como Bearer -> 401", (await conHeader(`Bearer ${M}`)).status === 401);
+    }
+
+    /** LLAVE BUENA: purga, y solo lo que pasó el plazo. */
+    if (C) {
+      await sql`DELETE FROM mail_outbox WHERE tipo = 'zz-prueba'`;
+      const vieja = await encolar(95, "cron-vieja");
+      const nueva = await encolar(10, "cron-nueva");
+
+      const r = await conHeader(`Bearer ${C}`);
+      const d = await r.json().catch(() => ({}));
+      chk("con la llave buena -> 200", r.status === 200, String(r.status));
+      chk("PURGÓ UNA, la de 95 días", d?.purgadas === 1, JSON.stringify(d?.purgadas));
+
+      const [v] = await sql`SELECT cuerpo, purgado_en FROM mail_outbox WHERE id = ${vieja}`;
+      chk("la vieja quedó sin cuerpo", v?.cuerpo === null, JSON.stringify(v?.cuerpo));
+      chk("y con purgado_en", v?.purgado_en !== null, JSON.stringify(v?.purgado_en));
+      const [n] = await sql`SELECT cuerpo FROM mail_outbox WHERE id = ${nueva}`;
+      chk("LA DE 10 DÍAS NO SE TOCÓ", n?.cuerpo !== null, "se purgó antes de tiempo");
+
+      /** Y es idempotente por esta puerta también. */
+      const otra = await (await conHeader(`Bearer ${C}`)).json().catch(() => ({}));
+      chk("la segunda pasada del cron purga CERO", otra?.purgadas === 0, JSON.stringify(otra?.purgadas));
+
+      /**
+       * EL CRON NO PUEDE PEDIR dryRun, y da 400 en vez de ignorarlo: ignorarlo dejaría a
+       * alguien creyendo que simula mientras purga, o un cron que no purga nunca.
+       */
+      const seco = await fetch(`${BASE}/api/mantenimiento-mail-outbox?dryRun=1`, {
+        headers: { Authorization: `Bearer ${C}` },
+      });
+      chk("el cron pidiendo dryRun -> 400", seco.status === 400, String(seco.status));
+      const msj = await seco.json().catch(() => ({}));
+      chk("y el mensaje explica las dos salidas malas", /simula|purga/i.test(msj?.error ?? ""), msj?.error);
+
+      /** Pero a mano SÍ se puede simular, que es para lo que existe el dryRun. */
+      const aMano = await fetch(`${BASE}/api/mantenimiento-mail-outbox?dryRun=1&secret=${M}`);
+      chk("a mano con MIGRATE_SECRET el dryRun SÍ anda -> 200", aMano.status === 200, String(aMano.status));
+
+      await sql`DELETE FROM mail_outbox WHERE tipo = 'zz-prueba'`;
+    }
+  }
   await sql`DELETE FROM mail_outbox WHERE tipo = 'zz-prueba'`;
+
+  console.log("\n=== 8. FALLA CERRADO: SIN CRON_SECRET LA PUERTA NO EXISTE ===");
+  {
+    /**
+     * ESTA ES LA ÚNICA RAMA QUE NO SE PUEDE PROBAR CONTRA EL SERVER, y hay que decir por qué
+     * en vez de saltearla: el server lee el entorno al arrancar, así que probar "sin
+     * CRON_SECRET" exigiría reiniciarlo sin la variable en medio de la batería. Eso dejaría
+     * el server en un estado distinto del que tiene el resto de la suite.
+     *
+     * Así que se prueba LA DECISIÓN, no el transporte: se evalúa la misma expresión del
+     * route handler con la variable ausente. Es un modelo, y por eso la expresión está
+     * copiada literal de app/api/mantenimiento-mail-outbox/route.ts — si allá cambia y acá
+     * no, esta prueba deja de significar algo, y el grep de abajo lo ataja.
+     */
+    const abre = (cronSecret, authHeader) =>
+      Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+
+    chk("sin la variable, un Bearer cualquiera NO abre", abre(undefined, "Bearer lo-que-sea") === false);
+    chk("sin la variable, 'Bearer undefined' NO abre", abre(undefined, "Bearer undefined") === false);
+    chk("con la variable vacía tampoco", abre("", "Bearer ") === false);
+    chk("y con la variable puesta y el header correcto SÍ", abre("abc", "Bearer abc") === true);
+
+    /**
+     * Y QUE LA EXPRESIÓN DE ARRIBA SIGA SIENDO LA DEL CÓDIGO. Un grep estático, igual que el
+     * de un-solo-escritor-de-residente: si el route handler cambiara su forma de decidir,
+     * esto falla ruidosamente en vez de seguir probando una copia vieja.
+     */
+    const fuente = readFileSync("app/api/mantenimiento-mail-outbox/route.ts", "utf8");
+    chk(
+      "el route handler sigue decidiendo con Boolean(cronSecret) && header === `Bearer ${cronSecret}`",
+      /Boolean\(cronSecret\)\s*&&\s*authHeader === `Bearer \$\{cronSecret\}`/.test(fuente),
+      "la expresión del código cambió: esta sección está probando una copia vieja"
+    );
+  }
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);
