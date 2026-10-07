@@ -686,6 +686,43 @@ Qué pasa con cada cosa NO lo decide el código: lo decide el SCHEMA, que es don
 
 Ese RESTRICT es el que importa: una boleta es prueba de un pago. Lo que hay que hacer con esa cuenta es BANEARLA, que no borra nada y se deshace.
 
+EL CRITERIO DEL RESTRICT NO ES "ES PLATA": ES "ES EL REGISTRO DE UNA DECISIÓN ENTRE DOS PARTES".
+
+Una boleta lo es —alguien pagó y HOTU se comprometió— y por eso orders y tickets van RESTRICT.
+Y una POSTULACIÓN A UNA CONVOCATORIA también lo es: un DJ se ofreció, el dueño aceptó o
+rechazó, y si le canceló la participación quedó escrito el motivo. Así que los cuatro FK
+estructurales de convocatorias van RESTRICT y no CASCADE:
+
+    event_calls.event_id            -> events       ON DELETE RESTRICT
+    event_calls.collective_slug     -> collectives  ON DELETE RESTRICT
+    event_applications.call_id      -> event_calls  ON DELETE RESTRICT
+    event_applications.artist_slug  -> artists      ON DELETE RESTRICT
+
+Nacieron CASCADE, con el argumento de que una postulación sin postulante no se puede juzgar.
+El argumento es cierto y la conclusión estaba mal: borrar un evento sin boletas se llevaba el
+rastro de todo lo que se había acordado, sin que nada lo dijera.
+
+UN RESTRICT NO ES UNA PROHIBICIÓN, ES LA OBLIGACIÓN DE DECIDIR. Quien construya el borrado de
+eventos o de artistas tiene que resolver qué hacer con las postulaciones, a la vista y contando
+filas — igual que la limpieza pre-lanzamiento con las boletas.
+
+LOS *_por SIGUEN SET NULL, y la asimetría es la de offered_by y censored_by: si la cuenta se
+borra, la convocatoria SIGUIÓ pasando y la cancelación SIGUIÓ teniendo su motivo. Se pierde
+quién, no el hecho. Por eso borrar una cuenta no choca contra ninguno de esos cuatro RESTRICT.
+
+Y UN RESTRICT MUEVE TRABAJO A OTRA PARTE, así que al poner uno hay que ir a buscar cada DELETE
+que ahora puede chocar. Medido con grep al poner estos cuatro: el único borrado de eventos de
+la app es deleteCommunityEvent, que necesitó la misma guarda previa de 409 que ya tenía para
+las boletas; y NADA borra artists ni collectives desde la app. El otro lugar donde el orden
+pasó a importar es restaurarSeed(), que borra events, collectives y artists POR PATRÓN: ahí
+las dos tablas tienen que ir ANTES, o el barrido se corta a mitad con una violación de FK.
+
+Y LA LIMPIEZA PRE-LANZAMIENTO NO NECESITÓ NINGÚN CAMBIO, que es un resultado y no un
+descuido: borra comercio y la cuenta, y NUNCA borra eventos, artistas ni colectivos. Los
+cuatro RESTRICT no pueden dispararse ahí. El día que la limpieza aprenda a borrar eventos de
+prueba, el orden es postulaciones, convocatorias, y después el evento — igual que
+atribuciones, boletas, items y pedidos.
+
 Al eliminar se elige qué pasa con los perfiles que administraba: dejarlos DESAMPARADOS (siguen publicados, sin dueño, reclamables) u OCULTARLOS (se censuran, se puede levantar). Ocultar alcanza también a los sets y tracks del artista: esconder el perfil y dejar la discografía en /sets y /discografia es esconder a medias, que es peor que no esconder porque nadie se da cuenta. Los eventos y las noticias del colectivo NO se tocan nunca, por lo mismo que no los toca el ban: hay gente con boletas compradas.
 
 Todo borrado deja fila en account_removals, que NO TIENE FK a propósito —tiene que sobrevivir a la cuenta que registra— y guarda `plan` (lo que la vista previa dijo) y `measured` (lo que de verdad se borró, contado con RETURNING). Un measured en NULL significa algo preciso: se borró pero no se alcanzó a contar. Es información, no un hueco.

@@ -55,6 +55,43 @@
  * proveedor.
  *
  * ============================================================
+ * NADA DE ESTO SE BORRA EN SILENCIO: LOS CUATRO FK ESTRUCTURALES VAN RESTRICT
+ * ============================================================
+ *
+ *   event_calls.event_id              -> events       ON DELETE RESTRICT
+ *   event_calls.collective_slug       -> collectives  ON DELETE RESTRICT
+ *   event_applications.call_id        -> event_calls  ON DELETE RESTRICT
+ *   event_applications.artist_slug    -> artists      ON DELETE RESTRICT
+ *
+ * La primera versión los tenía CASCADE, con el argumento de que una postulación sin
+ * postulante no se puede juzgar. El argumento es cierto y la conclusión estaba mal: una
+ * postulación no es solo algo que se juzga, es EL REGISTRO DE UNA DECISIÓN ENTRE DOS
+ * PARTES, y una cancelada guarda además el motivo por el que se deshizo. Con CASCADE,
+ * borrar un evento sin boletas se llevaba ese rastro sin que nada lo dijera.
+ *
+ * ES EL MISMO CRITERIO QUE orders Y tickets: la base NIEGA el borrado, y quien construya el
+ * borrado de eventos o de artistas decide qué hacer con las postulaciones, a la vista y
+ * contando filas. Un RESTRICT no es una prohibición, es la obligación de decidir.
+ *
+ * LOS CUATRO *_por SIGUEN SET NULL, y la asimetría es la misma de offered_by y censored_by:
+ * si la cuenta del dueño se borra, la convocatoria SIGUIÓ pasando y la cancelación SIGUIÓ
+ * teniendo su motivo. Lo que se pierde es quién, no el hecho. Por eso borrar una cuenta no
+ * choca contra ninguno de estos cuatro RESTRICT.
+ *
+ * DOS CONSECUENCIAS MEDIDAS, PORQUE UN RESTRICT MUEVE TRABAJO A OTRA PARTE:
+ *
+ *   deleteCommunityEvent en lib/events-write.ts hace DELETE FROM events y ES EL ÚNICO
+ *   borrado de eventos de la app. Con RESTRICT, un evento con convocatoria le daría una
+ *   violación de FK cruda en vez de su 409. Necesita la misma guarda previa que ya tiene
+ *   para boletas, y va en su propio commit DESPUÉS de que esta migración corra en main:
+ *   leer event_calls antes de que exista sería un 500 en producción.
+ *
+ *   restaurarSeed() en scripts/pruebas/seed.mjs borra events, collectives y artists POR
+ *   PATRÓN, así que con RESTRICT el barrido se rompe si una batería dejó una convocatoria.
+ *   Las dos tablas entran ahí ANTES de esas tres. Nada borra artists ni collectives desde
+ *   la app —medido con grep— así que el arnés es el único lugar donde el orden ya importa.
+ *
+ * ============================================================
  * EL CIERRE AUTOMÁTICO VA A ESTAR PARTIDO EN DOS, Y NINGUNA MITAD ES UN CHECK
  * ============================================================
  *
@@ -279,11 +316,11 @@ const FKS: Record<string, Array<[string, string]>> = {
   [CALLS]: [
     [
       `${CALLS}_event_id_fkey`,
-      "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE",
+      "FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE RESTRICT",
     ],
     [
       `${CALLS}_collective_slug_fkey`,
-      "FOREIGN KEY (collective_slug) REFERENCES collectives(slug) ON UPDATE CASCADE ON DELETE CASCADE",
+      "FOREIGN KEY (collective_slug) REFERENCES collectives(slug) ON UPDATE CASCADE ON DELETE RESTRICT",
     ],
     /**
      * abierta_por y cerrada_por van SET NULL y no CASCADE: si la cuenta se borra, LA
@@ -301,15 +338,22 @@ const FKS: Record<string, Array<[string, string]>> = {
   [APPS]: [
     [
       `${APPS}_call_id_fkey`,
-      `FOREIGN KEY (call_id) REFERENCES ${CALLS}(id) ON DELETE CASCADE`,
+      `FOREIGN KEY (call_id) REFERENCES ${CALLS}(id) ON DELETE RESTRICT`,
     ],
     /**
-     * CASCADE al artista, y es a propósito: una postulación sin postulante no se puede
-     * juzgar. Al revés que dj_sets, donde la fila sobrevive porque artist_name la sostiene.
+     * RESTRICT AL ARTISTA, Y NO CASCADE, QUE ERA LO QUE DECÍA ESTE COMENTARIO.
+     *
+     * El argumento viejo era que una postulación sin postulante no se puede juzgar, y es
+     * cierto — pero una postulación no es solo algo que se juzga: es el REGISTRO DE UNA
+     * DECISIÓN ENTRE DOS PARTES, y una cancelada guarda además su motivo. Eso no se borra
+     * en silencio porque alguien borró una fila del otro lado.
+     *
+     * Mismo criterio que orders y tickets: la base NIEGA el borrado y quien construya el
+     * borrado de artistas decide qué hacer con las postulaciones, a la vista.
      */
     [
       `${APPS}_artist_slug_fkey`,
-      "FOREIGN KEY (artist_slug) REFERENCES artists(slug) ON UPDATE CASCADE ON DELETE CASCADE",
+      "FOREIGN KEY (artist_slug) REFERENCES artists(slug) ON UPDATE CASCADE ON DELETE RESTRICT",
     ],
     [
       `${APPS}_resuelta_por_fkey`,
@@ -620,8 +664,8 @@ export async function GET(request: Request) {
       sql(`
         CREATE TABLE IF NOT EXISTS ${CALLS} (
           id SERIAL PRIMARY KEY,
-          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-          collective_slug TEXT NOT NULL REFERENCES collectives(slug) ON UPDATE CASCADE ON DELETE CASCADE,
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+          collective_slug TEXT NOT NULL REFERENCES collectives(slug) ON UPDATE CASCADE ON DELETE RESTRICT,
           cupos INTEGER,
           cierra_en TIMESTAMPTZ,
           cerrada_en TIMESTAMPTZ,
@@ -634,8 +678,8 @@ export async function GET(request: Request) {
       sql(`
         CREATE TABLE IF NOT EXISTS ${APPS} (
           id SERIAL PRIMARY KEY,
-          call_id INTEGER NOT NULL REFERENCES ${CALLS}(id) ON DELETE CASCADE,
-          artist_slug TEXT NOT NULL REFERENCES artists(slug) ON UPDATE CASCADE ON DELETE CASCADE,
+          call_id INTEGER NOT NULL REFERENCES ${CALLS}(id) ON DELETE RESTRICT,
+          artist_slug TEXT NOT NULL REFERENCES artists(slug) ON UPDATE CASCADE ON DELETE RESTRICT,
           mensaje TEXT NOT NULL,
           disponibilidad TEXT NOT NULL,
           resuelta_en TIMESTAMPTZ,

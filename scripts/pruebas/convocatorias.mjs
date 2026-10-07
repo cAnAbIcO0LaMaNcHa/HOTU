@@ -264,6 +264,105 @@ try {
   );
 
   await sql`DELETE FROM event_calls WHERE id = ${call}`;
+
+  console.log("\n8. NADA SE BORRA EN SILENCIO: LOS CUATRO RESTRICT");
+  /**
+   * Esto NO prueba la definición del FK —eso lo hace la migración comparando la forma— sino
+   * la CONDUCTA: que el DELETE del otro lado efectivamente se niegue. Es la misma distinción
+   * que con los CHECK: la definición puede estar escrita tal como se declaró y significar
+   * otra cosa.
+   *
+   * Los fixtures se nombran con palabras distintas y no numeradas, porque ningún nombre de
+   * fixture puede ser prefijo de otro.
+   */
+  const dueno = "zz-restrict-uno@test.hotu.local";
+  await sql`
+    INSERT INTO user_profiles (email, display_name, auth_provider)
+    VALUES (${dueno}, 'ZZ Restrict Alfa', 'credentials')`;
+  /**
+   * LAS COLUMNAS NOT NULL SIN DEFAULT ESTÁN TODAS, Y SE MIDIERON EN VEZ DE ADIVINARLAS.
+   * Medido contra information_schema: artists exige slug, name, genre, city, bio y
+   * joined_at; collectives exige slug, name, type, sector y bio; events exige event_date,
+   * city, venue, title, lineup y district. Adiviné dos veces antes de preguntárselo a la
+   * base, y cada intento costó una corrida entera.
+   */
+  await sql`
+    INSERT INTO artists (slug, name, genre, district, city, bio, joined_at)
+    VALUES ('zz-restrict-alfa', 'ZZ Restrict Alfa', 'techno', '06', 'Bogota',
+            'fixture de la bateria de convocatorias', CURRENT_DATE)`;
+  await sql`
+    INSERT INTO collectives (slug, name, type, sector, bio)
+    VALUES ('zz-restrict-beta', 'ZZ Restrict Beta', 'colectivo', 'centro',
+            'fixture de la bateria de convocatorias')`;
+  const ev2 = (
+    await sql`
+      INSERT INTO events (title, event_date, city, venue, district, lineup)
+      VALUES ('ZZ Restrict Gamma', CURRENT_DATE + 30, 'Bogotá', 'ZZ Galpon', '06', 'ZZ Restrict Alfa')
+      RETURNING id`
+  )[0].id;
+  const call2 = (
+    await sql`
+      INSERT INTO event_calls (event_id, collective_slug, abierta_por)
+      VALUES (${ev2}, 'zz-restrict-beta', ${dueno}) RETURNING id`
+  )[0].id;
+  const post2 = (
+    await sql`
+      INSERT INTO event_applications (call_id, artist_slug, mensaje, disponibilidad)
+      VALUES (${call2}, 'zz-restrict-alfa', 'me anoto', 'los viernes') RETURNING id`
+  )[0].id;
+
+  const seNiega = async (nombre, consulta) => {
+    let err = null;
+    try {
+      await consulta();
+    } catch (e) {
+      err = String(e.message || e);
+    }
+    chk(nombre, Boolean(err) && err.includes("violates foreign key"), err ?? "entró y no debía");
+  };
+
+  await seNiega(
+    "borrar el EVENTO de una convocatoria se niega",
+    () => sql`DELETE FROM events WHERE id = ${ev2}`
+  );
+  await seNiega(
+    "borrar el COLECTIVO que la abrió se niega",
+    () => sql`DELETE FROM collectives WHERE slug = 'zz-restrict-beta'`
+  );
+  await seNiega(
+    "borrar el ARTISTA que se postuló se niega",
+    () => sql`DELETE FROM artists WHERE slug = 'zz-restrict-alfa'`
+  );
+  await seNiega(
+    "borrar la CONVOCATORIA con postulaciones se niega",
+    () => sql`DELETE FROM event_calls WHERE id = ${call2}`
+  );
+
+  /**
+   * Y LA OTRA MITAD: la cuenta del dueño SÍ se borra, y la convocatoria sobrevive sin ella.
+   * Es la asimetría deliberada —se pierde quién, no el hecho— y sin medirla, "los *_por siguen
+   * SET NULL" es una afirmación sobre un archivo y no sobre la base.
+   */
+  await sql`DELETE FROM user_profiles WHERE email = ${dueno}`;
+  const [tras] = await sql`SELECT abierta_por FROM event_calls WHERE id = ${call2}`;
+  chk(
+    "borrar la cuenta del dueño NO borra la convocatoria, le deja abierta_por en NULL",
+    Boolean(tras) && tras.abierta_por === null,
+    tras ? `abierta_por = ${tras.abierta_por}` : "la convocatoria desapareció"
+  );
+
+  /** Y en el orden correcto sale todo, que es lo que hace el barrido del arnés. */
+  await sql`DELETE FROM event_applications WHERE id = ${post2}`;
+  await sql`DELETE FROM event_calls WHERE id = ${call2}`;
+  let orden = null;
+  try {
+    await sql`DELETE FROM events WHERE id = ${ev2}`;
+    await sql`DELETE FROM collectives WHERE slug = 'zz-restrict-beta'`;
+    await sql`DELETE FROM artists WHERE slug = 'zz-restrict-alfa'`;
+  } catch (e) {
+    orden = String(e.message || e);
+  }
+  chk("en el orden correcto —postulaciones, convocatoria, resto— sale todo", !orden, orden ?? "");
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);

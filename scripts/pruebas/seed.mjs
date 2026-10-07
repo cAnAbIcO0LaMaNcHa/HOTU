@@ -79,6 +79,25 @@ export async function restaurarSeed(sql) {
             WHERE para LIKE '%@test.hotu.local' OR para LIKE '%@perfil.hotu.local'
                OR para LIKE 'zz-%' OR referencia LIKE '%zz-%'`;
   await sql`DELETE FROM artist_collectives WHERE collective_slug LIKE 'zz-%' OR artist_slug LIKE 'zz-%'`;
+  /**
+   * LAS CONVOCATORIAS Y SUS POSTULACIONES VAN ANTES DE events, collectives Y artists, Y
+   * ACÁ EL ORDEN ES LO QUE HACE QUE EL BARRIDO FUNCIONE.
+   *
+   * Los cuatro FK estructurales de esas dos tablas son ON DELETE RESTRICT, no CASCADE: una
+   * postulación es el registro de una decisión entre dos partes y la base se niega a
+   * borrarla por debajo. Así que un DELETE FROM events que llegue primero no se las lleva
+   * puestas: TIRA una violación de FK y deja el barrido a mitad.
+   *
+   * Es el mismo mecanismo que el comercio de prueba de más abajo, y por el mismo motivo:
+   * la guarda sigue armada todo el tiempo, lo que el barrido hace es sacar de adelante lo
+   * que protege.
+   */
+  await sql`DELETE FROM event_applications WHERE call_id IN (
+              SELECT id FROM event_calls WHERE collective_slug LIKE 'zz-%'
+                 OR event_id IN (SELECT id FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%')
+            ) OR artist_slug LIKE 'zz-%'`;
+  await sql`DELETE FROM event_calls WHERE collective_slug LIKE 'zz-%'
+               OR event_id IN (SELECT id FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%')`;
   await sql`DELETE FROM order_items WHERE event_id IN (SELECT id FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%')`;
   await sql`DELETE FROM events WHERE title LIKE 'ZZ%' OR title LIKE 'ZB-%' OR title LIKE 'EVT-%' OR title LIKE 'CEN-%' OR title LIKE 'HALL-%' OR title LIKE 'ADM-%' OR title LIKE 'PRUEBA-%'`;
   await sql`DELETE FROM news WHERE title LIKE 'ZZ%' OR title LIKE 'CEN-%' OR title LIKE 'HALL-%' OR title LIKE 'ADM-%' OR title LIKE 'PRUEBA-%'`;
@@ -208,11 +227,13 @@ const TABLAS_VOLATILES = [
   ["residency_offers", "id::text"],
   /**
    * event_applications VA ANTES DE event_calls, y las dos antes de events, collectives y
-   * artists. Sus FK son todos CASCADE, así que el orden no las salva de quedar colgadas —se
-   * irían igual— pero el conteo que imprime limpiarLoCreado sería mentira: diría 0
-   * postulaciones cuando en realidad se las llevó el borrado del evento. Mismo criterio que
-   * residency_offers, y por el mismo motivo: un barrido que no dice cuántas filas se llevó
-   * no está auditado.
+   * artists. ACÁ EL ORDEN NO ES COSMÉTICO: los cuatro FK estructurales son ON DELETE
+   * RESTRICT, así que un DELETE FROM events que llegue primero no se las lleva puestas,
+   * TIRA una violación de FK y deja el barrido a mitad.
+   *
+   * (La primera versión de este comentario decía lo contrario —que los FK eran CASCADE y
+   * que el orden solo servía para que el conteo no mintiera—. Era cierto cuando se
+   * escribió y dejó de serlo el mismo día, al pasar los FK a RESTRICT.)
    */
   ["event_applications", "id::text"],
   ["event_calls", "id::text"],
