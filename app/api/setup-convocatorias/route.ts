@@ -225,27 +225,38 @@ const CHECKS: Record<string, Array<[string, string]>> = {
      * resolver para no tener que escribirlo, y entonces el DJ no se entera de nada. Eso ya
      * está decidido y es el motivo de que sean dos reglas distintas sobre la misma columna.
      */
+    /**
+     * LOS DOS CHECK DE ACÁ ARRIBA NACIERON CON EL MISMO AGUJERO, Y HAY QUE CONTARLO JUNTO
+     * PORQUE EL SEGUNDO SE ESCONDÍA DETRÁS DEL PRIMERO.
+     *
+     * Los dos usan OR entre dos ramas, y en SQL una rama que da NULL no es false: UN CHECK
+     * QUE EVALÚA A NULL PASA. Así que cada rama necesita que su comparación con `resultado`
+     * sea false y no NULL cuando resultado es NULL —o sea, cuando la postulación está
+     * pendiente—.
+     *
+     * _motivo_check decía `(resultado = ANY (ARRAY[...]))` y le faltaba
+     * `(resultado IS NOT NULL)` adelante: una PENDIENTE con motivo entraba. Lo encontró la
+     * batería mandando el INSERT de verdad, no la comparación de definiciones — la
+     * definición medida coincidía con la declarada, y la declarada estaba mal.
+     *
+     * _cancelacion_check tenía la rama derecha protegida con IS DISTINCT FROM y la
+     * IZQUIERDA no, y el comentario afirmaba que IS DISTINCT FROM cerraba el hueco cuando
+     * cerraba una mitad. Con resultado NULL, cancelada_en puesto Y motivo puesto, la
+     * izquierda daba NULL, la derecha false, NULL OR false da NULL, y la fila entraba. Lo
+     * encontró el migration-reviewer y está MEDIDO aislando ese CHECK de los demás.
+     *
+     * Y ESO ES LO QUE HAY QUE LLEVARSE: el segundo agujero era LATENTE, porque la fila la
+     * rechazaba _motivo_check. Que no fuera alcanzable no lo hacía menos grave — hacía que
+     * la garantía de un CHECK dependiera de otro CHECK, y _motivo_check ya se editó dos
+     * veces. Las dos ramas llevan su propia defensa.
+     *
+     * Postgres rinde IS NOT DISTINCT FROM como NOT (x IS DISTINCT FROM y). Medido.
+     */
     [
       `${APPS}_cancelacion_check`,
-      "CHECK ((((resultado = 'cancelada'::text) AND (cancelada_en IS NOT NULL) AND (motivo IS NOT NULL)) OR ((resultado IS DISTINCT FROM 'cancelada'::text) AND (cancelada_en IS NULL))))",
+      "CHECK ((((NOT (resultado IS DISTINCT FROM 'cancelada'::text)) AND (cancelada_en IS NOT NULL) AND (motivo IS NOT NULL)) OR ((resultado IS DISTINCT FROM 'cancelada'::text) AND (cancelada_en IS NULL))))",
     ],
-    /**
-     * EL (resultado IS NOT NULL) DEL CHECK DE ARRIBA ES LO MISMO, Y ME LO COMÍ UNA LÍNEA
-     * MÁS ARRIBA. Sin él, una PENDIENTE con motivo pasaba: resultado = ANY (...) con
-     * resultado en NULL da NULL, el AND entero da NULL, el OR da NULL, y UN CHECK QUE DA
-     * NULL PASA.
-     *
-     * Lo encontró una prueba que manda el INSERT de verdad, no la comparación de
-     * definiciones: la definición medida coincidía con la que yo había escrito, y la que yo
-     * había escrito estaba mal. Comparar la forma prueba que quedó como dice que quedó, no
-     * que lo que dice sea correcto.
-     */
-    /**
-     * IS DISTINCT FROM y no <>, y acá importa: con <> la rama derecha sería NULL cuando
-     * resultado es NULL —una postulación pendiente—, el OR entero daría NULL, y un CHECK que
-     * da NULL PASA. O sea que una pendiente podría tener cancelada_en puesta sin que nada
-     * chille. Medido en la definición que Postgres rinde, no supuesto.
-     */
+    /** Mismo criterio que event_calls_cerrada_coherente_check: no hay autor sin hecho. */
     [
       `${APPS}_cancelada_por_check`,
       "CHECK (((cancelada_por IS NULL) OR (cancelada_en IS NOT NULL)))",
@@ -378,6 +389,10 @@ type Columna = { nombre: string; tipo: string; aceptaNull: boolean; default: str
 type Forma = { existe: boolean; columnas: Columna[]; checks: string[]; fks: string[]; indices: string[] };
 type Estado = { formas: Record<string, Forma>; conteos: Record<string, number> };
 
+/** Los totales que el log afirma, sacados de lo declarado y no escritos a mano. */
+const totalDe = (m: Record<string, Array<[string, string]>>) =>
+  TABLAS.reduce((n, t) => n + m[t].length, 0);
+
 function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
   const p: string[] = [];
 
@@ -405,6 +420,20 @@ function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
           `${tabla}.${nombre} tiene default ${c.default ?? "ninguno"} y se esperaba ${def ?? "ninguno"}`
         );
       }
+    }
+
+    /**
+     * Y LAS COLUMNAS SE CUENTAN, no solo se comparan una por una. El loop de arriba
+     * recorre las que esta migración DECLARA, así que una tabla preexistente con una
+     * columna de más de una versión anterior pasaba limpia, y el log afirmaba el número
+     * declarado como si lo hubiera medido. Es la regla del repo aplicada a sí misma: un
+     * log que afirma sin verificar es peor que no loguear.
+     */
+    if (f.columnas.length !== COLUMNAS[tabla].length) {
+      p.push(
+        `${tabla} tiene ${f.columnas.length} columnas y se esperaban ` +
+          `${COLUMNAS[tabla].length} (${f.columnas.map((c) => c.nombre).join(", ")})`
+      );
     }
 
     const exacto = (lista: string[], nombre: string, esperado: string, que: string) => {
@@ -530,11 +559,18 @@ export async function GET(request: Request) {
      * vería acá, y una medición que no puede cambiar no prueba nada.
      */
     const [ev] = await sql`SELECT COUNT(*)::int AS n FROM events`;
-    const [li] = await sql`SELECT COUNT(*)::int AS n FROM event_lineup`;
-    const conteos: Record<string, number> = {
-      filas_events: ev.n as number,
-      filas_event_lineup: li.n as number,
-    };
+    const conteos: Record<string, number> = { filas_events: ev.n as number };
+    /**
+     * El COUNT de event_lineup VA DETRÁS DE SU GUARDA. Sin ella, en una base donde esa
+     * tabla no existe la migración tiraba 500 —en el dryRun y en la corrida real— y el
+     * mensaje bueno, el que dice "falta la tabla event_lineup", era inalcanzable. No
+     * dañaba nada, falla cerrado y sin escribir; lo que perdía era la única línea que
+     * explicaba qué hacer.
+     */
+    if (formas.event_lineup.existe) {
+      const [li] = await sql`SELECT COUNT(*)::int AS n FROM event_lineup`;
+      conteos.filas_event_lineup = li.n as number;
+    }
     for (const t of TABLAS) {
       conteos[`filas_${t}`] = 0;
       if (formas[t].existe) {
@@ -666,10 +702,11 @@ export async function GET(request: Request) {
     const v = verificarForma(despues);
     log.push(
       v.ok
-        ? `VERIFICADO: ${CALLS} con sus 10 columnas y ${APPS} con sus 12, sus 10 CHECK, sus 8 FK ` +
-            "y los 6 índices que declara —dos de ellos únicos parciales— además de los dos " +
-            "_pkey que Postgres crea solos. Y event_lineup_event_artist_idx sigue en su lugar, " +
-            "verificado por definición y no por nombre."
+        ? `VERIFICADO: ${CALLS} con sus ${COLUMNAS[CALLS].length} columnas y ${APPS} con sus ` +
+            `${COLUMNAS[APPS].length}, sus ${totalDe(CHECKS)} CHECK, sus ${totalDe(FKS)} FK y los ` +
+            `${totalDe(INDICES)} índices que declara —dos de ellos únicos parciales— además de ` +
+            "los dos _pkey que Postgres crea solos. Y event_lineup_event_artist_idx sigue en su " +
+            "lugar, verificado por definición y no por nombre."
         : `NO VERIFICADO: ${v.problemas.length} problema(s).`
     );
     for (const x of v.problemas) log.push(`  - ${x}`);
@@ -689,7 +726,19 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       dryRun: false,
-      verificado: v.ok && cambiaron.length === 0,
+      /**
+       * verificado ES SOLO LA FORMA, y los conteos van en su propio campo.
+       *
+       * Mezclarlos los hacía contradecirse con el log: en main alcanza con que alguien
+       * publique un evento entre las dos mediciones para que filas_events cambie, y
+       * entonces el JSON decía verificado:false mientras el log decía VERIFICADO. La regla
+       * del repo es que gana el log, así que la contradicción se resuelve no creándola.
+       *
+       * Y es lo que la regla dice de verdad: ok = no tiró excepción, verificado = quedó
+       * como dice que quedó. Una fila que alguien insertó por otro lado no es la forma.
+       */
+      verificado: v.ok,
+      conteosEstables: cambiaron.length === 0,
       problemas: v.problemas,
       antes,
       despues,

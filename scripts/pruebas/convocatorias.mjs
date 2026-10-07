@@ -137,6 +137,23 @@ try {
     ", now(), 'aceptada', now()"
   );
 
+  /**
+   * ESTE ES EL CASO QUE ERA LATENTE, y va acá y no en la sección del motivo porque lo que
+   * prueba es _cancelacion_check.
+   *
+   * Con resultado NULL, cancelada_en puesto Y motivo puesto, la rama izquierda del CHECK
+   * daba NULL y la fila entraba. Hoy la rechaza _motivo_check igual, así que esta prueba
+   * pasaría incluso con el agujero abierto — y se deja escrita de todos modos, porque lo que
+   * documenta es que la fila NO debe entrar por ningún camino. Si algún día alguien afloja
+   * _motivo_check, el que tiene que atajarla es el de la cancelación.
+   */
+  await probar(
+    "una PENDIENTE con cancelada_en Y motivo (el agujero latente)",
+    true,
+    ", cancelada_en, motivo",
+    ", now(), 'porque'"
+  );
+
   console.log("\n4. EL MOTIVO NO VALE EN CUALQUIER PARTE");
   /** Y este es el caso que comparar definiciones no vio. */
   await probar("una PENDIENTE con motivo", true, ", motivo", ", 'porque'");
