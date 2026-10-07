@@ -145,9 +145,24 @@ const COLUMNAS: Record<string, DefCol[]> = {
     ["resuelta_en", /timestamp with time zone/i, true, null],
     ["resultado", /text/i, true, null],
     ["resuelta_por", /text/i, true, null],
+    /**
+     * EL MOTIVO SIRVE PARA LAS DOS COSAS, y por eso es una columna y no dos: en un rechazo es
+     * OPCIONAL —así se decidió, porque un motivo obligatorio hace que el dueño no cierre
+     * postulaciones para no tener que escribirlo— y en una cancelación de participación es
+     * OBLIGATORIO. Un CHECK distingue los dos casos; dos columnas habrían dejado una siempre
+     * vacía.
+     */
+    ["motivo", /text/i, true, null],
+    /**
+     * CANCELAR NO PISA resuelta_en, y es el punto de que sean dos columnas: resuelta_en guarda
+     * CUÁNDO SE ACEPTÓ y cancelada_en CUÁNDO SE DESHIZO. Reusar una sola borraría la fecha del
+     * acuerdo al deshacerlo, y entonces nadie podría decir cuánto tiempo el DJ estuvo
+     * programado — que es justo lo que alguien va a preguntar.
+     */
+    ["cancelada_en", /timestamp with time zone/i, true, null],
+    ["cancelada_por", /text/i, true, null],
     ["creada_en", /timestamp with time zone/i, false, "now()"],
-  ],
-};
+  ],};
 
 const CHECKS: Record<string, Array<[string, string]>> = {
   [CALLS]: [
@@ -177,7 +192,63 @@ const CHECKS: Record<string, Array<[string, string]>> = {
     ],
     [
       `${APPS}_resultado_valores_check`,
-      "CHECK (((resultado IS NULL) OR (resultado = ANY (ARRAY['aceptada'::text, 'rechazada'::text, 'retirada'::text]))))",
+      "CHECK (((resultado IS NULL) OR (resultado = ANY (ARRAY['aceptada'::text, 'rechazada'::text, 'retirada'::text, 'cancelada'::text]))))",
+    ],
+    /**
+     * 'cancelada' ES UN CUARTO VALOR Y NO UN BORRADO, y por eso entra acá y no en el write
+     * path: sacar a un DJ ya aceptado del lineup tiene que dejar rastro de que ESTUVO
+     * aceptado. Si en cambio se borrara la fila o se la volviera 'rechazada', el histórico
+     * diría que nunca entró, y el DJ —que ya lo había anunciado— no tendría dónde ver qué
+     * pasó.
+     *
+     * Y NO TOCA resuelta_en, que sigue guardando CUÁNDO SE ACEPTÓ: el par (resuelta_en,
+     * cancelada_en) es lo que permite decir cuánto tiempo estuvo programado.
+     *
+     * UNA CANCELADA NO BLOQUEA UNA NUEVA POSTULACIÓN: _una_pendiente_idx es parcial sobre
+     * resuelta_en IS NULL, y una cancelada la tiene puesta. Es lo correcto —cancelar una
+     * participación no es vetar al DJ— y es consecuencia del índice, no de una decisión
+     * aparte, así que conviene decirlo para que nadie lo "arregle".
+     */
+    [
+      `${APPS}_motivo_check`,
+      `CHECK (((motivo IS NULL) OR ((btrim(motivo, '${BLANCOS}'::text) <> ''::text) AND (resultado IS NOT NULL) AND (resultado = ANY (ARRAY['rechazada'::text, 'retirada'::text, 'cancelada'::text])))))`,
+    ],
+    /**
+     * EL MOTIVO ES OBLIGATORIO AL CANCELAR Y OPCIONAL AL RECHAZAR, y la diferencia la
+     * sostiene la base y no el formulario.
+     *
+     * Rechazar es no elegir a alguien; cancelar es DESHACER algo que el DJ ya tiene
+     * anunciado. La única de las dos que le saca algo que ya tenía es la segunda, así que es
+     * la única que tiene que explicarse.
+     *
+     * Al revés —motivo obligatorio también al rechazar— el dueño deja las postulaciones sin
+     * resolver para no tener que escribirlo, y entonces el DJ no se entera de nada. Eso ya
+     * está decidido y es el motivo de que sean dos reglas distintas sobre la misma columna.
+     */
+    [
+      `${APPS}_cancelacion_check`,
+      "CHECK ((((resultado = 'cancelada'::text) AND (cancelada_en IS NOT NULL) AND (motivo IS NOT NULL)) OR ((resultado IS DISTINCT FROM 'cancelada'::text) AND (cancelada_en IS NULL))))",
+    ],
+    /**
+     * EL (resultado IS NOT NULL) DEL CHECK DE ARRIBA ES LO MISMO, Y ME LO COMÍ UNA LÍNEA
+     * MÁS ARRIBA. Sin él, una PENDIENTE con motivo pasaba: resultado = ANY (...) con
+     * resultado en NULL da NULL, el AND entero da NULL, el OR da NULL, y UN CHECK QUE DA
+     * NULL PASA.
+     *
+     * Lo encontró una prueba que manda el INSERT de verdad, no la comparación de
+     * definiciones: la definición medida coincidía con la que yo había escrito, y la que yo
+     * había escrito estaba mal. Comparar la forma prueba que quedó como dice que quedó, no
+     * que lo que dice sea correcto.
+     */
+    /**
+     * IS DISTINCT FROM y no <>, y acá importa: con <> la rama derecha sería NULL cuando
+     * resultado es NULL —una postulación pendiente—, el OR entero daría NULL, y un CHECK que
+     * da NULL PASA. O sea que una pendiente podría tener cancelada_en puesta sin que nada
+     * chille. Medido en la definición que Postgres rinde, no supuesto.
+     */
+    [
+      `${APPS}_cancelada_por_check`,
+      "CHECK (((cancelada_por IS NULL) OR (cancelada_en IS NOT NULL)))",
     ],
     /**
      * LA RESOLUCIÓN ATA LAS DOS COLUMNAS EN LOS DOS SENTIDOS, igual que el CHECK de la purga
@@ -232,6 +303,14 @@ const FKS: Record<string, Array<[string, string]>> = {
     [
       `${APPS}_resuelta_por_fkey`,
       "FOREIGN KEY (resuelta_por) REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL",
+    ],
+    /**
+     * cancelada_por va SET NULL por el mismo criterio que resuelta_por y cerrada_por: si la
+     * cuenta del dueno se borra, LA CANCELACION SIGUIO PASANDO, y el motivo sigue ahi.
+     */
+    [
+      `${APPS}_cancelada_por_fkey`,
+      "FOREIGN KEY (cancelada_por) REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL",
     ],
   ],
 };
@@ -526,6 +605,9 @@ export async function GET(request: Request) {
           resuelta_en TIMESTAMPTZ,
           resultado TEXT,
           resuelta_por TEXT REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL,
+          motivo TEXT,
+          cancelada_en TIMESTAMPTZ,
+          cancelada_por TEXT REFERENCES user_profiles(email) ON UPDATE CASCADE ON DELETE SET NULL,
           creada_en TIMESTAMPTZ NOT NULL DEFAULT now()
         )
       `),
@@ -549,6 +631,9 @@ export async function GET(request: Request) {
       sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS resuelta_en TIMESTAMPTZ`),
       sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS resultado TEXT`),
       sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS resuelta_por TEXT`),
+      sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS motivo TEXT`),
+      sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS cancelada_en TIMESTAMPTZ`),
+      sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS cancelada_por TEXT`),
       sql(`ALTER TABLE ${APPS} ADD COLUMN IF NOT EXISTS creada_en TIMESTAMPTZ NOT NULL DEFAULT now()`),
     ]);
 
@@ -581,7 +666,7 @@ export async function GET(request: Request) {
     const v = verificarForma(despues);
     log.push(
       v.ok
-        ? `VERIFICADO: ${CALLS} con sus 10 columnas y ${APPS} con sus 9, sus 7 CHECK, sus 7 FK ` +
+        ? `VERIFICADO: ${CALLS} con sus 10 columnas y ${APPS} con sus 12, sus 10 CHECK, sus 8 FK ` +
             "y los 6 índices que declara —dos de ellos únicos parciales— además de los dos " +
             "_pkey que Postgres crea solos. Y event_lineup_event_artist_idx sigue en su lugar, " +
             "verificado por definición y no por nombre."

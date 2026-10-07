@@ -206,6 +206,16 @@ const TABLAS_VOLATILES = [
    * cuántas filas se llevó no está auditado.
    */
   ["residency_offers", "id::text"],
+  /**
+   * event_applications VA ANTES DE event_calls, y las dos antes de events, collectives y
+   * artists. Sus FK son todos CASCADE, así que el orden no las salva de quedar colgadas —se
+   * irían igual— pero el conteo que imprime limpiarLoCreado sería mentira: diría 0
+   * postulaciones cuando en realidad se las llevó el borrado del evento. Mismo criterio que
+   * residency_offers, y por el mismo motivo: un barrido que no dice cuántas filas se llevó
+   * no está auditado.
+   */
+  ["event_applications", "id::text"],
+  ["event_calls", "id::text"],
   ["artist_collectives", "id::text"],
   ["artist_gigs", "id::text"],
   ["artist_likes", "artist_slug || '|' || user_email"],
