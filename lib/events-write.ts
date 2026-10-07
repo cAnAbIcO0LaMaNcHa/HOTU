@@ -611,6 +611,41 @@ export async function deleteCommunityEvent(
     };
   }
 
+  /**
+   * Y LA MISMA GUARDA PARA LAS CONVOCATORIAS, por la misma razón que las boletas.
+   *
+   * event_calls.event_id es ON DELETE RESTRICT, así que sin esta consulta el DELETE de abajo
+   * tiraría una violación de FK cruda —un 500 sin explicación— en vez del 409 que dice qué
+   * pasó. El RESTRICT ya garantiza que no se pierda nada; lo que falta es que el organizador
+   * entienda por qué no pudo.
+   *
+   * SE CUENTAN LAS CONVOCATORIAS Y LAS POSTULACIONES POR SEPARADO porque son dos cosas
+   * distintas de perder: una convocatoria sin postulaciones es un cupo que nadie pidió, y una
+   * con postulaciones es gente que se anotó y a la que hay que responderle. El mensaje tiene
+   * que poder distinguirlas.
+   */
+  const [conv] = await sql`
+    SELECT
+      (SELECT COUNT(*)::int FROM event_calls WHERE event_id = ${id}) AS convocatorias,
+      (SELECT COUNT(*)::int FROM event_applications ea
+        JOIN event_calls ec ON ec.id = ea.call_id
+       WHERE ec.event_id = ${id}) AS postulaciones
+  `;
+  if (Number(conv.convocatorias) > 0) {
+    const n = Number(conv.postulaciones);
+    return {
+      ok: false,
+      status: 409,
+      error:
+        `No se puede borrar: este evento tiene una convocatoria` +
+        (n > 0
+          ? ` con ${n} postulación(es). Cada una es el registro de una decisión entre vos y un ` +
+            "DJ, y no se borra por debajo. Cerrá la convocatoria y resolvé las postulaciones " +
+            "pendientes primero."
+          : ". Cerrala primero y volvé a intentar."),
+    };
+  }
+
   const rol = await resolverRolParaRegistro(propio.organizador, email!);
   if (!rol) {
     return {
