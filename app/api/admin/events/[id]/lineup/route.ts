@@ -136,23 +136,91 @@ export async function PATCH(
   }
 
   /**
-   * Borrar y reinsertar, en UNA transacción.
+   * ============================================================
+   * LAS FILAS QUE VIENEN DE UNA POSTULACIÓN ACEPTADA NO SE BORRAN ACÁ
+   * ============================================================
    *
-   * Reinsertar en vez de actualizar fila por fila porque las entradas se
-   * identifican por posición y no tienen un id estable del lado del
-   * cliente. Y en una sola transacción porque cada sql del driver HTTP es
-   * su propio request: borrar y que falle el insert dejaría el evento sin
-   * lineup, que es peor que dejarlo mal resuelto.
+   * Un DJ que entró al lineup porque el dueño le aceptó la postulación no es lo mismo que un
+   * nombre que el importador sacó del flyer: hay un acuerdo entre dos partes, y el DJ ya
+   * tiene la fecha anunciada. Sacarlo tiene su propia acción —CANCELAR PARTICIPACIÓN, con
+   * motivo obligatorio, que además le avisa— y no puede pasar como efecto colateral de
+   * guardar el editor.
+   *
+   * SE DERIVA, NO SE MARCA. No hay ninguna columna nueva en event_lineup que diga 'esta vino
+   * de una postulación': se pregunta por event_applications. Una bandera habría que
+   * mantenerla sincronizada con la postulación, y el día que se desincronice el editor
+   * borraría una fila protegida sin que nada chille.
+   *
+   * LA PROTECCIÓN TIENE DOS MITADES, y las dos hacen falta:
+   *
+   *   1. SI LA LISTA OMITE UNA, SE NIEGA con 409 y se nombra a quién. Guardar sin ese DJ es
+   *      lo que el admin quiso decir, así que hay que contestarle, no arreglárselo por
+   *      debajo.
+   *   2. LAS QUE SIGUEN EN LA LISTA NO ENTRAN AL DELETE. Se les actualiza la posición y el
+   *      texto en vez de borrarlas y reinsertarlas, así la fila —su id y su created_at—
+   *      sobrevive al guardado. Sin esto la regla se cumpliría de palabra y no de hecho: la
+   *      fila se iría y volvería con otra identidad.
+   */
+  const aceptadas = await sql`
+    SELECT DISTINCT el.id, el.artist_slug
+    FROM event_lineup el
+    JOIN event_applications ea ON ea.artist_slug = el.artist_slug
+    JOIN event_calls ec ON ec.id = ea.call_id
+    WHERE el.event_id = ${eventId}
+      AND ec.event_id = ${eventId}
+      AND ea.resultado = 'aceptada'
+  `;
+  const protegidas = new Map(
+    aceptadas.map((f) => [f.artist_slug as string, f.id as number])
+  );
+
+  if (protegidas.size > 0) {
+    const enLaLista = new Set(limpias.map((e) => e.artistSlug).filter(Boolean) as string[]);
+    const omitidas = [...protegidas.keys()].filter((slug) => !enLaLista.has(slug));
+    if (omitidas.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `No puedo sacar del lineup a ${omitidas.join(", ")}: entraron porque les ` +
+            "aceptaste la postulación, y ya tienen la fecha anunciada. Para sacarlos hay que " +
+            "CANCELAR LA PARTICIPACIÓN desde las postulaciones del evento, que pide un motivo " +
+            "y se lo avisa al DJ. Volvé a poner esos nombres en la lista y guardá.",
+          omitidas,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  /**
+   * Borrar y reinsertar lo NO protegido, en UNA transacción.
+   *
+   * Reinsertar en vez de actualizar fila por fila porque las entradas se identifican por
+   * posición y no tienen un id estable del lado del cliente. Eso sigue siendo cierto y sigue
+   * siendo deuda —resetea created_at de todo lo que no está protegido— pero arreglarlo es
+   * pasar el editor a actualizar por id, que es su propia pieza.
+   *
+   * Y en una sola transacción porque cada sql del driver HTTP es su propio request: borrar y
+   * que falle el insert dejaría el evento sin lineup, que es peor que dejarlo mal resuelto.
    */
   const revisadoEn = body.marcarRevisado === true ? new Date().toISOString() : null;
+  const idsProtegidos = [...protegidas.values()];
 
   await sql.transaction([
-    sql`DELETE FROM event_lineup WHERE event_id = ${eventId}`,
+    sql`
+      DELETE FROM event_lineup
+      WHERE event_id = ${eventId} AND NOT (id = ANY(${idsProtegidos}::int[]))
+    `,
     ...limpias.map((e, i) =>
-      sql`
-        INSERT INTO event_lineup (event_id, raw_name, artist_slug, collective_slug, position)
-        VALUES (${eventId}, ${e.rawName}, ${e.artistSlug}, ${e.collectiveSlug}, ${i})
-      `
+      e.artistSlug && protegidas.has(e.artistSlug)
+        ? sql`
+            UPDATE event_lineup SET position = ${i}, raw_name = ${e.rawName}
+            WHERE id = ${protegidas.get(e.artistSlug)}
+          `
+        : sql`
+            INSERT INTO event_lineup (event_id, raw_name, artist_slug, collective_slug, position)
+            VALUES (${eventId}, ${e.rawName}, ${e.artistSlug}, ${e.collectiveSlug}, ${i})
+          `
     ),
     // Un ISO y no el literal "now()": interpolado en un tagged template
     // eso viaja como PARÁMETRO, o sea como la cadena de seis letras

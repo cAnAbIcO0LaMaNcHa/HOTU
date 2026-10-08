@@ -50,7 +50,8 @@
  * correcto pero una forma de petición que su propia validación rechaza después de la puerta.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 import { abrirCorrida } from "./seed.mjs";
@@ -319,6 +320,107 @@ try {
     sinNada.ok === false && sinNada.status === 401,
     JSON.stringify(sinNada)
   );
+
+  console.log("\n7. LA COSTURA DE LA SESIÓN NO PUEDE LLEGAR A PRODUCCIÓN");
+  {
+    /**
+     * Las baterías falsean auth() para poder llamar al handler de una ruta autenticada. Eso es
+     * una costura, y una costura que falsea PERMISOS tiene que estar medida y no prometida.
+     *
+     * Tres propiedades, y las tres hacen falta:
+     *
+     *   1. NADA en app/, lib/, components/ ni auth.ts la nombra. Es el mismo grep estático que
+     *      el de un-solo-escritor-de-residente, y por lo mismo: el bundler de Next resuelve
+     *      @/auth por su cuenta y nunca ve el hook, pero eso vale solo mientras nadie importe
+     *      la falsa directo.
+     *   2. SOLO scripts/pruebas registra el hook. Un hook registrado desde otro lado sería la
+     *      otra forma de que esto llegue a donde no tiene que llegar.
+     *   3. SIN LA BANDERA no sustituye nada, y eso se mide llamando: la auth de verdad
+     *      REVIENTA fuera de un request de Next, así que la excepción es la prueba de que no
+     *      se usó la falsa. Si en cambio contestara 401 o 200, estaríamos usando el mock sin
+     *      pedirlo.
+     */
+    const nombrada = [];
+    const anda = (dir) => {
+      for (const e of readdirSync(dir)) {
+        if (e === "node_modules" || e === ".next") continue;
+        const p = `${dir}/${e}`;
+        if (statSync(p).isDirectory()) anda(p);
+        else if (/\.(ts|tsx)$/.test(e)) {
+          const src = readFileSync(p, "utf8");
+          if (/auth-falsa|ZZ_AUTH_FALSA|ZZ_AUTH_EMAIL/.test(src)) nombrada.push(p);
+        }
+      }
+    };
+    for (const raiz of ["app", "lib", "components"]) anda(raiz);
+    if (/auth-falsa|ZZ_AUTH_FALSA|ZZ_AUTH_EMAIL/.test(readFileSync("auth.ts", "utf8"))) {
+      nombrada.push("auth.ts");
+    }
+    chk(
+      "nada en app/, lib/, components/ ni auth.ts nombra la auth falseada",
+      nombrada.length === 0,
+      nombrada.join(", ")
+    );
+
+    const registran = [];
+    const anda2 = (dir) => {
+      for (const e of readdirSync(dir)) {
+        if (e === "node_modules" || e === ".next" || e === ".git") continue;
+        const p = `${dir}/${e}`;
+        if (statSync(p).isDirectory()) anda2(p);
+        else if (/\.(ts|tsx|mjs|json)$/.test(e)) {
+          if (readFileSync(p, "utf8").includes("hook-rutas")) registran.push(p);
+        }
+      }
+    };
+    for (const raiz of ["app", "lib", "components", "scripts"]) anda2(raiz);
+    const fuera = registran.filter((p) => !p.startsWith("scripts/pruebas/"));
+    chk(
+      "solo scripts/pruebas/ registra el hook de resolución",
+      fuera.length === 0 && registran.length >= 2,
+      `fuera: ${fuera.join(", ")} | total: ${registran.length}`
+    );
+
+    /**
+     * Y LA MITAD DINÁMICA. La bandera se lee al RESOLVER, así que para medirla de verdad hay
+     * que resolver en un proceso donde no esté — no alcanza con borrarla acá, porque el módulo
+     * ya está en la caché. Se lanza un node aparte.
+     */
+    const guion = [
+      'import { register } from "node:module";',
+      'import { pathToFileURL } from "node:url";',
+      'delete process.env.ZZ_AUTH_FALSA;',
+      'delete process.env.ZZ_AUTH_EMAIL;',
+      'register("./scripts/pruebas/hook-rutas.mjs", pathToFileURL("./"));',
+      'try {',
+      '  const m = await import("./app/api/admin/events/[id]/lineup/route.ts");',
+      '  const r = await m.PATCH(',
+      '    new Request("http://x/a", { method: "PATCH", headers: { "content-type": "application/json" }, body: "{}" }),',
+      '    { params: Promise.resolve({ id: "1" }) }',
+      '  );',
+      '  console.log("USO_LA_FALSA:" + r.status);',
+      '} catch {',
+      '  console.log("USO_LA_DE_VERDAD");',
+      '}',
+    ].join("\n");
+    writeFileSync("scripts/zz-costura.mjs", guion);
+    let salida = "";
+    try {
+      salida = execFileSync(process.execPath, ["scripts/zz-costura.mjs"], {
+        encoding: "utf8",
+        env: { ...process.env, ZZ_AUTH_FALSA: undefined, ZZ_AUTH_EMAIL: undefined },
+      });
+    } catch (e) {
+      salida = String(e.stdout ?? "") + String(e.stderr ?? "");
+    } finally {
+      rmSync("scripts/zz-costura.mjs", { force: true });
+    }
+    chk(
+      "sin la bandera, la ruta usa la auth de VERDAD y no la falseada",
+      salida.includes("USO_LA_DE_VERDAD"),
+      salida.replace(/\s+/g, " ").slice(0, 160)
+    );
+  }
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);

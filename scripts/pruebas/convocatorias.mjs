@@ -37,6 +37,12 @@
  */
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
+/**
+ * LA BANDERA VA ANTES DEL register, no dentro del cuerpo: el hook la lee al RESOLVER @/auth, y
+ * para entonces los import ya corrieron. QUIEN esta logueado lo dice ZZ_AUTH_EMAIL, que se
+ * lee en cada llamada a auth() y por eso si puede cambiar mas tarde.
+ */
+process.env.ZZ_AUTH_FALSA = "1";
 register("./scripts/pruebas/hook-rutas.mjs", pathToFileURL("./"));
 
 import { neon } from "@neondatabase/serverless";
@@ -49,7 +55,19 @@ const { normalizarEnSql } = await import("../../lib/convocatorias.ts");
 const { normalizarNombre } = await import("../../lib/lineup-import.ts");
 const { updateCommunityEvent } = await import("../../lib/events-write.ts");
 const { barrerConvocatorias } = await import("../../lib/convocatorias-barrido.ts");
-const { postularse } = await import("../../lib/convocatorias-write.ts");
+const { postularse, aceptarPostulacion, cancelarParticipacion } = await import(
+  "../../lib/convocatorias-write.ts"
+);
+/**
+ * EL HANDLER DEL EDITOR DE LINEUP, importado de verdad.
+ *
+ * Se le pasa una sesión falseada por el mock de @/auth que registra el hook: lo que se
+ * prueba es la ruta entera —su validación, su 409 y su transacción— y no una consulta que
+ * yo escriba acá a mano, que solo probaría que sé escribirla.
+ */
+const { PATCH: lineupPATCH } = await import(
+  "../../app/api/admin/events/[id]/lineup/route.ts"
+);
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -760,6 +778,210 @@ try {
     await sql`DELETE FROM event_applications WHERE artist_slug = 'zz-barrido-beta'`;
     await sql`DELETE FROM event_calls WHERE collective_slug = 'zz-barrido-gamma'`;
     await sql`DELETE FROM events WHERE organizer_slug = 'zz-barrido-gamma'`;
+  }
+
+  console.log("\n12. ACEPTAR, Y QUE EL EDITOR DE LINEUP NO LO PUEDA DESHACER");
+  {
+    /**
+     * Esta sección cubre las dos piezas que se tocan: ACEPTAR reemplaza la fila sin resolver
+     * del lineup por nombre normalizado, y después el EDITOR del admin no puede borrar esa
+     * fila ni al guardar una lista que la omite.
+     *
+     * Los fixtures se nombran con palabras distintas y no numeradas, porque ningún nombre de
+     * fixture puede ser prefijo de otro: un includes() no sabe de límites de palabra.
+     */
+    const dueno5 = `zz-acepta-alfa@test.hotu.local`;
+    await sql`
+      INSERT INTO user_profiles (email, display_name, auth_provider)
+      VALUES (${dueno5}, 'ZZ Acepta Alfa', 'credentials')`;
+    /** El nombre lleva acento Y el lineup lo trae SIN acento: así se ejercita el normalizador. */
+    await sql`
+      INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, owner_email)
+      VALUES ('zz-acepta-beta', 'ZZ Acépta Beta', 'techno', '06', 'Bogota',
+              'fixture de aceptar', (now() AT TIME ZONE 'America/Bogota')::date, ${dueno5})`;
+    await sql`
+      INSERT INTO collectives (slug, name, type, sector, bio, owner_email)
+      VALUES ('zz-acepta-gamma', 'ZZ Acepta Gamma', 'colectivo', 'centro',
+              'fixture de aceptar', ${dueno5})`;
+
+    const dia = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date + 25)::text AS d`)[0].d;
+    const ev5 = (
+      await sql`
+        INSERT INTO events (title, event_date, city, venue, district, lineup, organizer_slug, status)
+        VALUES ('ZZ Acepta Delta', ${dia}::date, 'Bogota', 'ZZ Galpon', '06',
+                'ZZ ACEPTA BETA - Otro Nombre', 'zz-acepta-gamma', 'published')
+        RETURNING id`
+    )[0].id;
+
+    /**
+     * El lineup como lo deja el importador: la fila del DJ SIN RESOLVER —artist_slug en
+     * NULL— y con el nombre escrito distinto (mayúsculas y sin acento). Es el caso que, sin
+     * el reemplazo, dejaría al DJ dos veces.
+     */
+    await sql`
+      INSERT INTO event_lineup (event_id, raw_name, artist_slug, position)
+      VALUES (${ev5}, 'ZZ ACEPTA BETA', NULL, 0),
+             (${ev5}, 'Otro Nombre', NULL, 1)`;
+
+    const call5 = (
+      await sql`
+        INSERT INTO event_calls (event_id, collective_slug, abierta_por)
+        VALUES (${ev5}, 'zz-acepta-gamma', ${dueno5}) RETURNING id`
+    )[0].id;
+    const post5 = (
+      await sql`
+        INSERT INTO event_applications (call_id, artist_slug, mensaje, disponibilidad)
+        VALUES (${call5}, 'zz-acepta-beta', 'me anoto', 'los viernes') RETURNING id`
+    )[0].id;
+
+    const acepto = await aceptarPostulacion(post5, dueno5);
+    chk(
+      "aceptar funciona",
+      acepto.ok === true,
+      acepto.ok ? "" : `${acepto.status} ${acepto.error}`
+    );
+    chk(
+      "y dice que REEMPLAZÓ la fila sin resolver, no que agregó una al lado",
+      acepto.ok === true && acepto.value.reemplazo === true,
+      acepto.ok ? `reemplazo=${acepto.value.reemplazo}` : ""
+    );
+
+    const lineup = await sql`
+      SELECT raw_name, artist_slug, position FROM event_lineup
+      WHERE event_id = ${ev5} ORDER BY position, id`;
+    chk(
+      "el lineup sigue teniendo DOS filas, no tres: el DJ no quedó duplicado",
+      lineup.length === 2,
+      `quedaron ${lineup.length}: ${lineup.map((f) => f.raw_name).join(" | ")}`
+    );
+    chk(
+      "y la del DJ quedó RESUELTA, en la posición que tenía el nombre del flyer",
+      lineup.some((f) => f.artist_slug === 'zz-acepta-beta' && f.position === 0),
+      JSON.stringify(lineup)
+    );
+
+    /**
+     * LA REGLA (a). El editor del admin recibe la lista y guarda. Se llama al HANDLER DE
+     * VERDAD, con su sesión falseada, porque lo que se prueba es la ruta y no una consulta
+     * que yo escriba acá a mano.
+     */
+    /**
+     * LA SESIÓN se falsea con ZZ_AUTH_EMAIL; EL ROL NO. isModerator consulta la base, así
+     * que hay que crear la fila de verdad — y si mañana la puerta del admin cambia, esta
+     * prueba se rompe como corresponde en vez de seguir pasando contra un mock.
+     */
+    await sql`INSERT INTO user_roles (email, role) VALUES (${dueno5}, 'SUPER_ADMIN')`;
+    process.env.ZZ_AUTH_EMAIL = dueno5;
+
+    const guardar = async (entries) => {
+      const r = await lineupPATCH(
+        new Request(`http://x/api/admin/events/${ev5}/lineup`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ entries }),
+        }),
+        { params: Promise.resolve({ id: String(ev5) }) }
+      );
+      return { estado: r.status, cuerpo: await r.json() };
+    };
+
+    const sinElDj = await guardar([{ rawName: 'Otro Nombre' }]);
+    chk(
+      "guardar el lineup SIN el DJ aceptado se niega con 409",
+      sinElDj.estado === 409,
+      `dio ${sinElDj.estado}: ${JSON.stringify(sinElDj.cuerpo).slice(0, 140)}`
+    );
+    chk(
+      "y el mensaje NOMBRA a quién no puede sacar y dónde se hace",
+      typeof sinElDj.cuerpo?.error === 'string' &&
+        sinElDj.cuerpo.error.includes('zz-acepta-beta') &&
+        sinElDj.cuerpo.error.includes('CANCELAR LA PARTICIPACIÓN'),
+      String(sinElDj.cuerpo?.error).slice(0, 160)
+    );
+
+    const [trasElIntento] = await sql`
+      SELECT COUNT(*)::int AS n FROM event_lineup
+      WHERE event_id = ${ev5} AND artist_slug = 'zz-acepta-beta'`;
+    chk(
+      "y el DJ sigue en el lineup: el 409 no dejó nada a medias",
+      trasElIntento.n === 1,
+      `quedaron ${trasElIntento.n} filas del DJ`
+    );
+
+    /**
+     * Y CON EL DJ EN LA LISTA, GUARDAR ANDA — y su fila SOBREVIVE con el mismo id. Esta es la
+     * mitad que distingue la regla cumplida de hecho de la cumplida de palabra: sin ella la
+     * fila se iría en el DELETE y volvería en el INSERT con otra identidad.
+     */
+    const [antesDelGuardado] = await sql`
+      SELECT id, created_at FROM event_lineup
+      WHERE event_id = ${ev5} AND artist_slug = 'zz-acepta-beta'`;
+
+    const conElDj = await guardar([
+      { rawName: 'Otro Nombre' },
+      { rawName: 'ZZ Acépta Beta', artistSlug: 'zz-acepta-beta' },
+    ]);
+    chk(
+      "guardar CON el DJ aceptado anda",
+      conElDj.estado === 200,
+      `dio ${conElDj.estado}: ${JSON.stringify(conElDj.cuerpo).slice(0, 140)}`
+    );
+
+    const [despuesDelGuardado] = await sql`
+      SELECT id, created_at, position FROM event_lineup
+      WHERE event_id = ${ev5} AND artist_slug = 'zz-acepta-beta'`;
+    chk(
+      "y su fila es LA MISMA: mismo id, mismo created_at",
+      despuesDelGuardado?.id === antesDelGuardado.id &&
+        String(despuesDelGuardado?.created_at) === String(antesDelGuardado.created_at),
+      `antes ${antesDelGuardado.id}/${antesDelGuardado.created_at}, despues ${despuesDelGuardado?.id}/${despuesDelGuardado?.created_at}`
+    );
+    chk(
+      "con la posición que el admin le dio en la lista",
+      despuesDelGuardado?.position === 1,
+      `position quedó en ${despuesDelGuardado?.position}`
+    );
+
+    /**
+     * Y CANCELAR LA PARTICIPACIÓN SÍ LO SACA, que es la otra mitad del acuerdo: la regla (a)
+     * no es un candado, es la obligación de usar la puerta que avisa.
+     */
+    const cancelado = await cancelarParticipacion(post5, 'se cayó el vuelo', dueno5);
+    chk(
+      "cancelar la participación funciona",
+      cancelado.ok === true,
+      cancelado.ok ? "" : `${cancelado.status} ${cancelado.error}`
+    );
+    const [trasCancelar] = await sql`
+      SELECT COUNT(*)::int AS n FROM event_lineup
+      WHERE event_id = ${ev5} AND artist_slug = 'zz-acepta-beta'`;
+    chk(
+      "y lo saca del lineup de verdad",
+      trasCancelar.n === 0,
+      `quedaron ${trasCancelar.n} filas del DJ`
+    );
+    const [avisoCancel] = await sql`
+      SELECT COUNT(*)::int AS n FROM mail_outbox
+      WHERE tipo = 'postulacion_cancelada' AND referencia = 'artist:zz-acepta-beta'`;
+    chk(
+      "y le deja el aviso con el motivo en la bandeja",
+      avisoCancel.n === 1,
+      `${avisoCancel.n} avisos`
+    );
+
+    /** Y ahora el editor SÍ puede guardar sin él, porque ya no hay acuerdo que proteger. */
+    const yaSinEl = await guardar([{ rawName: 'Otro Nombre' }]);
+    chk(
+      "cancelada la participación, el editor ya puede guardar sin ese DJ",
+      yaSinEl.estado === 200,
+      `dio ${yaSinEl.estado}: ${JSON.stringify(yaSinEl.cuerpo).slice(0, 140)}`
+    );
+
+    delete process.env.ZZ_AUTH_EMAIL;
+    await sql`DELETE FROM event_applications WHERE id = ${post5}`;
+    await sql`DELETE FROM event_calls WHERE id = ${call5}`;
+    await sql`DELETE FROM event_lineup WHERE event_id = ${ev5}`;
+    await sql`DELETE FROM events WHERE id = ${ev5}`;
   }
 } finally {
   const resumen = await corrida.cerrar();

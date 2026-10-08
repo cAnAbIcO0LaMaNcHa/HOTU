@@ -49,6 +49,30 @@ function resolverRelativo(especificador, padre) {
 }
 
 export async function resolve(especificador, contexto, siguiente) {
+  /**
+   * LA COSTURA DE LA SESIÓN, y es la única cosa que este hook SUSTITUYE en vez de resolver.
+   *
+   * Sin ella no se puede llamar al handler de una ruta autenticada desde node: auth() devuelve
+   * null y la ruta contesta 401 antes de ejecutar nada de lo que se quiere probar.
+   *
+   * SON DOS VARIABLES Y NO UNA, y la primera versión las confundía. ZZ_AUTH_FALSA se lee al
+   * RESOLVER el módulo y ZZ_AUTH_EMAIL al LLAMAR a auth(). Con una sola, una batería que la
+   * pusiera dentro del cuerpo —después del import— ya no cambiaba nada: el módulo real ya
+   * estaba resuelto, y la ruta contestaba con la auth de verdad. Pasó, y el síntoma fue un
+   * error de next-auth sobre headers fuera de scope.
+   *
+   * VA DETRÁS DE ZZ_AUTH_FALSA a propósito. Sin la variable el hook NO redirige, así que una
+   * batería que se olvide de ponerla recibe la auth de verdad y un 401 ruidoso — no una sesión
+   * vacía que se cuele como anónima y haga pasar una prueba de permisos por la razón
+   * equivocada.
+   *
+   * Y falsea la SESIÓN, nunca el ROL: isModerator y las puertas de colectivo siguen
+   * consultando la base, así que una batería que quiera entrar al admin tiene que crear su
+   * fila en user_roles.
+   */
+  if (especificador === "@/auth" && process.env.ZZ_AUTH_FALSA === "1") {
+    return siguiente(pathToFileURL(unirRuta(RAIZ, "scripts/pruebas/auth-falsa.mjs")).href, contexto);
+  }
   if (especificador.startsWith("@/")) {
     const url = resolverAlias(especificador);
     if (url) return siguiente(url, contexto);
