@@ -112,7 +112,7 @@ export async function requestMembership(
   const rows = await sql`
     INSERT INTO artist_collectives
       (artist_slug, collective_slug, kind, from_date, requested_by)
-    VALUES (${artistSlug}, ${collectiveSlug}, ${PENDING_KIND}, CURRENT_DATE, ${requestedBy})
+    VALUES (${artistSlug}, ${collectiveSlug}, ${PENDING_KIND}, (now() AT TIME ZONE 'America/Bogota')::date, ${requestedBy})
     RETURNING id
   `;
   return { ok: true, value: { id: rows[0].id as number } };
@@ -326,7 +326,7 @@ export async function cancelMembership(
 
   await sql`
     UPDATE artist_collectives
-    SET canceled_at = now(), to_date = CURRENT_DATE
+    SET canceled_at = now(), to_date = (now() AT TIME ZONE 'America/Bogota')::date
     WHERE id = ${id}
   `;
   return { ok: true, value: undefined };
@@ -362,7 +362,7 @@ export async function rejectMembership(
 
   await sql`
     UPDATE artist_collectives
-    SET rejected_at = now(), to_date = CURRENT_DATE
+    SET rejected_at = now(), to_date = (now() AT TIME ZONE 'America/Bogota')::date
     WHERE id = ${id}
   `;
   return { ok: true, value: undefined };

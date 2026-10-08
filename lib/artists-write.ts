@@ -470,7 +470,7 @@ export async function createArtist(
           (slug, name, genre, city, origin, bio, joined_at,
            owner_email, contact_email, dj_code, status, review_status)
         VALUES
-          (${slug}, ${name}, ${nombreDeRama}, ${city}, ${origin}, '', CURRENT_DATE,
+          (${slug}, ${name}, ${nombreDeRama}, ${city}, ${origin}, '', (now() AT TIME ZONE 'America/Bogota')::date,
            ${email}, ${email}, ${djCode}, 'draft', 'borrador')
       `,
       sql`

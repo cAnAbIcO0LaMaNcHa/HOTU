@@ -185,7 +185,7 @@ try {
      * del primero intenta borrarla por id. Sin el artist_slug en el WHERE, saldría.
      */
     await sql`INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, status, review_status, owner_email)
-              VALUES (${ART_AJENO}, 'ZZ Galeria Otro', 'techno', 'D00', 'Bogota', 'bio', CURRENT_DATE, 'published', 'aprobado', ${OTRA})
+              VALUES (${ART_AJENO}, 'ZZ Galeria Otro', 'techno', 'D00', 'Bogota', 'bio', (now() AT TIME ZONE 'America/Bogota')::date, 'published', 'aprobado', ${OTRA})
               ON CONFLICT (slug) DO UPDATE SET owner_email = ${OTRA}`;
     const suya = await req("o", "POST", `/api/artists/${ART_AJENO}/photos`, { url: "https://example.com/zz-ajena.webp" });
     chk("la otra cuenta sube una foto a SU artista -> 201", suya.status === 201, JSON.stringify(suya));

@@ -311,7 +311,7 @@ try {
   await sql`
     INSERT INTO artists (slug, name, genre, district, city, bio, joined_at)
     VALUES ('zz-restrict-alfa', 'ZZ Restrict Alfa', 'techno', '06', 'Bogota',
-            'fixture de la bateria de convocatorias', CURRENT_DATE)`;
+            'fixture de la bateria de convocatorias', (now() AT TIME ZONE 'America/Bogota')::date)`;
   await sql`
     INSERT INTO collectives (slug, name, type, sector, bio)
     VALUES ('zz-restrict-beta', 'ZZ Restrict Beta', 'colectivo', 'centro',
@@ -319,7 +319,7 @@ try {
   const ev2 = (
     await sql`
       INSERT INTO events (title, event_date, city, venue, district, lineup)
-      VALUES ('ZZ Restrict Gamma', CURRENT_DATE + 30, 'Bogotá', 'ZZ Galpon', '06', 'ZZ Restrict Alfa')
+      VALUES ('ZZ Restrict Gamma', (now() AT TIME ZONE 'America/Bogota')::date + 30, 'Bogotá', 'ZZ Galpon', '06', 'ZZ Restrict Alfa')
       RETURNING id`
   )[0].id;
   const call2 = (
@@ -490,15 +490,15 @@ try {
     await sql`
       INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, owner_email)
       VALUES ('zz-ajuste-beta', 'ZZ Ajuste Beta', 'techno', '06', 'Bogota',
-              'fixture del ajuste de cierre', CURRENT_DATE, ${dueno2})`;
+              'fixture del ajuste de cierre', (now() AT TIME ZONE 'America/Bogota')::date, ${dueno2})`;
     await sql`
       INSERT INTO collectives (slug, name, type, sector, bio, owner_email)
       VALUES ('zz-ajuste-gamma', 'ZZ Ajuste Gamma', 'colectivo', 'centro',
               'fixture del ajuste de cierre', ${dueno2})`;
 
     /** La fiesta arranca lejos y la convocatoria cierra el dia de la fiesta. */
-    const lejano = (await sql`SELECT (CURRENT_DATE + 60)::text AS d`)[0].d;
-    const cercano = (await sql`SELECT (CURRENT_DATE + 20)::text AS d`)[0].d;
+    const lejano = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date + 60)::text AS d`)[0].d;
+    const cercano = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date + 20)::text AS d`)[0].d;
     const ev3 = (
       await sql`
         INSERT INTO events (title, event_date, city, venue, district, lineup, organizer_slug, status)
@@ -614,7 +614,7 @@ try {
     await sql`
       INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, owner_email)
       VALUES ('zz-barrido-beta', 'ZZ Barrido Beta', 'techno', '06', 'Bogota',
-              'fixture del barrido', CURRENT_DATE, ${dueno4})`;
+              'fixture del barrido', (now() AT TIME ZONE 'America/Bogota')::date, ${dueno4})`;
     await sql`
       INSERT INTO collectives (slug, name, type, sector, bio, owner_email)
       VALUES ('zz-barrido-gamma', 'ZZ Barrido Gamma', 'colectivo', 'centro',
@@ -625,8 +625,8 @@ try {
      * dos: una a la que se le pasó cierra_en con la fiesta todavía por venir, y otra cuya
      * FIESTA ya pasó aunque nunca tuvo fecha de cierre.
      */
-    const futuro = (await sql`SELECT (CURRENT_DATE + 30)::text AS d`)[0].d;
-    const pasado = (await sql`SELECT (CURRENT_DATE - 3)::text AS d`)[0].d;
+    const futuro = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date + 30)::text AS d`)[0].d;
+    const pasado = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date - 3)::text AS d`)[0].d;
     const nuevoEvento = async (titulo, dia) =>
       (
         await sql`

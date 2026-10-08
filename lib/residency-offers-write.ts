@@ -304,13 +304,13 @@ export async function responderOferta(
      * así que este es el único orden que funciona: primero se cierra la vieja.
      */
     const pasos = [
-      sql`UPDATE artist_collectives SET to_date = CURRENT_DATE WHERE id = ${actual.id}`,
+      sql`UPDATE artist_collectives SET to_date = (now() AT TIME ZONE 'America/Bogota')::date WHERE id = ${actual.id}`,
     ];
     if (decision.anterior === "miembro") {
       pasos.push(sql`
         INSERT INTO artist_collectives
           (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-        VALUES (${oferta.artist_slug}, ${actual.collective_slug}, 'miembro', CURRENT_DATE, now(), 'artist')
+        VALUES (${oferta.artist_slug}, ${actual.collective_slug}, 'miembro', (now() AT TIME ZONE 'America/Bogota')::date, now(), 'artist')
       `);
     }
     pasos.push(sql`UPDATE artist_collectives SET kind = 'residente' WHERE id = ${vinculoId}`);

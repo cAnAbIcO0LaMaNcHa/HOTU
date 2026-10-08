@@ -289,7 +289,7 @@ try {
 
     /** Que de verdad caigan en la mitad pasada, y no que la prueba se engañe sola. */
     const [p] = await sql`
-      SELECT (event_date < CURRENT_DATE) AS ya_paso FROM events WHERE id = ${conHoras.data.id}`;
+      SELECT (event_date < (now() AT TIME ZONE 'America/Bogota')::date) AS ya_paso FROM events WHERE id = ${conHoras.data.id}`;
     chk("la fecha quedó en el pasado", p?.ya_paso === true, JSON.stringify(p));
 
     const html = await (await fetch(`${BASE}/eventos`)).text();

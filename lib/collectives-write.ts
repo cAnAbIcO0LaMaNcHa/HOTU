@@ -122,7 +122,7 @@ export async function removeMember(
   }
 
   const closed = await sql`
-    UPDATE artist_collectives SET to_date = CURRENT_DATE
+    UPDATE artist_collectives SET to_date = (now() AT TIME ZONE 'America/Bogota')::date
     WHERE artist_slug = ${artistSlug} AND collective_slug = ${collectiveSlug} AND to_date IS NULL
     RETURNING id
   `;
@@ -478,7 +478,7 @@ export async function createCollective(
   await sql`
     INSERT INTO artist_collectives
       (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-    VALUES (${artist.slug}, ${slug}, 'miembro', CURRENT_DATE, now(), 'artist')
+    VALUES (${artist.slug}, ${slug}, 'miembro', (now() AT TIME ZONE 'America/Bogota')::date, now(), 'artist')
   `;
 
   /**

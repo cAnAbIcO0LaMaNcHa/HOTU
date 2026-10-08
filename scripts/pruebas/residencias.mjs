@@ -204,7 +204,7 @@ try {
   const vincular = (art, col, kind) => sql`
     INSERT INTO artist_collectives
       (artist_slug, collective_slug, kind, from_date, accepted_at, requested_by)
-    VALUES (${art}, ${col}, ${kind}, CURRENT_DATE, now(), 'collective') RETURNING id`;
+    VALUES (${art}, ${col}, ${kind}, (now() AT TIME ZONE 'America/Bogota')::date, now(), 'collective') RETURNING id`;
 
   const [vDJ] = await vincular(DJ, COL, "miembro");
   const [vDJ2] = await vincular(DJ2, COL2, "miembro");
@@ -246,7 +246,7 @@ try {
     const [pend] = await sql`
       INSERT INTO artist_collectives
         (artist_slug, collective_slug, kind, from_date, requested_by)
-      VALUES (${DJ}, ${COL2}, 'miembro', CURRENT_DATE, 'collective') RETURNING id`;
+      VALUES (${DJ}, ${COL2}, 'miembro', (now() AT TIME ZONE 'America/Bogota')::date, 'collective') RETURNING id`;
     const r = await req("dj", "PATCH", `/api/memberships/${pend.id}`, {
       action: "accept",
       kind: "residente",

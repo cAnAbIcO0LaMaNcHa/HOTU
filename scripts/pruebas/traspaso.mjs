@@ -85,7 +85,7 @@ async function montar() {
   // Un fantasma con DOS perfiles.
   await sql`INSERT INTO user_profiles (email, display_name, auth_provider) VALUES (${FANTASMA},'ZZ Fant','credentials')`;
   await sql`INSERT INTO artists (slug,name,genre,district,city,photo,bio,status,joined_at,owner_email)
-            VALUES ('zz-a-fant','ZZ A Fant','techno','D00','Bogotá','','','published',CURRENT_DATE,${FANTASMA})`;
+            VALUES ('zz-a-fant','ZZ A Fant','techno','D00','Bogotá','','','published',(now() AT TIME ZONE 'America/Bogota')::date,${FANTASMA})`;
   await sql`INSERT INTO collectives (slug,name,type,sector,bio,district,status,entity_kind,owner_email)
             VALUES ('zz-c-fant','ZZ C Fant','LOCAL','Bogotá','','D00','published','collective',${FANTASMA})`;
   // Y un colectivo de una cuenta REAL, que ya tiene su perfil de artista.

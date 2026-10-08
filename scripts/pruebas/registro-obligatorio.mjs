@@ -114,7 +114,7 @@ try {
     const [ev] = await sql`
       INSERT INTO events (event_date, city, venue, title, lineup, district, scope,
                           country_code, language, status, featured, organizer_slug)
-      VALUES (CURRENT_DATE + 40,'Bogota','ZZ Reg Bodega','ZZ Reg Fiesta','ZZ DJ','D00',
+      VALUES ((now() AT TIME ZONE 'America/Bogota')::date + 40,'Bogota','ZZ Reg Bodega','ZZ Reg Fiesta','ZZ DJ','D00',
               'country','COL','es','published',false, NULL)
       RETURNING id`;
 

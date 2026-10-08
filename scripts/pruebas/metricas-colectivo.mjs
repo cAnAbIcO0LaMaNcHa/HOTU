@@ -55,7 +55,7 @@ const crearColectivo = (slug, nombre, kind) => sql`
 
 const crearArtista = (slug, nombre) => sql`
   INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, status, review_status)
-  VALUES (${slug}, ${nombre}, 'techno', 'D00', 'Bogota', 'bio', CURRENT_DATE, 'published', 'aprobado')
+  VALUES (${slug}, ${nombre}, 'techno', 'D00', 'Bogota', 'bio', (now() AT TIME ZONE 'America/Bogota')::date, 'published', 'aprobado')
   ON CONFLICT (slug) DO NOTHING`;
 
 /** Un evento con organizador, y opcionalmente con horario. */
@@ -108,7 +108,7 @@ try {
     await sql`INSERT INTO event_lineup (event_id, artist_slug, raw_name) VALUES (${ajeno}, ${DJ_UNO}, 'ZZ Metricas Alfa')`;
     /** Y el DJ es miembro del colectivo: el caso que la regla protege. */
     await sql`INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, accepted_at)
-              VALUES (${DJ_UNO}, ${COL}, 'miembro', CURRENT_DATE, now())`;
+              VALUES (${DJ_UNO}, ${COL}, 'miembro', (now() AT TIME ZONE 'America/Bogota')::date, now())`;
 
     const m = await metricas(COL);
     chk("cuenta UN evento, el propio", m.eventos === 1, String(m.eventos));
@@ -164,9 +164,9 @@ try {
   {
     /** Un residente aceptado, una invitación SIN aceptar, y un vínculo cerrado. */
     await sql`INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, accepted_at)
-              VALUES (${DJ_DOS}, ${COL}, 'residente', CURRENT_DATE, now())`;
+              VALUES (${DJ_DOS}, ${COL}, 'residente', (now() AT TIME ZONE 'America/Bogota')::date, now())`;
     await sql`INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date)
-              VALUES (${DJ_TRES}, ${COL}, 'miembro', CURRENT_DATE)`;
+              VALUES (${DJ_TRES}, ${COL}, 'miembro', (now() AT TIME ZONE 'America/Bogota')::date)`;
     await sql`INSERT INTO artist_collectives (artist_slug, collective_slug, kind, from_date, to_date, accepted_at)
               VALUES (${DJ_TRES}, ${COL}, 'miembro', '2024-01-01', '2024-06-01', now())`;
 
