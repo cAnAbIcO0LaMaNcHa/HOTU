@@ -115,7 +115,17 @@ export type Aviso =
    */
   | { tipo: "postulacion_aceptada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null }
   | { tipo: "postulacion_rechazada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null }
-  | { tipo: "postulacion_cancelada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null };
+  | { tipo: "postulacion_cancelada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null }
+
+  /**
+   * EL RECORTE DEL CIERRE: la fiesta se movió para atrás y la convocatoria se acortó con
+   * ella. Va al DJ con postulación PENDIENTE, que es a quien le cambia algo — el plazo que
+   * tiene para que le respondan.
+   *
+   * `cierraEn` es el DÍA, no un instante, porque es lo que la persona necesita saber. La
+   * hora exacta del recorte es el fin de ese día en Bogotá y decirla no agregaría nada.
+   */
+  | { tipo: "convocatoria_cierre_recortado"; para: string; artista: PerfilRef; evento: string; colectivo: string; cierraEn: string };
 
 export type TipoAviso = Aviso["tipo"];
 
@@ -234,6 +244,17 @@ function plantilla(a: Aviso): { asunto: string; cuerpo: string; referencia: stri
           `\n\nEl motivo que dejaron:\n${a.motivo ?? SIN_MOTIVO}` +
           `\n\nSi habías anunciado la fecha, conviene que la bajes. Y si esto no ` +
           `te cierra, escribile al colectivo: la cancelación la decidieron ellos, no HOTU.`,
+        referencia: `artist:${a.artista.slug}`,
+      };
+
+    case "convocatoria_cierre_recortado":
+      return {
+        asunto: `Se movió ${a.evento}, y la convocatoria cierra antes`,
+        cuerpo:
+          `${a.colectivo} cambió la fecha de ${a.evento}, así que la convocatoria a la ` +
+          `que te postulaste ahora cierra el ${a.cierraEn}.` +
+          `\n\nTu postulación sigue en pie y no tenés que hacer nada. Te lo ` +
+          `avisamos porque el plazo para que te respondan es más corto que antes.`,
         referencia: `artist:${a.artista.slug}`,
       };
 

@@ -19,7 +19,8 @@ import { neon } from "@neondatabase/serverless";
 import { isOwnBlobUrl } from "./blob";
 import { canEditCollective, type WriteResult } from "./collectives-write";
 import { resolverRolParaRegistro, sentenciaDeRegistro } from "./edit-log-write";
-import { armarInstante, horaEnBogota } from "./date-utils";
+import { armarInstante, horaEnBogota, OFFSET_BOGOTA } from "./date-utils";
+import { enviar } from "./mail";
 import { limpiarTexto, limpiarYRecortar, validarFecha } from "./texto";
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -409,11 +410,19 @@ export type ParcheEvento = {
  * con las mismas reglas que al publicar: el formulario es presentación,
  * y la app va a llamar al mismo lib.
  */
+/**
+ * El valor de vuelta lleva `cierreRecortadoA`, que es la MITAD DEL ORGANIZADOR del aviso de
+ * recorte: null cuando no se tocó nada, y el día nuevo cuando la convocatoria se acortó.
+ *
+ * Va en el valor y no en un console.log porque tiene que llegar a la pantalla: un ajuste
+ * silencioso sobre una fecha que el organizador eligió es justamente lo que esta pieza no
+ * quiere. La ruta lo pasa tal cual y el formulario lo muestra al guardar.
+ */
 export async function updateCommunityEvent(
   id: number,
   patch: ParcheEvento,
   email?: string | null
-): Promise<WriteResult<{ id: number }>> {
+): Promise<WriteResult<{ id: number; cierreRecortadoA: string | null }>> {
   const propio = await cargarEventoPropio(id, email);
   if (!propio.ok) return propio;
 
@@ -544,7 +553,31 @@ export async function updateCommunityEvent(
    * anterior cuando el patch no lo trae, así que anunciarlo como cambiado sería
    * decir que alguien lo tocó cuando no.
    */
-  await sql.transaction([
+  /**
+   * EL RECORTE DE cierra_en VA EN ESTA MISMA TRANSACCIÓN, Y SOLO PUEDE ACORTAR.
+   *
+   * Una convocatoria no puede cerrar después de la fiesta. Esa regla se valida al ABRIRLA,
+   * pero la fecha del evento se puede mover DESPUÉS, y entonces queda una convocatoria
+   * abierta cuyo cierre cae más tarde que el evento al que convoca.
+   *
+   * DECIDIDO: SE AJUSTA, NO SE RECHAZA. Mover la fecha de una fiesta es una cosa que pasa y
+   * no tiene por qué frenarse por una convocatoria; lo que no puede pasar es que el ajuste
+   * sea invisible, y de eso se ocupan las dos mitades de abajo.
+   *
+   * SOLO ACORTA, NUNCA ALARGA. El WHERE pide cierra_en > el nuevo fin del día, así que
+   * mover la fiesta para ADELANTE no toca nada: un cierre que ya era anterior sigue siendo
+   * válido, y estirarlo sería regalarle plazo a una convocatoria que su dueño quiso corta.
+   *
+   * SE RECORTA AL FIN DEL DÍA DEL EVENTO EN BOGOTÁ y no a su medianoche, por lo mismo que
+   * al abrir: cerrar el mismo día de la fiesta es legítimo.
+   *
+   * Y va con el dato y no después porque es parte del mismo cambio: si el recorte no entra,
+   * la fecha nueva tampoco, y nadie queda con una convocatoria que cierra después de su
+   * propia fiesta.
+   */
+  const finDelDiaNuevo = `${date}T23:59:59${OFFSET_BOGOTA}`;
+
+  const [, , recortadas] = await sql.transaction([
     sql`
       UPDATE events SET
         title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
@@ -569,8 +602,77 @@ export async function updateCommunityEvent(
         ...(patch.doorPriceCop !== undefined ? ["door_price_cop"] : []),
       ],
     }),
+    /**
+     * El RETURNING trae lo que hace falta para contarlo: el id de la convocatoria y su
+     * cierre nuevo. Sin él, "se recortó" sería una afirmación y no una medición — y es el
+     * dato que el organizador va a ver al guardar.
+     */
+    sql`
+      UPDATE event_calls SET cierra_en = ${finDelDiaNuevo}::timestamptz
+      WHERE event_id = ${id}
+        AND cerrada_en IS NULL
+        AND cierra_en IS NOT NULL
+        AND cierra_en > ${finDelDiaNuevo}::timestamptz
+      RETURNING id, cierra_en
+    `,
   ]);
-  return { ok: true, value: { id } };
+
+  /**
+   * Y SI SE RECORTÓ, NO SE QUEDA CALLADO. Dos mitades, porque son dos personas distintas:
+   *
+   *   el ORGANIZADOR lo ve al guardar, en el valor que devuelve esta función;
+   *   los DJ CON POSTULACIÓN PENDIENTE lo ven en su bandeja, por lib/mail.ts.
+   *
+   * El aviso al DJ es el que importa: lo que el recorte le cambia es el plazo que tiene para
+   * que le respondan, y enterarse de eso por no recibir respuesta es la peor manera.
+   *
+   * Fuera de la transacción, igual que todos los avisos: sería darle a un aviso el poder de
+   * deshacer un cambio de fecha.
+   */
+  const recorte = (recortadas as Array<{ id: number; cierra_en: unknown }>)[0] ?? null;
+  if (recorte) await avisarCierreRecortado(recorte.id, id, date);
+
+  return {
+    ok: true,
+    value: { id, cierreRecortadoA: recorte ? date : null },
+  };
+}
+
+/**
+ * Les deja el aviso a los DJ con postulación PENDIENTE en esa convocatoria.
+ *
+ * Solo las pendientes: a quien ya le respondieron, el plazo no le cambia nada.
+ *
+ * NUNCA TIRA. Un aviso que falla no puede voltear un cambio de fecha que ya se guardó, y lo
+ * que pasó queda en mail_outbox igual.
+ */
+async function avisarCierreRecortado(
+  callId: number,
+  eventId: number,
+  nuevaFecha: string
+): Promise<void> {
+  try {
+    const filas = await sql`
+      SELECT ar.owner_email, ar.name, ar.slug, e.title, ec.collective_slug
+      FROM event_applications ea
+      JOIN event_calls ec ON ec.id = ea.call_id
+      JOIN events e ON e.id = ec.event_id
+      JOIN artists ar ON ar.slug = ea.artist_slug
+      WHERE ea.call_id = ${callId} AND ea.resuelta_en IS NULL AND ar.owner_email IS NOT NULL
+    `;
+    for (const f of filas) {
+      await enviar({
+        tipo: "convocatoria_cierre_recortado",
+        para: f.owner_email as string,
+        artista: { tipo: "artist", slug: f.slug as string, nombre: f.name as string },
+        evento: f.title as string,
+        colectivo: f.collective_slug as string,
+        cierraEn: nuevaFecha,
+      });
+    }
+  } catch (e) {
+    console.error(`no pude avisar el recorte de cierre de la convocatoria ${callId} del evento ${eventId}`, e);
+  }
 }
 
 /**
