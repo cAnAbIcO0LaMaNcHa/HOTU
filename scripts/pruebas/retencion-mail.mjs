@@ -22,6 +22,13 @@
 import { neon } from "@neondatabase/serverless";
 import { readFileSync } from "fs";
 import { abrirCorrida } from "./seed.mjs";
+/**
+ * SE IMPORTA UN .ts DESDE UN .mjs, y anda porque Node 24 quita los tipos solo. Es la primera
+ * batería del repo que lo hace. En un Node viejo esto revienta con "Unknown file extension
+ * .ts" antes del primer chequeo — y ese error ruidoso es preferible a volver a copiar la
+ * expresión a mano.
+ */
+import { abrirPuertaDeMantenimiento } from "../../lib/cron-auth.ts";
 
 const BASE = "http://localhost:3000";
 const sql = neon(process.env.DATABASE_URL);
@@ -272,30 +279,97 @@ try {
      * CRON_SECRET" exigiría reiniciarlo sin la variable en medio de la batería. Eso dejaría
      * el server en un estado distinto del que tiene el resto de la suite.
      *
-     * Así que se prueba LA DECISIÓN, no el transporte: se evalúa la misma expresión del
-     * route handler con la variable ausente. Es un modelo, y por eso la expresión está
-     * copiada literal de app/api/mantenimiento-mail-outbox/route.ts — si allá cambia y acá
-     * no, esta prueba deja de significar algo, y el grep de abajo lo ataja.
+     * ANTES ERA UN MODELO Y YA NO LO ES, y la diferencia es el punto. La versión vieja copiaba
+     * la expresión del route handler a mano y un grep estático vigilaba que las dos no se
+     * separaran. El grep FUNCIONÓ —disparó el día que la puerta se movió a lib/cron-auth.ts—
+     * pero una prueba que reimplementa lo que verifica solo prueba que sabe reimplementarlo.
+     *
+     * Ahora la puerta es una función PURA en su propio archivo, así que se importa la de
+     * verdad y se la llama con Request fabricados. No hay copia que se pueda desincronizar y
+     * no hace falta ningún grep: si la función cambia, esto corre la función cambiada.
      */
-    const abre = (cronSecret, authHeader) =>
-      Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`;
+    const pedir = (url, headers) => new Request(url, { headers: headers ?? {} });
+    const conEntorno = (vars, fn) => {
+      const previos = {};
+      for (const [k, v] of Object.entries(vars)) {
+        previos[k] = process.env[k];
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      try {
+        return fn();
+      } finally {
+        for (const [k, v] of Object.entries(previos)) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
+    };
 
-    chk("sin la variable, un Bearer cualquiera NO abre", abre(undefined, "Bearer lo-que-sea") === false);
-    chk("sin la variable, 'Bearer undefined' NO abre", abre(undefined, "Bearer undefined") === false);
-    chk("con la variable vacía tampoco", abre("", "Bearer ") === false);
-    chk("y con la variable puesta y el header correcto SÍ", abre("abc", "Bearer abc") === true);
+    const abreComoCron = (cronSecret, authHeader) =>
+      conEntorno({ CRON_SECRET: cronSecret }, () => {
+        const r = abrirPuertaDeMantenimiento(
+          pedir("http://x/api/m", { authorization: authHeader })
+        );
+        return r.ok === true && r.via === "cron";
+      });
+
+    chk(
+      "sin la variable, un Bearer cualquiera NO abre",
+      abreComoCron(undefined, "Bearer lo-que-sea") === false
+    );
+    chk(
+      "sin la variable, 'Bearer undefined' NO abre",
+      abreComoCron(undefined, "Bearer undefined") === false
+    );
+    chk("con la variable vacía tampoco", abreComoCron("", "Bearer ") === false);
+    chk(
+      "y con la variable puesta y el header correcto SÍ",
+      abreComoCron("abc", "Bearer abc") === true
+    );
 
     /**
-     * Y QUE LA EXPRESIÓN DE ARRIBA SIGA SIENDO LA DEL CÓDIGO. Un grep estático, igual que el
-     * de un-solo-escritor-de-residente: si el route handler cambiara su forma de decidir,
-     * esto falla ruidosamente en vez de seguir probando una copia vieja.
+     * Y LA MISMA PRUEBA DEL LADO MANUAL, QUE EL MODELO VIEJO NO CUBRÍA. Si MIGRATE_SECRET
+     * faltara del entorno, `searchParams.get("secret") === undefined` sería true para una URL
+     * SIN secreto: la ruta se abriría sola. Es el mismo agujero que el 'Bearer undefined' y
+     * estaba sin medir, porque el modelo copiaba una sola de las dos mitades.
      */
-    const fuente = readFileSync("app/api/mantenimiento-mail-outbox/route.ts", "utf8");
+    const abreAMano = (migrateSecret, query) =>
+      conEntorno({ MIGRATE_SECRET: migrateSecret }, () => {
+        const r = abrirPuertaDeMantenimiento(pedir(`http://x/api/m${query}`));
+        return r.ok === true && r.via === "manual";
+      });
+
+    chk("sin MIGRATE_SECRET, una URL sin ?secret NO abre", abreAMano(undefined, "") === false);
     chk(
-      "el route handler sigue decidiendo con Boolean(cronSecret) && header === `Bearer ${cronSecret}`",
-      /Boolean\(cronSecret\)\s*&&\s*authHeader === `Bearer \$\{cronSecret\}`/.test(fuente),
-      "la expresión del código cambió: esta sección está probando una copia vieja"
+      "sin MIGRATE_SECRET, ?secret=undefined tampoco",
+      abreAMano(undefined, "?secret=undefined") === false
     );
+    chk("con MIGRATE_SECRET puesto y el valor correcto SÍ", abreAMano("xyz", "?secret=xyz") === true);
+    chk("y con el valor equivocado NO", abreAMano("xyz", "?secret=otro") === false);
+
+    /** Y que el dryRun lo decida la función, no cada ruta por su cuenta. */
+    conEntorno({ CRON_SECRET: "c1", MIGRATE_SECRET: "m1" }, () => {
+      const delCron = abrirPuertaDeMantenimiento(
+        pedir("http://x/api/m?dryRun=1", { authorization: "Bearer c1" })
+      );
+      chk(
+        "el cron pidiendo dryRun no pasa, y da 400 y no 401",
+        delCron.ok === false && delCron.status === 400
+      );
+      const aMano = abrirPuertaDeMantenimiento(pedir("http://x/api/m?secret=m1&dryRun=1"));
+      chk("a mano, dryRun queda en true", aMano.ok === true && aMano.dryRun === true);
+      const sinDry = abrirPuertaDeMantenimiento(pedir("http://x/api/m?secret=m1"));
+      chk("a mano sin dryRun, queda en false", sinDry.ok === true && sinDry.dryRun === false);
+      const noAdmite = abrirPuertaDeMantenimiento(
+        pedir("http://x/api/m?secret=m1&dryRun=1"),
+        { admiteDryRun: false }
+      );
+      chk(
+        "una ruta que no admite dryRun lo ignora en silencio",
+        noAdmite.ok === true && noAdmite.dryRun === false
+      );
+    });
   }
 } finally {
   const resumen = await corrida.cerrar();
