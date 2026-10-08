@@ -97,9 +97,30 @@ export type Aviso =
   /** Al reclamante: ya es suyo. */
   | { tipo: "reclamo_aprobado"; para: string; perfil: PerfilRef }
   /** Al reclamante: no, y por qué. El motivo es lo único que recibe. */
-  | { tipo: "reclamo_rechazado"; para: string; perfil: PerfilRef; motivo: string };
+  | { tipo: "reclamo_rechazado"; para: string; perfil: PerfilRef; motivo: string }
+
+  /**
+   * LAS TRES DE CONVOCATORIAS (§7) LLEVAN `evento` Y `colectivo` COMO TEXTO Y NO UN id.
+   *
+   * El aviso tiene que seguir siendo legible cuando el evento ya pasó, y con un id habría
+   * que ir a buscar el título a la base cada vez que alguien lee la bandeja — o peor, el
+   * título podría haber cambiado y el aviso diría algo distinto de lo que decía el día que
+   * se mandó. Un aviso es una foto de lo que se dijo, no una consulta.
+   *
+   * `motivo` es string | null en las tres: opcional al rechazar —decidido, para que el dueño
+   * no deje postulaciones sin resolver por no tener que escribirlo— y obligatorio al
+   * cancelar, donde lo exige el write path y también un CHECK de la base. El tipo acepta
+   * null porque hay un rechazo sin motivo legítimo: el que sale del cierre de la
+   * convocatoria, que no lo escribió nadie.
+   */
+  | { tipo: "postulacion_aceptada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null }
+  | { tipo: "postulacion_rechazada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null }
+  | { tipo: "postulacion_cancelada"; para: string; artista: PerfilRef; evento: string; colectivo: string; motivo: string | null };
 
 export type TipoAviso = Aviso["tipo"];
+
+/** Lo que se imprime si una cancelación llegara sin motivo, que no debería pasar. */
+const SIN_MOTIVO = "(no dejaron motivo)";
 
 const QUE_ES = (p: PerfilRef) => (p.tipo === "artist" ? "el perfil de DJ" : "el colectivo");
 const DONDE = (p: PerfilRef) =>
@@ -170,6 +191,50 @@ function plantilla(a: Aviso): { asunto: string; cuerpo: string; referencia: stri
           `aprobamos.\n\nMotivo:\n${a.motivo}\n\n` +
           "Si podés aportar algo que no tuvimos en cuenta, volvé a reclamarlo.",
         referencia: `${a.perfil.tipo}:${a.perfil.slug}`,
+      };
+
+    case "postulacion_aceptada":
+      return {
+        asunto: `Te aceptaron para ${a.evento}`,
+        cuerpo:
+          `${a.colectivo} aceptó tu postulación para ${a.evento}.` +
+          `\n\nYa estás en el lineup, así que la fiesta te va a aparecer en tu ` +
+          `perfil (${DONDE(a.artista)}).` +
+          `\n\nSi no vas a poder, decíselo al colectivo cuanto antes: hay gente ` +
+          `que ya vio el lineup.`,
+        referencia: `artist:${a.artista.slug}`,
+      };
+
+    case "postulacion_rechazada":
+      return {
+        asunto: `No quedaste para ${a.evento}`,
+        cuerpo:
+          `${a.colectivo} no te eligió para ${a.evento}.` +
+          (a.motivo
+            ? `\n\nLo que te dejaron escrito:\n${a.motivo}`
+            : `\n\nNo dejaron un motivo, y no siempre lo hay: en una convocatoria ` +
+              `con más postulaciones que cupos, la mayoría de las negativas no son sobre ` +
+              `vos.`) +
+          `\n\nPodés seguir postulándote a otras convocatorias.`,
+        referencia: `artist:${a.artista.slug}`,
+      };
+
+    case "postulacion_cancelada":
+      return {
+        asunto: `Se cayó tu fecha en ${a.evento}`,
+        cuerpo:
+          `${a.colectivo} canceló tu participación en ${a.evento}, así que ya no estás en ` +
+          `el lineup.` +
+          /**
+           * El fallback no debería alcanzarse nunca: cancelar exige motivo en el write path y
+           * lo exige event_applications_cancelacion_check. Está igual porque el tipo acepta
+           * null —lo necesita el rechazo del cierre automático— y una plantilla que imprimiera
+           * "null" en un mail a una persona es peor que una rama que no se usa.
+           */
+          `\n\nEl motivo que dejaron:\n${a.motivo ?? SIN_MOTIVO}` +
+          `\n\nSi habías anunciado la fecha, conviene que la bajes. Y si esto no ` +
+          `te cierra, escribile al colectivo: la cancelación la decidieron ellos, no HOTU.`,
+        referencia: `artist:${a.artista.slug}`,
       };
 
     default: {
