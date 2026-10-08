@@ -166,6 +166,46 @@ home vuelve a existir, y de qué forma.
 
 ## DEUDA ANOTADA EN §8 — NO URGENTE, PERO NO SE OLVIDA
 
+### Pruebas de rutas autenticadas por HTTP, con login programático
+
+**Anotado el 8 de octubre de 2026, al cerrar convocatorias (§7).**
+
+Hoy las baterías que necesitan llamar al handler de una ruta autenticada —el editor de
+lineup del admin es la primera— **falsean `auth()`** con una costura:
+`scripts/pruebas/auth-falsa.mjs`, activada por `ZZ_AUTH_FALSA=1` y leída por el hook de
+resolución `scripts/pruebas/hook-rutas.mjs`.
+
+Funciona y está medida en cuatro propiedades, en `scripts/pruebas/llaves.mjs` secciones 7 y 8:
+nada en `app/`, `lib/`, `components/` ni `auth.ts` la nombra; solo `scripts/pruebas/` registra
+el hook; **sin la bandera la ruta usa el next-auth de verdad** —probado lanzando un node
+aparte donde la variable no está y viendo a next-auth reventar—; y la bandera no aparece en
+ningún archivo de configuración del despliegue. Falsea la **sesión**, nunca el **rol**:
+`isModerator` sigue consultando la base, así que una batería que quiera entrar al admin tiene
+que crear su fila en `user_roles`.
+
+**Lo que igual no es:** una prueba de la ruta *entera*. Se salta el middleware, los cookies, y
+el ciclo real de next-auth. Un bug que viva ahí —un matcher del middleware mal escrito, una
+cookie que no se lee— pasa invisible para estas pruebas. Es exactamente la familia del 307 de
+`/admin`: la verificación mira un lugar parecido al correcto y contesta bien sin haber probado
+lo que importa.
+
+**Lo que haría falta para retirarla:** un login programático contra el dev server —un POST a
+las credenciales de next-auth que devuelva la cookie de sesión— y que las baterías pidan las
+rutas por HTTP con esa cookie, como ya hacen con las de secreto. No existe hoy y no es gratis:
+hay que decidir si la cuenta de prueba se crea con `credentials` y una contraseña hasheada en
+el seed, y hay que medir que el flujo no quede como un camino de login alternativo.
+
+**Lo que NO es aceptable como reemplazo:** dejar de probar la ruta y probar solo el `lib`. Lo
+que la regla (a) del editor garantiza vive en la ruta —el 409 y su mensaje— y una prueba que
+solo llamara al write path no vería ninguna de las dos mitades.
+
+**Medido en Vercel con la API el 8 de octubre de 2026:** 27 variables en el proyecto, ninguna
+es `ZZ_AUTH_FALSA` ni `ZZ_AUTH_EMAIL`, y `hiddenProductionEnvCount` en 0 — o sea que no hay
+ninguna escondida que la lista no muestre. Eso NO lo puede medir la batería: haría falta un
+`VERCEL_TOKEN` en localhost, y meter una credencial de la plataforma en el entorno de
+desarrollo para que una prueba la lea cuesta más que el riesgo que cubre. Se vuelve a medir en
+cada deploy, con la API.
+
 ### Borrar `collective_ownership`
 
 `profile_ownership` es una tabla NUEVA, no un rename: la vieja sigue viva y

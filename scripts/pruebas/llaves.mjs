@@ -50,7 +50,7 @@
  * correcto pero una forma de petición que su propia validación rechaza después de la puerta.
  */
 
-import { readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -419,6 +419,76 @@ try {
       "sin la bandera, la ruta usa la auth de VERDAD y no la falseada",
       salida.includes("USO_LA_DE_VERDAD"),
       salida.replace(/\s+/g, " ").slice(0, 160)
+    );
+  }
+
+  console.log("\n8. LA BANDERA DE LA AUTH FALSEADA NO ENTRA AL ENTORNO DE DESPLIEGUE");
+  {
+    /**
+     * El chequeo 7 prueba que el CÓDIGO no la nombra. Esto prueba lo otro: que no la nombre
+     * ninguna cosa que CONFIGURE el despliegue.
+     *
+     * Son dos caminos distintos y hace falta cerrar los dos. El hook solo sustituye @/auth
+     * cuando él mismo está registrado, así que en producción la bandera no haría nada ni
+     * estando puesta — pero eso es una propiedad del hook, y las propiedades cambian. Que la
+     * bandera no exista en el entorno de despliegue es una defensa que no depende de eso.
+     *
+     * SE MIRAN TODOS LOS LUGARES QUE PUEDEN PONER UNA VARIABLE, no solo vercel.json: el `env`
+     * de next.config, los .env que se commitean, y los scripts de package.json, que es el que
+     * se olvida — un `cross-env ZZ_AUTH_FALSA=1 next build` sería exactamente esto.
+     */
+    const BANDERAS = /ZZ_AUTH_FALSA|ZZ_AUTH_EMAIL/;
+    const DONDE = [
+      "vercel.json",
+      "next.config.mjs",
+      "next.config.js",
+      "next.config.ts",
+      "package.json",
+      ".env.example",
+      ".env.production",
+      ".env",
+    ];
+    const sucios = [];
+    const mirados = [];
+    for (const f of DONDE) {
+      if (!existsSync(f)) continue;
+      mirados.push(f);
+      if (BANDERAS.test(readFileSync(f, "utf8"))) sucios.push(f);
+    }
+    chk(
+      `la bandera no aparece en ninguno de los ${mirados.length} archivos de configuración que existen`,
+      sucios.length === 0,
+      sucios.join(", ")
+    );
+    /**
+     * Y QUE SE HAYA MIRADO ALGO. Si los nombres de los archivos cambiaran, la lista quedaría
+     * en cero y el chequeo pasaría sin haber abierto nada — el mismo cero ambiguo de siempre.
+     */
+    chk(
+      "y se miraron de verdad vercel.json y next.config",
+      mirados.includes("vercel.json") && mirados.some((f) => f.startsWith("next.config")),
+      `mirados: ${mirados.join(", ")}`
+    );
+
+    /**
+     * LA LISTA DE VARIABLES DE VERCEL NO SE PUEDE MEDIR DESDE ACÁ, y hay que decirlo en vez de
+     * dar la impresión de que está cubierta: haría falta un VERCEL_TOKEN en localhost, y meter
+     * una credencial de la plataforma en el entorno de desarrollo para que una prueba la lea
+     * es un costo peor que el riesgo que cubre.
+     *
+     * Se mide con la API al desplegar, y queda anotado en el commit. MEDIDO el 8 de octubre de
+     * 2026: 27 variables en el proyecto, ninguna es ZZ_AUTH_FALSA ni ZZ_AUTH_EMAIL, y
+     * hiddenProductionEnvCount en 0 — o sea que no hay ninguna escondida que la lista no
+     * muestre.
+     *
+     * Lo que SÍ se puede medir acá es que el entorno de ESTA corrida no la traiga de .env.local
+     * sin que nadie lo haya pedido: la batería la pone a mano, así que si ya venía puesta
+     * desde el archivo, alguien la dejó ahí.
+     */
+    chk(
+      "la bandera no viene de .env.local: la batería la pone a mano y la saca",
+      !BANDERAS.test(readFileSync(".env.local", "utf8")),
+      "ZZ_AUTH_FALSA o ZZ_AUTH_EMAIL están en .env.local, donde no tienen que estar"
     );
   }
 } finally {
