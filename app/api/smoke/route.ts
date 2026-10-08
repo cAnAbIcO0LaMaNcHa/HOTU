@@ -104,6 +104,11 @@ import { getAllRoleAssignments } from "@/lib/roles";
 import { getEliminaciones, listarCuentas } from "@/lib/accounts-delete";
 import { getReclamosPendientes } from "@/lib/claims-write";
 import { getMailOutbox } from "@/lib/mail";
+import {
+  getConvocatoriaDeEvento,
+  getConvocatoriasAbiertas,
+  getPostulacionesDeArtista,
+} from "@/lib/convocatorias-read";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -223,6 +228,15 @@ export async function GET(request: Request) {
     await correr("/artistas/[slug]", "getPressByArtist", () => getPressByArtist(s));
     await correr("/artistas/[slug]", "countArtistLikes", () => countArtistLikes(s));
     await correr("/artistas/[slug]", "getProfileGenres", () => getProfileGenres("artist", s));
+    /**
+     * LA BANDEJA DEL DJ CUELGA DE SU PERFIL, así que su lectura va con las del EPK y con el
+     * mismo slug real. Si no hubiera artistas se OMITE junto con las otras ocho, que es lo
+     * correcto: alimentarla con un slug inventado devolvería una lista vacía sin tocar los
+     * JOIN que importan, y el OK no diría nada.
+     */
+    await correr("/artistas/[slug]", "getPostulacionesDeArtista", () =>
+      getPostulacionesDeArtista(s)
+    );
   } else {
     for (const lector of [
       "getArtistBySlug",
@@ -233,6 +247,7 @@ export async function GET(request: Request) {
       "getPressByArtist",
       "countArtistLikes",
       "getProfileGenres",
+      "getPostulacionesDeArtista",
     ]) {
       omitir("/artistas/[slug]", lector, "no hay artistas publicados con los que probarlas");
     }
@@ -241,6 +256,37 @@ export async function GET(request: Request) {
   await correr("/colectivos", "getAllCollectives", () => getAllCollectives());
   await correr("/colectivos", "getVinculos", () => getVinculos("collective"));
   await correr("/colectivos", "getGenreIndex(collective)", () => getGenreIndex("collective"));
+
+  /**
+   * LAS CONVOCATORIAS (§7).
+   *
+   * getConvocatoriasAbiertas es la vitrina y no necesita ningún dato previo, así que corre
+   * siempre. Su consulta cruza event_calls, events y collectives y evalúa la condición de
+   * ABIERTA, que es la parte que puede romperse: si alguien le cambia la forma a
+   * CONVOCATORIA_ABIERTA y se le va un alias, acá se ve.
+   *
+   * getConvocatoriaDeEvento NECESITA UN EVENTO REAL, y se le pasa uno de los publicados por
+   * la misma razón que el EPK recibe un slug real: con un id inventado devuelve null sin
+   * tocar ni el JOIN de artists ni el subquery de postulaciones, y el OK no hablaría de nada.
+   * Si no hay eventos se OMITE en vez de pasar vacía.
+   */
+  await correr("/convocatorias", "getConvocatoriasAbiertas", () => getConvocatoriasAbiertas());
+
+  let idDeEvento: number | null = null;
+  try {
+    const eventos = await getAllEvents();
+    idDeEvento = eventos[0]?.id ?? null;
+  } catch {
+    /* getAllEvents se reporta igual más arriba, con su error */
+  }
+  if (idDeEvento !== null) {
+    const ev = idDeEvento;
+    await correr("/admin/eventos/[id]", "getConvocatoriaDeEvento", () =>
+      getConvocatoriaDeEvento(ev)
+    );
+  } else {
+    omitir("/admin/eventos/[id]", "getConvocatoriaDeEvento", "no hay eventos publicados");
+  }
   await correr("/venues", "getAllVenues", () => getAllVenues());
   await correr("/venues", "getVinculos(venue)", () => getVinculos("venue"));
   await correr("/artistas", "getGenreIndex(artist)", () => getGenreIndex("artist"));
