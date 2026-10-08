@@ -28,6 +28,9 @@
 
 import { neon } from "@neondatabase/serverless";
 import { abrirCorrida } from "./seed.mjs";
+/** Se importan los .ts de verdad: Node 24 les quita los tipos solo. */
+import { normalizarEnSql } from "../../lib/convocatorias.ts";
+import { normalizarNombre } from "../../lib/lineup-import.ts";
 
 const sql = neon(process.env.DATABASE_URL);
 
@@ -363,6 +366,79 @@ try {
     orden = String(e.message || e);
   }
   chk("en el orden correcto —postulaciones, convocatoria, resto— sale todo", !orden, orden ?? "");
+
+  console.log("\n9. LOS DOS NORMALIZADORES DE NOMBRE TIENEN QUE COINCIDIR");
+  {
+    /**
+     * ACEPTAR UNA POSTULACIÓN REEMPLAZA LA FILA SIN RESOLVER DEL LINEUP POR NOMBRE
+     * NORMALIZADO, Y TIENE QUE PASAR EN UNA SENTENCIA, así que la comparación se hace del
+     * lado de Postgres. Eso obliga a una SEGUNDA implementación de normalizarNombre(), que ya
+     * existe en JS.
+     *
+     * Dos normalizadores que discrepan fallan CALLADOS: el UPDATE no encuentra la fila, el
+     * INSERT entra al lado, y el lineup muestra al DJ dos veces sin ningún error. Así que la
+     * duplicación se vuelve un invariante MEDIDO y no una esperanza.
+     *
+     * Y ya encontró algo en la primera corrida: translate de SQL no entiende las marcas
+     * combinantes, y normalizarNombre sí porque hace NFD. Una "ë" descompuesta —e + U+0308,
+     * que es lo que producen macOS y varios IME— pasaba entera por SQL y se convertía en
+     * "e" en JS. Los dos resultados SE VEN IGUAL en pantalla. Por eso normalizarEnSql borra
+     * las seis marcas combinantes antes de traducir los precompuestos.
+     *
+     * Los invisibles de los casos se arman con fromCharCode y no con escapes: la herramienta
+     * que escribe archivos en este entorno convierte un escape en el carácter real, así que
+     * un \u0308 en el fuente dejaría de ser una prueba de la forma descompuesta.
+     */
+    const CH = (n) => String.fromCharCode(n);
+    const NBSP = CH(160);
+    const AGUDA = CH(0x301);
+    const GRAVE = CH(0x300);
+    const CIRC = CH(0x302);
+    const TILDE = CH(0x303);
+    const DIERESIS = CH(0x308);
+    const CEDILLA = CH(0x327);
+
+    const adversarios = [
+      "Camila", "CAMILA", "  Camila  ", "Camila   Rojas", "Camilá", "CAMILÁ",
+      "José Núñez", "JOSE NUNEZ", "Beatriz Gonçalves", "Müller", "São Paulo Crew",
+      "Añejo ÑOÑO", "Zoë", "DJ  Sombra ", "Ángel Ávila Óscar Ünal", "",
+      "Camila" + NBSP + "Rojas", "a" + CH(9) + "b", "a" + CH(13) + CH(10) + "b", "  ",
+      /* y los mismos, DESCOMPUESTOS */
+      "Zoe" + DIERESIS, "Jose" + AGUDA + " Nun" + TILDE + "ez", "Mu" + DIERESIS + "ller",
+      "Gonc" + CEDILLA + "alves", "Cami" + GRAVE + "la", "Sa" + TILDE + "o Paulo",
+      "Ae" + CIRC + "reo", "e" + AGUDA + "  " + NBSP + "  e" + DIERESIS,
+    ];
+
+    /** Y todo lo que de verdad hay en la base, que es lo que el write path va a comparar. */
+    const deLaBase = await sql`
+      SELECT raw_name AS t FROM event_lineup
+      UNION SELECT name FROM artists
+      UNION SELECT name FROM collectives`;
+    const reales = deLaBase.map((r) => r.t).filter((x) => typeof x === "string");
+
+    let coinciden = 0;
+    const discrepan = [];
+    for (const t of [...adversarios, ...reales]) {
+      const [fila] = await sql(`SELECT ${normalizarEnSql("$1")} AS dice`, [t]);
+      if (fila.dice === normalizarNombre(t)) coinciden++;
+      else discrepan.push(`${JSON.stringify(t)}: js=${JSON.stringify(normalizarNombre(t))} sql=${JSON.stringify(fila.dice)}`);
+    }
+    chk(
+      `los ${adversarios.length} casos adversarios y los ${reales.length} nombres de la base normalizan igual en JS y en SQL`,
+      discrepan.length === 0,
+      discrepan.join(" | ")
+    );
+    /**
+     * Y QUE DE VERDAD HAYA PROBADO ALGO. Un cero de discrepancias puede significar que
+     * coinciden o que la lista salió vacía, y esas dos cosas hay que poder distinguirlas —
+     * mismo razonamiento que el barrido que daba cero en arnes.mjs.
+     */
+    chk(
+      "y se comparó algo: al menos 40 cadenas, con nombres reales de la base entre ellas",
+      coinciden + discrepan.length >= 40 && reales.length > 0,
+      `comparadas ${coinciden + discrepan.length}, de la base ${reales.length}`
+    );
+  }
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);
