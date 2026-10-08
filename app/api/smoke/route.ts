@@ -258,6 +258,22 @@ export async function GET(request: Request) {
   await correr("/colectivos", "getGenreIndex(collective)", () => getGenreIndex("collective"));
 
   /**
+   * LAS ETIQUETAS SON PÁGINAS QUE EXISTEN, Y LA PRIMERA VERSIÓN DE ESTO INVENTÓ DOS.
+   *
+   * Decía /convocatorias y /admin/eventos/[id], y NINGUNA DE LAS DOS EXISTE: el distintivo de
+   * convocatoria va en /eventos y el panel del dueño es /perfil?panel=colectivo. Las lecturas
+   * corrían bien, así que el smoke daba verde — y listaba dos páginas sanas que no son
+   * páginas.
+   *
+   * Es la familia de este archivo cometida DENTRO de este archivo: `sanas` existe justamente
+   * para que nadie lea que una página está bien en una línea que no habla de esa página.
+   *
+   * OJO CON LO QUE SIGUE SIN CUBRIR: /perfil no tiene NINGUNA otra lectura acá, con sus cuatro
+   * paneles. getConvocatoriaDeEvento es la primera, y entra etiquetada con el panel donde se
+   * usa — pero el resto de /perfil sigue afuera, que es la misma forma del /admin que estuvo
+   * 500 durante 66 commits. Anotado, no resuelto.
+   */
+  /**
    * LAS CONVOCATORIAS (§7).
    *
    * getConvocatoriasAbiertas es la vitrina y no necesita ningún dato previo, así que corre
@@ -270,7 +286,7 @@ export async function GET(request: Request) {
    * tocar ni el JOIN de artists ni el subquery de postulaciones, y el OK no hablaría de nada.
    * Si no hay eventos se OMITE en vez de pasar vacía.
    */
-  await correr("/convocatorias", "getConvocatoriasAbiertas", () => getConvocatoriasAbiertas());
+  await correr("/eventos", "getConvocatoriasAbiertas", () => getConvocatoriasAbiertas());
 
   let idDeEvento: number | null = null;
   try {
@@ -281,11 +297,11 @@ export async function GET(request: Request) {
   }
   if (idDeEvento !== null) {
     const ev = idDeEvento;
-    await correr("/admin/eventos/[id]", "getConvocatoriaDeEvento", () =>
+    await correr("/perfil?panel=colectivo", "getConvocatoriaDeEvento", () =>
       getConvocatoriaDeEvento(ev)
     );
   } else {
-    omitir("/admin/eventos/[id]", "getConvocatoriaDeEvento", "no hay eventos publicados");
+    omitir("/perfil?panel=colectivo", "getConvocatoriaDeEvento", "no hay eventos publicados");
   }
   await correr("/venues", "getAllVenues", () => getAllVenues());
   await correr("/venues", "getVinculos(venue)", () => getVinculos("venue"));

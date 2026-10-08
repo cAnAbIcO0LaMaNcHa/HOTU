@@ -33,6 +33,12 @@ import { toISODate } from "./date-utils";
 
 const sql = neon(process.env.DATABASE_URL!);
 
+/**
+ * NO LLEVA DISTRITO, NI DEL EVENTO NI DEL ARTISTA. El sistema de diez distritos con color se
+ * borró, y medido con grep NO QUEDA UN SOLO COMPONENTE que lea .district para pintar nada. Las
+ * columnas siguen ahí y siguen siendo NOT NULL, que es la trampa: traerlas compila y devuelve
+ * un valor que en pantalla no dice nada. Lo que identifica un perfil ahora es el género.
+ */
 export type ConvocatoriaAbierta = {
   id: number;
   eventId: number;
@@ -40,7 +46,6 @@ export type ConvocatoriaAbierta = {
   eventDate: string;
   venue: string;
   city: string;
-  district: string;
   flyerUrl: string | null;
   collectiveSlug: string;
   collectiveName: string;
@@ -61,7 +66,7 @@ export type ConvocatoriaAbierta = {
 export async function getConvocatoriasAbiertas(): Promise<ConvocatoriaAbierta[]> {
   const filas = await sql(
     `SELECT ec.id, ec.event_id, ec.cupos, ec.cierra_en, ec.nota, ec.collective_slug,
-            e.title, e.event_date, e.venue, e.city, e.district, e.flyer_url,
+            e.title, e.event_date, e.venue, e.city, e.flyer_url,
             c.name AS collective_name,
             (SELECT COUNT(*)::int FROM event_applications ea WHERE ea.call_id = ec.id) AS postulaciones
      FROM event_calls ec
@@ -78,7 +83,6 @@ export async function getConvocatoriasAbiertas(): Promise<ConvocatoriaAbierta[]>
     eventDate: toISODate(r.event_date),
     venue: r.venue as string,
     city: r.city as string,
-    district: r.district as string,
     flyerUrl: (r.flyer_url as string | null) ?? null,
     collectiveSlug: r.collective_slug as string,
     collectiveName: r.collective_name as string,
@@ -94,7 +98,16 @@ export type PostulacionEnPanel = {
   artistSlug: string;
   artistName: string;
   artistPhoto: string | null;
-  artistDistrict: string;
+  /**
+   * EL GÉNERO Y NO EL DISTRITO. La primera versión traía artistDistrict porque el sistema de
+   * diez distritos con color era cómo se identificaba un perfil de un vistazo. ESE SISTEMA SE
+   * BORRÓ: no queda una sola línea de color por distrito en el código —medido con grep— así que
+   * el distrito dejó de decirle algo a quien mira. El género sí.
+   *
+   * La columna artists.district sigue existiendo y sigue siendo NOT NULL, lo cual es justamente
+   * la trampa: traerla compila, devuelve un valor, y no significa nada en pantalla.
+   */
+  artistGenre: string;
   mensaje: string;
   disponibilidad: string;
   creadaEn: string;
@@ -147,7 +160,7 @@ export async function getConvocatoriaDeEvento(
   const filas = await sql`
     SELECT ea.id, ea.artist_slug, ea.mensaje, ea.disponibilidad, ea.creada_en,
            ea.resultado, ea.resuelta_en, ea.motivo,
-           ar.name, ar.photo, ar.district
+           ar.name, ar.photo, ar.genre
     FROM event_applications ea
     JOIN artists ar ON ar.slug = ea.artist_slug
     WHERE ea.call_id = ${call.id}
@@ -167,7 +180,7 @@ export async function getConvocatoriaDeEvento(
       artistSlug: r.artist_slug as string,
       artistName: r.name as string,
       artistPhoto: (r.photo as string | null) ?? null,
-      artistDistrict: r.district as string,
+      artistGenre: r.genre as string,
       mensaje: r.mensaje as string,
       disponibilidad: r.disponibilidad as string,
       creadaEn: new Date(r.creada_en as string).toISOString(),
