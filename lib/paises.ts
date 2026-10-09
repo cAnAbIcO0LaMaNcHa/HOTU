@@ -74,7 +74,23 @@ const PARES =
   "SN:SEN SO:SOM SR:SUR SS:SSD ST:STP SV:SLV SX:SXM SY:SYR SZ:SWZ TC:TCA TD:TCD TF:ATF " +
   "TG:TGO TH:THA TJ:TJK TK:TKL TL:TLS TM:TKM TN:TUN TO:TON TR:TUR TT:TTO TV:TUV TW:TWN " +
   "TZ:TZA UA:UKR UG:UGA UM:UMI US:USA UY:URY UZ:UZB VA:VAT VC:VCT VE:VEN VG:VGB VI:VIR " +
-  "VN:VNM VU:VUT WF:WLF WS:WSM YE:YEM YT:MYT ZA:ZAF ZM:ZMB ZW:ZWE";
+  "VN:VNM VU:VUT WF:WLF WS:WSM YE:YEM YT:MYT ZA:ZAF ZM:ZMB ZW:ZWE " +
+  /**
+   * KOSOVO, Y XKX NO ES ISO 3166-1.
+   *
+   * ISO no le asignó código: la norma exige el reconocimiento de la ONU y Kosovo no lo
+   * tiene. XK en alpha-2 y XKX en alpha-3 son los códigos DE FACTO que usan GeoNames, la
+   * Comisión Europea y el FMI, y están en el rango XA-XZ que ISO reserva para usos
+   * privados justamente para esto.
+   *
+   * Va aparte y con esta explicación porque el resto de la lista SÍ es ISO, y alguien que
+   * valide esta tabla contra la norma va a encontrar que sobra uno. Que sobre a propósito
+   * es distinto de que sobre por error.
+   *
+   * Lo que cuesta no incluirlo está medido: 65 ciudades de cities1000 quedarían afuera, y
+   * un DJ de Pristina no tendría dónde decir de dónde es.
+   */
+  "XK:XKX";
 
 export type Pais = { codigo: string; nombre: string };
 
