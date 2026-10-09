@@ -3,6 +3,8 @@ import { ChevronRight, Disc3 } from "lucide-react";
 import { BotonPublicar } from "@/components/boton-publicar";
 import { MembershipInbox } from "@/components/membership-inbox";
 import { ColabInbox } from "@/components/colab-inbox";
+import { PostulacionesInbox } from "@/components/postulaciones-inbox";
+import { getPostulacionesDeArtista } from "@/lib/convocatorias-read";
 import { CrearArtista } from "@/components/crear-artista";
 import { PanelVacio } from "@/components/panel-switcher";
 import { ofertasAbiertasDeArtista } from "@/lib/residency-offers-write";
@@ -60,8 +62,15 @@ export async function PanelArtista({ email }: { email: string }) {
 
   // Con el email propio: un perfil recién creado está en borrador, y sin
   // esto el dueño no vería su propio press kit en su propio perfil.
-  const [myArtist, pending, residenciaActual, memberships, invitaciones, ofertas] =
-    await Promise.all([
+  const [
+    myArtist,
+    pending,
+    residenciaActual,
+    memberships,
+    invitaciones,
+    ofertas,
+    postulaciones,
+  ] = await Promise.all([
       getArtistBySlug(myArtistSlug, email),
       getPendingForArtist(email),
       getMiResidenciaActual(email),
@@ -70,6 +79,13 @@ export async function PanelArtista({ email }: { email: string }) {
       // Las ofertas de residencia sin responder: es lo único de esta bandeja
       // que otorga un permiso, así que no puede faltar.
       ofertasAbiertasDeArtista(myArtistSlug),
+      /**
+       * LAS POSTULACIONES ENTRAN AL Promise.all QUE YA ESTABA, no en un await aparte: son
+       * siete consultas independientes y pedirlas en serie sería sumar siete round-trips del
+       * driver HTTP en la página que el DJ abre primero. Es el mismo arreglo que el tester
+       * encontró en el panel de colectivo, hecho bien de entrada esta vez.
+       */
+      getPostulacionesDeArtista(myArtistSlug),
     ]);
 
   return (
@@ -138,6 +154,13 @@ export async function PanelArtista({ email }: { email: string }) {
         residenciaActual={residenciaActual}
         ofertas={ofertas}
       />
+
+      {/**
+        * LAS POSTULACIONES VAN DESPUÉS DE LAS MEMBRESÍAS, y el orden no es indiferente: una
+        * membresía o una oferta de residencia esperan una respuesta DE ÉL, y una postulación
+        * es él esperando una respuesta AJENA. Lo que pide algo suyo va primero.
+        */}
+      <PostulacionesInbox postulaciones={postulaciones} />
     </>
   );
 }
