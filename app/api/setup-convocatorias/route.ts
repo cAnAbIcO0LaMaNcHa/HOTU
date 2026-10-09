@@ -507,12 +507,38 @@ function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
      * declarado como si lo hubiera medido. Es la regla del repo aplicada a sí misma: un
      * log que afirma sin verificar es peor que no loguear.
      */
-    const colsEsperadas = COLUMNAS[tabla].length + AGREGADO_DESPUES[tabla].columnas.length;
+    /**
+     * ============================================================
+     * SE CUENTAN LAS POSTERIORES QUE ESTÁN, NO LAS DECLARADAS
+     * ============================================================
+     *
+     * La primera versión de AGREGADO_DESPUES sumaba las declaradas sin condición, y eso
+     * rompía esta ruta en la dirección contraria: pasaba a esperar la forma
+     * POST-visibilidad en CUALQUIER branch, así que contra main —donde esa migración
+     * todavía no corrió— su dryRun daba verificado:false por 11 esperadas y 10 encontradas.
+     *
+     * O sea que arreglar el falso negativo de después me creó uno de antes. Lo encontró el
+     * chequeo que el usuario pidió —correr este dryRun contra main— antes de pushear.
+     *
+     * ES LA REGLA DE LA TRANSICIÓN aplicada a una migración: entre que esta corre y que la
+     * posterior corre hay un estado intermedio REAL, y la verificación tiene que ser
+     * correcta en los dos. Una migración que solo se verifica bien después de la siguiente
+     * es una que miente durante toda la ventana del despliegue.
+     *
+     * Y SIGUE DETECTANDO UNA COLUMNA QUE NADIE DECLARÓ, que es para lo que el conteo existe:
+     * se suman las posteriores PRESENTES, así que una columna que no está en ninguna de las
+     * dos listas hace que el total se pase y el chequeo dispare.
+     */
+    const nombres = new Set(f.columnas.map((c) => c.nombre));
+    const posterioresPresentes = AGREGADO_DESPUES[tabla].columnas.filter((n) =>
+      nombres.has(n)
+    );
+    const colsEsperadas = COLUMNAS[tabla].length + posterioresPresentes.length;
     if (f.columnas.length !== colsEsperadas) {
       p.push(
         `${tabla} tiene ${f.columnas.length} columnas y se esperaban ${colsEsperadas} ` +
-          `(${COLUMNAS[tabla].length} de esta migración + ` +
-          `${AGREGADO_DESPUES[tabla].columnas.length} de migraciones posteriores): ` +
+          `(${COLUMNAS[tabla].length} de esta migración + ${posterioresPresentes.length} ` +
+          `de migraciones posteriores que ya corrieron): ` +
           `${f.columnas.map((c) => c.nombre).join(", ")}`
       );
     }
@@ -549,12 +575,17 @@ function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
         `${tabla} tiene ${f.fks.length} FK y se esperaban ${FKS[tabla].length} (${f.fks.join("; ")})`
       );
     }
-    const checksEsperados = CHECKS[tabla].length + AGREGADO_DESPUES[tabla].checks.length;
+    /** Los CHECK, con el mismo criterio: los posteriores que ESTÁN. */
+    const nombresCheck = new Set(f.checks.map((x) => x.split(": ")[0]));
+    const checksPosteriores = AGREGADO_DESPUES[tabla].checks.filter((n) =>
+      nombresCheck.has(n)
+    );
+    const checksEsperados = CHECKS[tabla].length + checksPosteriores.length;
     if (f.checks.length !== checksEsperados) {
       p.push(
         `${tabla} tiene ${f.checks.length} CHECK y se esperaban ${checksEsperados} ` +
-          `(${CHECKS[tabla].length} de esta migración + ` +
-          `${AGREGADO_DESPUES[tabla].checks.length} de migraciones posteriores): ` +
+          `(${CHECKS[tabla].length} de esta migración + ${checksPosteriores.length} ` +
+          `de migraciones posteriores que ya corrieron): ` +
           `${f.checks.join("; ")}`
       );
     }
@@ -786,7 +817,14 @@ export async function GET(request: Request) {
     const despues = await estado();
     const v = verificarForma(despues);
     /** Cuántas columnas le pusieron otras migraciones, para que el log no afirme un total. */
-    const posteriores = TABLAS.reduce((n, t) => n + AGREGADO_DESPUES[t].columnas.length, 0);
+    const posteriores = TABLAS.reduce(
+      (n, t) =>
+        n +
+        AGREGADO_DESPUES[t].columnas.filter((c) =>
+          despues.formas[t].columnas.some((x) => x.nombre === c)
+        ).length,
+      0
+    );
     log.push(
       v.ok
         ? `VERIFICADO: las ${COLUMNAS[CALLS].length} columnas que ${CALLS} declara acá, las ` +
