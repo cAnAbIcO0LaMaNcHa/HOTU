@@ -433,6 +433,40 @@ type Columna = { nombre: string; tipo: string; aceptaNull: boolean; default: str
 type Forma = { existe: boolean; columnas: Columna[]; checks: string[]; fks: string[]; indices: string[] };
 type Estado = { formas: Record<string, Forma>; conteos: Record<string, number> };
 
+/**
+ * ============================================================
+ * LO QUE LE AGREGARON DESPUÉS, DECLARADO ACÁ
+ * ============================================================
+ *
+ * Esta migración cuenta las columnas y los constraints de SUS tablas, porque comparar una por
+ * una solo recorre las que declara y una de más pasaría limpia. Eso sigue siendo lo correcto.
+ *
+ * PERO LA TABLA DEJÓ DE SER SOLO SUYA. setup-convocatorias-visibilidad le agregó
+ * event_calls.visibilidad con su CHECK, y en cuanto eso corrió, ESTA ruta empezó a devolver
+ * verificado:false en cualquier re-corrida: 11 columnas donde esperaba 10, 4 CHECK donde
+ * esperaba 3. Dos problemas que no son problemas, en la migración que ya está aplicada en
+ * main — o sea exactamente el falso negativo que manda a perseguir algo que no está roto.
+ *
+ * Lo vi pasar en dev al correr las dos seguidas, no lo deduje.
+ *
+ * ASÍ QUE LO POSTERIOR SE DECLARA, CON QUIÉN LO AGREGÓ. No se afloja el conteo a un
+ * "al menos": eso perdería la detección de una columna que nadie declaró, que es para lo que
+ * el conteo existe. Lo que se hace es que el número conocido CREZCA con la verdad, y que el
+ * crecimiento diga de dónde viene.
+ *
+ * SI AGREGÁS UNA COLUMNA A event_calls O A event_applications DESDE OTRA MIGRACIÓN, SUMALA
+ * ACÁ. Si no, esta ruta empieza a mentir en cuanto la tuya corra — y el día que alguien la
+ * re-corra, el falso negativo va a parecer un problema de esta pieza y no de la que lo causó.
+ */
+const AGREGADO_DESPUES: Record<string, { columnas: string[]; checks: string[] }> = {
+  [CALLS]: {
+    /** setup-convocatorias-visibilidad: quién ve el distintivo en /eventos. */
+    columnas: ["visibilidad"],
+    checks: [`${CALLS}_visibilidad_check`],
+  },
+  [APPS]: { columnas: [], checks: [] },
+};
+
 /** Los totales que el log afirma, sacados de lo declarado y no escritos a mano. */
 const totalDe = (m: Record<string, Array<[string, string]>>) =>
   TABLAS.reduce((n, t) => n + m[t].length, 0);
@@ -473,10 +507,13 @@ function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
      * declarado como si lo hubiera medido. Es la regla del repo aplicada a sí misma: un
      * log que afirma sin verificar es peor que no loguear.
      */
-    if (f.columnas.length !== COLUMNAS[tabla].length) {
+    const colsEsperadas = COLUMNAS[tabla].length + AGREGADO_DESPUES[tabla].columnas.length;
+    if (f.columnas.length !== colsEsperadas) {
       p.push(
-        `${tabla} tiene ${f.columnas.length} columnas y se esperaban ` +
-          `${COLUMNAS[tabla].length} (${f.columnas.map((c) => c.nombre).join(", ")})`
+        `${tabla} tiene ${f.columnas.length} columnas y se esperaban ${colsEsperadas} ` +
+          `(${COLUMNAS[tabla].length} de esta migración + ` +
+          `${AGREGADO_DESPUES[tabla].columnas.length} de migraciones posteriores): ` +
+          `${f.columnas.map((c) => c.nombre).join(", ")}`
       );
     }
 
@@ -512,9 +549,13 @@ function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
         `${tabla} tiene ${f.fks.length} FK y se esperaban ${FKS[tabla].length} (${f.fks.join("; ")})`
       );
     }
-    if (f.checks.length !== CHECKS[tabla].length) {
+    const checksEsperados = CHECKS[tabla].length + AGREGADO_DESPUES[tabla].checks.length;
+    if (f.checks.length !== checksEsperados) {
       p.push(
-        `${tabla} tiene ${f.checks.length} CHECK y se esperaban ${CHECKS[tabla].length} (${f.checks.join("; ")})`
+        `${tabla} tiene ${f.checks.length} CHECK y se esperaban ${checksEsperados} ` +
+          `(${CHECKS[tabla].length} de esta migración + ` +
+          `${AGREGADO_DESPUES[tabla].checks.length} de migraciones posteriores): ` +
+          `${f.checks.join("; ")}`
       );
     }
     const sinPkey = f.indices.filter((x) => !x.startsWith(`${tabla}_pkey: `));
@@ -744,13 +785,26 @@ export async function GET(request: Request) {
 
     const despues = await estado();
     const v = verificarForma(despues);
+    /** Cuántas columnas le pusieron otras migraciones, para que el log no afirme un total. */
+    const posteriores = TABLAS.reduce((n, t) => n + AGREGADO_DESPUES[t].columnas.length, 0);
     log.push(
       v.ok
-        ? `VERIFICADO: ${CALLS} con sus ${COLUMNAS[CALLS].length} columnas y ${APPS} con sus ` +
-            `${COLUMNAS[APPS].length}, sus ${totalDe(CHECKS)} CHECK, sus ${totalDe(FKS)} FK y los ` +
-            `${totalDe(INDICES)} índices que declara —dos de ellos únicos parciales— además de ` +
-            "los dos _pkey que Postgres crea solos. Y event_lineup_event_artist_idx sigue en su " +
-            "lugar, verificado por definición y no por nombre."
+        ? `VERIFICADO: las ${COLUMNAS[CALLS].length} columnas que ${CALLS} declara acá, las ` +
+            `${COLUMNAS[APPS].length} de ${APPS}, sus ${totalDe(CHECKS)} CHECK, sus ` +
+            `${totalDe(FKS)} FK y los ${totalDe(INDICES)} índices que declara —dos de ellos ` +
+            "únicos parciales— además de los dos _pkey que Postgres crea solos. Y " +
+            "event_lineup_event_artist_idx sigue en su lugar, verificado por definición y no " +
+            "por nombre." +
+            /**
+             * Y SE DICE QUE LA TABLA TIENE MÁS, cuando la tiene. El log afirmaba
+             * "event_calls con sus 10 columnas" y la tabla pasó a tener 11: la frase era
+             * cierta sobre lo que esta migración declara y se leía como el total. Un log que
+             * se puede leer mal es un log que alguien va a leer mal.
+             */
+            (posteriores > 0
+              ? ` Las tablas tienen ${posteriores} columna(s) más que esta ruta NO declara, ` +
+                `puestas por migraciones posteriores y contadas en AGREGADO_DESPUES.`
+              : "")
         : `NO VERIFICADO: ${v.problemas.length} problema(s).`
     );
     for (const x of v.problemas) log.push(`  - ${x}`);

@@ -983,6 +983,111 @@ try {
     await sql`DELETE FROM event_lineup WHERE event_id = ${ev5}`;
     await sql`DELETE FROM events WHERE id = ${ev5}`;
   }
+
+  console.log("\n13. LA VISIBILIDAD DEL DISTINTIVO: DEFAULT djs, Y VOCABULARIO CERRADO");
+  {
+    /**
+     * La migración ya compara la definición del CHECK y el default carácter por carácter. Esto
+     * prueba la CONDUCTA, que es otra cosa: que el default se APLIQUE cuando el INSERT no
+     * nombra la columna, y que un valor inventado se niegue de verdad.
+     *
+     * El default importa más que de costumbre acá: es la decisión de no contar de más. Si el
+     * dueño no eligió, la convocatoria no se anuncia en la lista pública — y eso tiene que
+     * pasar por omisión y no porque la UI se acuerde de mandar 'djs'.
+     */
+    const dueno6 = `zz-visib-alfa@test.hotu.local`;
+    await sql`
+      INSERT INTO user_profiles (email, display_name, auth_provider)
+      VALUES (${dueno6}, 'ZZ Visib Alfa', 'credentials')`;
+    await sql`
+      INSERT INTO collectives (slug, name, type, sector, bio, owner_email)
+      VALUES ('zz-visib-beta', 'ZZ Visib Beta', 'colectivo', 'centro',
+              'fixture de visibilidad', ${dueno6})`;
+    const diaV = (await sql`SELECT ((now() AT TIME ZONE 'America/Bogota')::date + 15)::text AS d`)[0].d;
+    const evV = (
+      await sql`
+        INSERT INTO events (title, event_date, city, venue, district, lineup, organizer_slug, status)
+        VALUES ('ZZ Visib Gamma', ${diaV}::date, 'Bogota', 'ZZ Galpon', '06', 'nadie',
+                'zz-visib-beta', 'published') RETURNING id`
+    )[0].id;
+
+    /** Sin nombrar la columna: tiene que caer en 'djs'. */
+    const sinDecir = (
+      await sql`
+        INSERT INTO event_calls (event_id, collective_slug)
+        VALUES (${evV}, 'zz-visib-beta') RETURNING id, visibilidad`
+    )[0];
+    chk(
+      "un INSERT que no nombra visibilidad cae en djs, no en publica",
+      sinDecir.visibilidad === 'djs',
+      `quedó en ${sinDecir.visibilidad}`
+    );
+
+    /** 'publica' se puede elegir. */
+    let subio = null;
+    try {
+      await sql`UPDATE event_calls SET visibilidad = 'publica' WHERE id = ${sinDecir.id}`;
+    } catch (e) {
+      subio = String(e.message || e);
+    }
+    chk("y se puede pasar a publica", !subio, subio ?? "");
+
+    /** Y un valor inventado se niega. */
+    let inventado = null;
+    try {
+      await sql`UPDATE event_calls SET visibilidad = 'oculta' WHERE id = ${sinDecir.id}`;
+    } catch (e) {
+      inventado = String(e.message || e);
+    }
+    chk(
+      "un valor inventado se niega",
+      Boolean(inventado) && inventado.includes('visibilidad'),
+      inventado ? inventado.slice(0, 90) : 'entró y no debía'
+    );
+
+    /** Y NULL también: la columna es NOT NULL, así que no hay un tercer estado. */
+    let nulo = null;
+    try {
+      await sql`UPDATE event_calls SET visibilidad = NULL WHERE id = ${sinDecir.id}`;
+    } catch (e) {
+      nulo = String(e.message || e);
+    }
+    chk(
+      "y NULL también: no hay un tercer estado de visibilidad",
+      Boolean(nulo),
+      'entró y no debía'
+    );
+
+    /**
+     * Y LO QUE LA VISIBILIDAD *NO* HACE: no es un permiso. Una convocatoria 'djs' sigue siendo
+     * postulable, porque el write path no mira esta columna. Si algún día la mirara, alguien
+     * con el link directo se postularía a algo que la lista le escondía — y eso es un agujero,
+     * no una decisión.
+     */
+    await sql`UPDATE event_calls SET visibilidad = 'djs' WHERE id = ${sinDecir.id}`;
+    await sql`
+      INSERT INTO artists (slug, name, genre, district, city, bio, joined_at, owner_email)
+      VALUES ('zz-visib-delta', 'ZZ Visib Delta', 'techno', '06', 'Bogota',
+              'fixture de visibilidad', (now() AT TIME ZONE 'America/Bogota')::date, ${dueno6})`;
+    const postVis = await postularse(
+      {
+        callId: sinDecir.id,
+        artistSlug: 'zz-visib-delta',
+        mensaje: 'me anoto',
+        disponibilidad: 'los viernes',
+      },
+      dueno6
+    );
+    chk(
+      "una convocatoria djs SIGUE siendo postulable: la visibilidad no es un permiso",
+      postVis.ok === true,
+      postVis.ok ? '' : `${postVis.status} ${postVis.error}`
+    );
+
+    await sql`DELETE FROM event_applications WHERE artist_slug = 'zz-visib-delta'`;
+    await sql`DELETE FROM event_calls WHERE id = ${sinDecir.id}`;
+    await sql`DELETE FROM events WHERE id = ${evV}`;
+  }
 } finally {
   const resumen = await corrida.cerrar();
   console.log(`\nbarrido: ${JSON.stringify(resumen?.borrado ?? {})}`);
