@@ -166,6 +166,52 @@ home vuelve a existir, y de qué forma.
 
 ## DEUDA ANOTADA EN §8 — NO URGENTE, PERO NO SE OLVIDA
 
+### Las ciudades por TEXTO se escribieron, se probaron y se descartaron
+
+**9 de octubre de 2026.** Hubo una migración completa —`setup-ciudades`— que creaba una tabla
+`cities (country_code, nombre, clave)` con la clave GENERADA y canonicalizaba a mano las
+formas escritas de distinta manera. Corrió dos veces contra dev, dejó `cities` en 8 filas y
+arregló 3 filas de `events`. **Se borró del historial local sin pushear**, y queda anotada acá
+porque lo que decidió sigue valiendo y porque un intento que no deja rastro se vuelve a
+intentar.
+
+**Por qué se descartó:** las ciudades pasaron a ser GLOBALES con GeoNames, así que la ciudad
+va a ser un `city_id` con FK, no un texto canonicalizado. Mantener las dos habría sido tener
+dos fuentes de verdad para lo mismo.
+
+**Lo que esa versión dejó demostrado y hay que conservar en la nueva:**
+
+NORMALIZAR AL ESCRIBIR NO FUSIONA NADA. Un normalizador pliega acentos y baja a minúscula
+para COMPARAR, pero no puede INVENTAR el acento para MOSTRAR: `"BOGOTA"` da `"bogota"` y de
+ahí no sale `"Bogotá"`. Hace falta una forma canónica guardada. Por eso GeoNames y no una
+función.
+
+LA CLAVE VA COMO COLUMNA GENERADA. `GENERATED ALWAYS AS (...) STORED` con el normalizador que
+ya existe en `lib/convocatorias.ts`. Medido que Postgres acepta la expresión —es inmutable— y
+que rechaza escribir la clave a mano con `cannot insert a non-DEFAULT value`. Así no puede
+desincronizarse del nombre, que es el modo de falla de dos normalizadores y ya mordió una vez
+en la pieza de convocatorias.
+
+LO QUE NO SE PUEDE EMPAREJAR SE LISTA Y NO SE TOCA. Medido en dev: `events.city` tiene
+`"Calle 80 # 14 - 11"`, que es una DIRECCIÓN. No es un problema de normalización —
+normalizarla daría una dirección canónica, que es peor— y `events.city` es NOT NULL, así que
+tampoco se puede vaciar. La migración la nombra y la deja intacta; la arregla una persona.
+Lo mismo vale para el emparejamiento contra GeoNames.
+
+LAS COLISIONES MEDIDAS, que la versión nueva tiene que resolver igual:
+
+    clave "bogota"     -> "BOGOTA" y "Bogotá"       12 filas
+    clave "chia"       -> "CHÍA" y "Chía"            3 filas
+    clave "la calera"  -> "LA CALERA" y "La Calera"  4 filas
+
+En las tres, la forma en mayúsculas viene de `events` y la acentuada de `artists`.
+
+Y EL BACKFILL CON GUARDA SOBRE EL ESTADO DESTINO SÍ ES IDEMPOTENTE. La guarda era
+`city <> canónica`: después de la primera corrida es falsa. Y si una fila nueva naciera mal,
+una re-corrida la arreglaría — acá eso es lo DESEADO. Es la diferencia con `review_status`,
+donde la re-corrida destruía una decisión que un moderador había tomado a mano. Nadie decide
+a mano que quiere su ciudad en mayúsculas.
+
 ### El login con Google NO anda en localhost, y la solución es un cliente OAuth aparte
 
 **Medido el 9 de octubre de 2026**, al intentar entrar en `http://localhost:3000`.
