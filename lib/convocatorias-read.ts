@@ -264,3 +264,46 @@ export async function getPostulacionesDeArtista(
     convocatoriaAbierta: Boolean(r.abierta),
   }));
 }
+
+/**
+ * LO QUE EL DJ YA HIZO, PARA QUE LA LISTA NO LE OFREZCA UNA PUERTA CERRADA.
+ *
+ * Dos conjuntos en UNA consulta: en qué convocatorias tiene una postulación SIN RESOLVER, y en
+ * qué eventos ya está en el lineup con su slug resuelto.
+ *
+ * ============================================================
+ * SE PREGUNTA UNA VEZ PARA TODA LA LISTA
+ * ============================================================
+ *
+ * /eventos pinta hasta decenas de tarjetas. Preguntarlo por tarjeta serían decenas de
+ * round-trips del driver HTTP para pintar una lista — el mismo motivo por el que
+ * getLineupsByEvent trae todos los lineups de una.
+ *
+ * ============================================================
+ * "YA SE POSTULÓ" ES SOLO LO PENDIENTE, Y ESO ES DELIBERADO
+ * ============================================================
+ *
+ * Una postulación RESUELTA no bloquea nada: si se retiró, o si le cancelaron la participación,
+ * se puede volver a postular — el índice único es parcial sobre resuelta_en IS NULL y lo
+ * permite. Contar las resueltas acá le escondería el botón a alguien que sí puede usarlo, que
+ * es la mitad mala de equivocarse.
+ *
+ * "YA EN EL LINEUP" mira el slug RESUELTO. Una fila sin resolver con su nombre NO cuenta: esa
+ * es una conjetura del importador, no una confirmación, y aceptarlo después la reemplaza.
+ */
+export async function getLoQueElDjYaHizo(
+  artistSlug: string
+): Promise<{ pendientesEn: Set<number>; enLineupDe: Set<number> }> {
+  const [pend, lin] = await Promise.all([
+    sql`
+      SELECT call_id FROM event_applications
+      WHERE artist_slug = ${artistSlug} AND resuelta_en IS NULL`,
+    sql`
+      SELECT event_id FROM event_lineup
+      WHERE artist_slug = ${artistSlug}`,
+  ]);
+  return {
+    pendientesEn: new Set(pend.map((r) => r.call_id as number)),
+    enLineupDe: new Set(lin.map((r) => r.event_id as number)),
+  };
+}

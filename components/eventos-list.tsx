@@ -2,6 +2,8 @@
 
 import { MapPin } from "lucide-react";
 import type { EventItem, LineupEntry } from "@/lib/db";
+import type { ConvocatoriaAbierta } from "@/lib/convocatorias-read";
+import { PostularseAConvocatoria } from "./postularse-a-convocatoria";
 import { AutoTranslate } from "@/components/auto-translate";
 import { EventLineup } from "@/components/event-lineup";
 import { AddTicketButton } from "@/components/add-ticket-button";
@@ -30,6 +32,10 @@ export function EventosList({
   pastEvents = [],
   lineups = {},
   ventaOnline = false,
+  convocatorias = {},
+  artistSlug = null,
+  pendientesEn = [],
+  enLineupDe = [],
 }: {
   events: EventItem[];
   /** Already over, newest first. Shown as an archive, never as buyable. */
@@ -49,6 +55,18 @@ export function EventosList({
    * Default false: si alguien renderiza esta lista sin pasar el flag, no vende.
    */
   ventaOnline?: boolean;
+  /**
+   * LAS CONVOCATORIAS ABIERTAS, por id de evento, YA FILTRADAS por visibilidad del lado del
+   * server. Acá no se decide quién ve qué: si llegó, se muestra. Decidirlo también en el
+   * cliente sería una segunda definición del filtro, y la del cliente es la que se puede
+   * leer con las herramientas del navegador.
+   */
+  convocatorias?: Record<number, ConvocatoriaAbierta>;
+  /** El perfil de DJ de quien mira. null = no tiene, y entonces no se le ofrece postularse. */
+  artistSlug?: string | null;
+  /** Listas y no Sets: un Set no cruza la frontera servidor/cliente. */
+  pendientesEn?: number[];
+  enLineupDe?: number[];
 }) {
   const { active } = useListingFilters();
   // Search and filters apply to both halves: looking for a party you went
@@ -61,7 +79,16 @@ export function EventosList({
     <>
       <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {sorted.map((e) => (
-          <EventCard key={e.id} event={e} lineup={lineups[e.id]} ventaOnline={ventaOnline} />
+          <EventCard
+            key={e.id}
+            event={e}
+            lineup={lineups[e.id]}
+            ventaOnline={ventaOnline}
+            convocatoria={convocatorias[e.id]}
+            artistSlug={artistSlug}
+            yaSePostulo={pendientesEn.includes(convocatorias[e.id]?.id ?? -1)}
+            yaEnLineup={enLineupDe.includes(e.id)}
+          />
         ))}
         {sorted.length === 0 && (
           <EmptyResult
@@ -96,12 +123,26 @@ function EventCard({
   past = false,
   lineup,
   ventaOnline = false,
+  convocatoria,
+  artistSlug = null,
+  yaSePostulo = false,
+  yaEnLineup = false,
 }: {
   event: EventItem;
   past?: boolean;
   ventaOnline?: boolean;
   /** Sin entradas —todavía no se importó— EventLineup cae al texto. */
   lineup?: LineupEntry[];
+  /**
+   * LA CONVOCATORIA ABIERTA DE ESTE EVENTO, si hay y si quien mira la puede ver. El filtro
+   * de visibilidad lo hizo el SERVER: acá si llegó, se muestra. Decidirlo también del lado
+   * del cliente sería una segunda definición del filtro, y la del cliente se puede leer con
+   * las herramientas del navegador.
+   */
+  convocatoria?: ConvocatoriaAbierta;
+  artistSlug?: string | null;
+  yaSePostulo?: boolean;
+  yaEnLineup?: boolean;
 }) {
   return (
     <article
@@ -219,6 +260,27 @@ function EventCard({
                 arriba SÍ se sigue mostrando: es lo que cobra el organizador en la
                 puerta, y eso no depende de que HOTU venda. */}
             {ventaOnline && <AddTicketButton eventId={e.id} eventTitle={e.title} />}
+
+            {/**
+              * LA CONVOCATORIA, ABAJO DE TODO Y SOLO EN LOS QUE NO PASARON.
+              *
+              * Dentro de la rama de no-finalizado, así que una fiesta que ya fue no muestra
+              * nada aunque su convocatoria siguiera abierta en la base — que no puede, porque
+              * la condición de ABIERTA incluye que el evento no haya pasado. Va acá igual: la
+              * garantía es del server y esto es coherencia visual, no una segunda guarda.
+              *
+              * Y abajo del precio y del botón de comprar porque un visitante viene a ver la
+              * fiesta; que estén buscando DJs es información para una minoría de quienes
+              * miran.
+              */}
+            {convocatoria && (
+              <PostularseAConvocatoria
+                convocatoria={convocatoria}
+                artistSlug={artistSlug}
+                yaSePostulo={yaSePostulo}
+                yaEnLineup={yaEnLineup}
+              />
+            )}
           </>
         )}
       </div>
