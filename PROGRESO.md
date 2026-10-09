@@ -166,6 +166,66 @@ home vuelve a existir, y de qué forma.
 
 ## DEUDA ANOTADA EN §8 — NO URGENTE, PERO NO SE OLVIDA
 
+### El login con Google NO anda en localhost, y la solución es un cliente OAuth aparte
+
+**Medido el 9 de octubre de 2026**, al intentar entrar en `http://localhost:3000`.
+
+El síntoma es *Server error — There is a problem with the server configuration*, que no dice
+nada. La causa exacta está en `dev.log`, y es de Google, no nuestra:
+
+```
+    "error": "invalid_client",
+    "error_description": "The provided client secret is invalid.",
+    "provider": "google"
+```
+
+**NO FALTA NINGUNA VARIABLE**, y eso es lo que confunde: el flujo llega hasta el callback con
+un `code` de Google, así que `AUTH_SECRET`, la URL deducida y el client ID funcionan. Lo que
+no coincide es el secreto.
+
+Lo que lo confirma sin mirar ningún valor:
+
+    GOOGLE_CLIENT_ID      74 caracteres, termina en .apps.googleusercontent.com  -> real
+    GOOGLE_CLIENT_SECRET  13 caracteres, NO arranca con GOCSPX-                  -> placeholder
+
+Un secreto real de Google son ~35 caracteres con el prefijo `GOCSPX-`. Por eso Google acepta
+el primer paso —ahí solo valida el client ID— y rechaza el intercambio del código, que es
+donde valida el secreto.
+
+Los nombres que el código usa son `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`
+(`auth.config.ts:20-21`), NO `AUTH_GOOGLE_*`. Y `AUTH_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET` y
+`AUTH_TRUST_HOST` están ausentes y está bien: en localhost Auth.js deduce la URL y confía en el
+host.
+
+**LA SOLUCIÓN ES UN CLIENTE OAuth SEPARADO PARA DESARROLLO**, con
+`http://localhost:3000/api/auth/callback/google` como URI de redirección autorizada, y su par
+de credenciales en `.env.local`. **Sin tocar el de producción.**
+
+Por qué separado y no reusar el de producción, que es la tentación obvia:
+
+**EL SECRETO DE UN CLIENTE OAuth NO SE PUEDE VOLVER A LEER.** Google lo muestra una vez. Si no
+está guardado, la única salida es GENERAR UNO NUEVO — y eso **invalida el viejo**, así que el
+login de producción se rompe hasta que la variable se actualice en Vercel. Un cliente de
+desarrollo aparte hace que esa operación no pueda tocar producción nunca.
+
+Y porque un cliente con `localhost` entre sus redirects es un cliente que acepta que un
+atacante local complete el flujo. Mezclarlo con el de producción le daría ese borde a las
+sesiones reales.
+
+**MIENTRAS NO EXISTA**, el camino que SÍ funciona en local es el login con email y contraseña:
+el Credentials provider anda —`POST /api/auth/callback/credentials 302` en el log— y
+`hashPassword` en `lib/accounts.ts` usa scrypt con formato `s1:salt:key`. Ojo: una cuenta de
+Google tiene `password_hash` en NULL, así que por ese camino NO entra; hace falta una cuenta
+de credenciales.
+
+**Y OJO CON EL NOMBRE DE ESA CUENTA.** `restaurarSeed()` borra `user_profiles` con
+`email LIKE 'zz-%'` y `user_roles` con `email LIKE '%@test.hotu.local'`, así que una cuenta de
+revisión que use cualquiera de los dos patrones desaparece —o pierde sus roles— la próxima vez
+que corra una batería. Y hay algo peor y más callado: **el barrido por DELTA de `cerrar()`**
+borra todo lo que no estaba en la foto, sin mirar el nombre. O sea que cualquier cosa creada
+MIENTRAS una batería corre se va cuando esa batería cierra. Para una revisión manual hay que
+TOMAR EL CANDADO, que es exactamente para lo que existe.
+
 ### Pruebas de rutas autenticadas por HTTP, con login programático
 
 **Anotado el 8 de octubre de 2026, al cerrar convocatorias (§7).**

@@ -18,3 +18,10 @@ tsconfig.tsbuildinfo
 /*.mjs
 !/next.config.mjs
 !/postcss.config.mjs
+
+# Credenciales de revisión manual.
+#
+# El archivo de verdad vive FUERA del repo —en el home del usuario— así que esta línea no es
+# lo que lo protege: es una red por si alguien algún día lo genera acá por comodidad. Una
+# contraseña commiteada no se borra del historial con un commit.
+hotu-credenciales-*.txt
