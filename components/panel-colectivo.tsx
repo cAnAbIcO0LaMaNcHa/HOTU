@@ -163,20 +163,26 @@ export async function PanelColectivo({
       : [[], [], []];
 
   /**
-   * LAS CONVOCATORIAS DE ESOS EVENTOS, UNA CONSULTA POR EVENTO.
+   * LAS CONVOCATORIAS DE ESOS EVENTOS, EN PARALELO Y NO UNA TRAS OTRA.
    *
-   * Son N consultas y eso se puede mejorar, pero el N es el de los eventos PROPIOS de UN
-   * colectivo —unidades, no cientos— y cada una trae sus postulaciones con el JOIN a
-   * artists. Agruparlas en una sola haría una consulta con dos niveles de agregación para
-   * ahorrar round-trips que no se notan a esta escala.
+   * La primera versión las pedía con un await dentro de un for, así que el panel tardaba la
+   * SUMA de todas. Lo levantó el tester, y tenía razón aunque mi comentario ya reconociera la
+   * escala: cada sql del driver HTTP de Neon es su propio round-trip, así que diez eventos
+   * eran diez viajes en serie en la página que el dueño abre primero.
    *
-   * Si algún día un colectivo tiene cincuenta eventos abiertos, esto es lo primero a
-   * cambiar — y se va a notar en el tiempo que reporta /api/smoke, que mide cada lectura.
+   * Siguen siendo N consultas y eso se puede mejorar más, pero el N es el de los eventos
+   * PROPIOS de UN colectivo —unidades, no cientos— y cada una trae sus postulaciones con el
+   * JOIN a artists. Agruparlas en una sola pediría una consulta con dos niveles de agregación
+   * para ahorrar round-trips que ya no se suman.
+   *
+   * Si algún día un colectivo tiene cincuenta eventos, esto es lo primero a cambiar — y se va
+   * a notar en el tiempo que reporta /api/smoke, que mide cada lectura por separado.
    */
   const convocatorias: Record<number, Awaited<ReturnType<typeof getConvocatoriaDeEvento>>> = {};
-  for (const ev of misEventos) {
-    convocatorias[ev.id] = await getConvocatoriaDeEvento(ev.id);
-  }
+  const pedidas = await Promise.all(
+    misEventos.map(async (ev) => [ev.id, await getConvocatoriaDeEvento(ev.id)] as const)
+  );
+  for (const [id, c] of pedidas) convocatorias[id] = c;
 
   /**
    * A nombre de quién se puede publicar: lo que esta cuenta PUEDE EDITAR —lo
@@ -250,7 +256,11 @@ export async function PanelColectivo({
         reemplaza esa muleta. Las bandejas —que son cosas para
         responder, no para hacer— quedan abajo.
 
-        Las convocatorias NO se ofrecen: no existe el modelo todavía.
+        Las convocatorias SÍ se ofrecen desde §7, y van colgadas de cada
+        evento dentro de MisEventos y no como una sección propia: una
+        convocatoria es una decisión SOBRE un evento, así que vive donde
+        está el evento. Este comentario decía lo contrario hasta que el
+        modelo existió, y lo encontró el tester leyendo el archivo.
       */}
       {/* La censura, ARRIBA de todo y por colectivo. El dueño no tenía
           ninguna forma de enterarse de que le bajaron el suyo: el panel
