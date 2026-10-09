@@ -1,44 +1,26 @@
 /**
- * MIGRATION — collectives.city y collectives.socials.
+ * MIGRATION — collectives.socials.
  *
- *   /api/setup-colectivos-ciudad-redes?secret=YOUR_SECRET&dryRun=1
- *   /api/setup-colectivos-ciudad-redes?secret=YOUR_SECRET
- *
- * ============================================================
- * LOS DOS TRAMOS EN UNA RUTA, Y POR QUÉ NO SON DOS
- * ============================================================
- *
- * Son la misma tabla, las dos columnas son nullable y ninguna tiene backfill. Partirlo en dos
- * rutas haría correr dos veces el mismo swap de constraints sobre collectives para no ganar
- * nada: lo que justifica separar tramos es que tengan RIESGOS distintos, y estos dos tienen el
- * mismo — ninguno.
+ *   /api/setup-colectivos-redes?secret=YOUR_SECRET&dryRun=1
+ *   /api/setup-colectivos-redes?secret=YOUR_SECRET
  *
  * ============================================================
- * city: LA PROMESA DE LA PIEZA 4, QUE VENCÍA
+ * ESTA RUTA TENÍA UNA COLUMNA MÁS Y SE LA SAQUÉ ANTES DE CORRERLA
  * ============================================================
  *
- * AGENTS.md dice, textual: "sector ya NO agrupa nada (tanda 3). Es una etiqueta de origen
- * dentro de la tarjeta. La ciudad de verdad llega con la pieza 4." Esta es esa columna.
+ * Se llamaba setup-colectivos-ciudad-redes y agregaba también collectives.city TEXT. Las
+ * ciudades pasaron a ser globales con GeoNames, así que la ciudad va a ser city_id con FK a
+ * una tabla cities, y no texto libre.
  *
- * SIN BACKFILL DESDE sector, y es la decisión que importa acá. sector tiene valores que
- * PARECEN ciudades —Bogotá, Cali, Medellín, Pereira— y copiarlos sería afirmar que el sector
- * ES la ciudad, que es justo lo que el archivo dice que no. Un colectivo cuyo sector dice
- * "Bogotá" puede operar en Chía. Lo carga el dueño.
+ * Dejar la columna de texto igual habría costado CUATRO migraciones para CERO datos:
+ * crearla, crear city_id, un backfill que no mapea nada porque está vacía, y borrarla — que
+ * por la regla del repo es su propia migración, nunca la misma que deja de usarla.
  *
- * Por eso es NULLABLE: NULL significa "todavía no dijo", que es cierto para las 9 filas de dev
- * y las 11 de main. Una cadena vacía no podría distinguir eso de "dijo que no tiene".
+ * Y sacarla es gratis porque está MEDIDO que no hay nada que preservar: collectives.city
+ * está en 0 filas en dev y no existe en main, donde esta ruta todavía no corrió. Una columna
+ * CON datos habría exigido la transición por etapas en vez de este borrado.
  *
- * ============================================================
- * socials: LA MISMA FORMA QUE artists.socials
- * ============================================================
- *
- * jsonb NOT NULL DEFAULT '{}', con un CHECK de que sea un OBJETO y no un array ni un número.
- * Sin el CHECK, un `socials: []` entraría y el lector que hace Object.entries() devolvería
- * vacío sin error — el dueño cargaría sus redes y no aparecerían, sin nada que lo explique.
- *
- * NO lleva CHECK de qué plataformas valen. Son diez hoy y la lista cambia; un CHECK obligaría
- * a una migración por cada red nueva, y el costo de una clave de más es un ícono que no se
- * pinta, no un dato roto.
+ * socials no tiene nada que ver con ciudades y se queda tal cual.
  */
 
 import { NextResponse } from "next/server";
@@ -51,15 +33,10 @@ const TABLA = "collectives";
 
 /** [nombre, patrón de tipo, aceptaNull, default exacto] — medido, no supuesto. */
 const COLUMNAS: Array<[string, RegExp, boolean, string | null]> = [
-  ["city", /text/i, true, null],
   ["socials", /jsonb/i, false, "'{}'::jsonb"],
 ];
 
 const CHECKS: Array<[string, string]> = [
-  [
-    `${TABLA}_city_check`,
-    "CHECK (((city IS NULL) OR (btrim(city, ' \t\r\n\u00A0'::text) <> ''::text)))",
-  ],
   [`${TABLA}_socials_objeto_check`, "CHECK ((jsonb_typeof(socials) = 'object'::text))"],
 ];
 
@@ -68,7 +45,7 @@ type Forma = {
   columnas: Array<{ nombre: string; tipo: string; aceptaNull: boolean; default: string | null }>;
   checks: string[];
 };
-type Estado = { forma: Forma; filas: number; conCiudad: number };
+type Estado = { forma: Forma; filas: number };
 
 function verificarForma(e: Estado): { ok: boolean; problemas: string[] } {
   const p: string[] = [];
@@ -135,7 +112,7 @@ export async function GET(request: Request) {
     const [t] = await sql`
       SELECT 1 FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name = ${TABLA}`;
-    if (!t) return { forma: { existe: false, columnas: [], checks: [] }, filas: 0, conCiudad: 0 };
+    if (!t) return { forma: { existe: false, columnas: [], checks: [] }, filas: 0 };
 
     const cols = await sql`
       SELECT column_name, data_type, is_nullable, column_default
@@ -147,13 +124,6 @@ export async function GET(request: Request) {
       FROM pg_constraint WHERE conrelid = ${TABLA}::regclass AND contype = 'c'
       ORDER BY conname`;
     const [n] = await sql(`SELECT COUNT(*)::int AS n FROM ${TABLA}`);
-
-    /** Cuántas ya tienen ciudad, si la columna existe. Es lo que prueba que no hubo backfill. */
-    let conCiudad = 0;
-    if (cols.some((c) => c.column_name === "city")) {
-      const [cc] = await sql(`SELECT COUNT(*)::int AS n FROM ${TABLA} WHERE city IS NOT NULL`);
-      conCiudad = cc.n as number;
-    }
 
     return {
       forma: {
@@ -167,7 +137,6 @@ export async function GET(request: Request) {
         checks: checks.map((c) => `${c.conname}: ${c.def}`),
       },
       filas: n.n as number,
-      conCiudad,
     };
   };
 
@@ -177,9 +146,8 @@ export async function GET(request: Request) {
     if (dryRun) {
       const v = verificarForma(antes);
       log.push(
-        `SIMULACIÓN. ${TABLA} tiene ${antes.filas} fila(s). No hay backfill: city entra en NULL ` +
-          "para todas y NO se copia de sector, porque sector es una etiqueta de origen y no la " +
-          "ciudad. socials entra con su default '{}', que Postgres aplica a las existentes."
+        `SIMULACIÓN. ${TABLA} tiene ${antes.filas} fila(s). Sin backfill: socials entra con su ` +
+          "default '{}', que Postgres aplica a las filas existentes sin tocarlas una por una."
       );
       log.push(v.ok ? "Ya está aplicada." : `Falta aplicar: ${v.problemas.length} problema(s).`);
       for (const x of v.problemas) log.push(`  - ${x}`);
@@ -198,14 +166,14 @@ export async function GET(request: Request) {
     }
 
     /**
-     * Los dos ADD COLUMN en UNA transacción: o las dos columnas o ninguna. Lo que falla sobre
-     * una tabla con filas es un ADD COLUMN NOT NULL *sin* default; socials lo tiene y city es
-     * nullable, así que ninguno puede fallar por las filas existentes.
+     * UN solo ADD COLUMN, así que no hace falta transacción: una sola sentencia ya es atómica.
+     * Lo que falla sobre
+     * una tabla con filas es un ADD COLUMN NOT NULL *sin* default; socials lo tiene, así que
+     * no puede fallar por las filas existentes.
      */
-    await sql.transaction([
-      sql(`ALTER TABLE ${TABLA} ADD COLUMN IF NOT EXISTS city TEXT`),
-      sql(`ALTER TABLE ${TABLA} ADD COLUMN IF NOT EXISTS socials JSONB NOT NULL DEFAULT '{}'::jsonb`),
-    ]);
+    await sql(
+      `ALTER TABLE ${TABLA} ADD COLUMN IF NOT EXISTS socials JSONB NOT NULL DEFAULT '{}'::jsonb`
+    );
 
     /**
      * Y los CHECK por SWAP, cada uno en su transacción: DROP IF EXISTS + ADD desnudo. Sin la
@@ -224,29 +192,17 @@ export async function GET(request: Request) {
     const v = verificarForma(despues);
     log.push(
       v.ok
-        ? `VERIFICADO: ${TABLA}.city es TEXT nullable sin default y ${TABLA}.socials es JSONB ` +
-            "NOT NULL DEFAULT '{}', con sus dos CHECK verificados por definición y no por nombre."
+        ? `VERIFICADO: ${TABLA}.socials es JSONB NOT NULL DEFAULT '{}', con su CHECK de que sea ` +
+            "un objeto verificado por definición y no por nombre."
         : `NO VERIFICADO: ${v.problemas.length} problema(s).`
     );
     for (const x of v.problemas) log.push(`  - ${x}`);
-
-    /**
-     * Y SE MIDE QUE NO HUBO BACKFILL. "No copia sector" es una afirmación hasta que el número
-     * la respalda: si alguna fila quedara con ciudad, alguien la escribió.
-     */
-    log.push(
-      despues.conCiudad === 0
-        ? `Sin backfill, medido: 0 de ${despues.filas} fila(s) tienen city. La carga el dueño.`
-        : `ATENCIÓN: ${despues.conCiudad} fila(s) ya tienen city. Esta migración no escribe ` +
-            "ninguna, así que alguien más las puso."
-    );
 
     return NextResponse.json({
       ok: true,
       dryRun: false,
       verificado: v.ok,
       conteosEstables: despues.filas === antes.filas,
-      sinBackfill: despues.conCiudad === 0,
       problemas: v.problemas,
       antes,
       despues,
