@@ -66,7 +66,13 @@ export async function POST(request: Request) {
   }
 
   const result = await abrirConvocatoria(
-    { eventId, cupos: body.cupos, cierraEn: body.cierraEn, nota: body.nota },
+    {
+      eventId,
+      cupos: body.cupos,
+      cierraEn: body.cierraEn,
+      nota: body.nota,
+      visibilidad: body.visibilidad,
+    },
     email
   );
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });

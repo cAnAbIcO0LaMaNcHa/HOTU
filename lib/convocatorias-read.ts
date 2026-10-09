@@ -63,7 +63,21 @@ export type ConvocatoriaAbierta = {
  * Solo de eventos PUBLICADOS y sin censurar: una convocatoria de un evento que el visitante no
  * puede ver sería un link a nada. Es el mismo filtro que usan /eventos y el resto del sitio.
  */
-export async function getConvocatoriasAbiertas(): Promise<ConvocatoriaAbierta[]> {
+/**
+ * LA VITRINA FILTRA POR VISIBILIDAD, Y EL PARÁMETRO NO ES OPCIONAL A PROPÓSITO.
+ *
+ * `esDj` dice si quien mira tiene perfil de artista. Con false solo se devuelven las
+ * 'publica'; con true, todas.
+ *
+ * NO TIENE DEFAULT. Un `esDj = false` por defecto escondería convocatorias a un DJ que las
+ * puede ver —malo pero visible—, y un `true` por defecto las mostraría a cualquiera, que es
+ * exactamente la decisión que esta columna existe para no tomar por el colectivo. Obligar al
+ * llamador a decirlo hace que la pregunta no se pueda olvidar.
+ *
+ * Y ES UN FILTRO DE PRESENTACIÓN, NO UN PERMISO: el write path no mira visibilidad, así que
+ * una 'djs' sigue siendo postulable. Está medido en la batería.
+ */
+export async function getConvocatoriasAbiertas(esDj: boolean): Promise<ConvocatoriaAbierta[]> {
   const filas = await sql(
     `SELECT ec.id, ec.event_id, ec.cupos, ec.cierra_en, ec.nota, ec.collective_slug,
             e.title, e.event_date, e.venue, e.city, e.flyer_url,
@@ -74,7 +88,9 @@ export async function getConvocatoriasAbiertas(): Promise<ConvocatoriaAbierta[]>
      JOIN collectives c ON c.slug = ec.collective_slug
      WHERE ${CONVOCATORIA_ABIERTA}
        AND e.status = 'published' AND e.censored_at IS NULL
-     ORDER BY e.event_date ASC, ec.id ASC`
+       AND ($1 OR ec.visibilidad = 'publica')
+     ORDER BY e.event_date ASC, ec.id ASC`,
+    [esDj]
   );
   return filas.map((r) => ({
     id: r.id as number,
@@ -128,6 +144,8 @@ export type ConvocatoriaDeEvento = {
   cerradaEn: string | null;
   /** NULL con cerradaEn puesta = la cerró el barrido, no una persona. */
   cerradaPor: string | null;
+  /** Quién ve el distintivo en /eventos. 'djs' = solo quien tiene perfil de artista. */
+  visibilidad: "djs" | "publica";
   postulaciones: PostulacionEnPanel[];
 };
 
@@ -146,7 +164,7 @@ export async function getConvocatoriaDeEvento(
 ): Promise<ConvocatoriaDeEvento | null> {
   const [call] = await sql(
     `SELECT ec.id, ec.collective_slug, ec.cupos, ec.cierra_en, ec.nota,
-            ec.cerrada_en, ec.cerrada_por,
+            ec.cerrada_en, ec.cerrada_por, ec.visibilidad,
             (${CONVOCATORIA_ABIERTA}) AS abierta
      FROM event_calls ec
      JOIN events e ON e.id = ec.event_id
@@ -175,6 +193,7 @@ export async function getConvocatoriaDeEvento(
     abierta: Boolean(call.abierta),
     cerradaEn: call.cerrada_en ? new Date(call.cerrada_en as string).toISOString() : null,
     cerradaPor: (call.cerrada_por as string | null) ?? null,
+    visibilidad: call.visibilidad as "djs" | "publica",
     postulaciones: filas.map((r) => ({
       id: r.id as number,
       artistSlug: r.artist_slug as string,

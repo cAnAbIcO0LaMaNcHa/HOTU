@@ -91,11 +91,22 @@ function textoOpcional(v: unknown, max: number): string | null {
  * ABRIR
  * =================================================================== */
 
+/**
+ * LA VISIBILIDAD ES DEL COLECTIVO, Y SU DEFAULT ES EL QUE NO CUENTA NADA DE MÁS.
+ *
+ * Si el body no la trae, cae en 'djs'. No se "corrige" un valor raro a 'publica': cualquier
+ * cosa que no sea exactamente 'publica' cae en 'djs', que es el lado seguro. Un typo no
+ * puede ser la razón por la que una convocatoria se anuncie a todo el mundo.
+ */
+const VISIBILIDADES = ["djs", "publica"] as const;
+export type Visibilidad = (typeof VISIBILIDADES)[number];
+
 export type AbrirInput = {
   eventId: number;
   cupos?: unknown;
   cierraEn?: unknown;
   nota?: unknown;
+  visibilidad?: unknown;
 };
 
 /**
@@ -168,10 +179,19 @@ export async function abrirConvocatoria(
 
   const nota = textoOpcional(input.nota, MAX_NOTA);
 
+  /**
+   * Cualquier cosa que no sea exactamente 'publica' cae en 'djs'. El CHECK de la base lo
+   * negaría igual, pero un 400 por un typo en un campo opcional es peor experiencia que el
+   * default seguro — y el default seguro acá es el que NO anuncia.
+   */
+  const visibilidad: Visibilidad = input.visibilidad === "publica" ? "publica" : "djs";
+
   try {
     const [fila] = await sql`
-      INSERT INTO event_calls (event_id, collective_slug, cupos, cierra_en, nota, abierta_por)
-      VALUES (${input.eventId}, ${colectivo}, ${cupos}, ${cierre.value}, ${nota}, ${email})
+      INSERT INTO event_calls
+        (event_id, collective_slug, cupos, cierra_en, nota, abierta_por, visibilidad)
+      VALUES (${input.eventId}, ${colectivo}, ${cupos}, ${cierre.value}, ${nota}, ${email},
+              ${visibilidad})
       RETURNING id`;
     return { ok: true, value: { id: fila.id as number } };
   } catch (e) {

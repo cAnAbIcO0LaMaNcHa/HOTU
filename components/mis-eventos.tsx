@@ -7,6 +7,8 @@ import { FranjaCensura } from "./franja-censura";
 import { armarInstante, diaEnPalabras, horaEnBogota } from "@/lib/date-utils";
 import { Field, TextAreaField } from "./epk-editable-section";
 import type { MiEvento } from "@/lib/db";
+import type { ConvocatoriaDeEvento } from "@/lib/convocatorias-read";
+import { ConvocatoriaDeEventoPanel } from "./convocatoria-de-evento";
 
 /**
  * MIS EVENTOS — el organizador corrige y baja los suyos (tanda 5 §4).
@@ -36,7 +38,24 @@ import type { MiEvento } from "@/lib/db";
  * boletas; acá el botón directamente no aparece, para no ofrecer algo
  * que va a fallar.
  */
-export function MisEventos({ eventos }: { eventos: MiEvento[] }) {
+/**
+ * LAS CONVOCATORIAS LLEGAN COMO UN MAPA, no como un campo de MiEvento.
+ *
+ * MiEvento lo devuelve getMyEvents, que es de la tanda 5 y lo usan otros lugares. Meterle
+ * un campo de convocatorias obligaría a esa consulta a traerlas SIEMPRE, incluso donde
+ * nadie las mira — y a quien agregue un consumidor nuevo, a cargar con ellas sin saberlo.
+ *
+ * Un mapa aparte deja las dos piezas independientes: el panel pide las convocatorias
+ * porque sabe que las va a mostrar, y un evento sin entrada en el mapa simplemente no
+ * tiene convocatoria.
+ */
+export function MisEventos({
+  eventos,
+  convocatorias,
+}: {
+  eventos: MiEvento[];
+  convocatorias?: Record<number, ConvocatoriaDeEvento | null>;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -156,6 +175,27 @@ export function MisEventos({ eventos }: { eventos: MiEvento[] }) {
                   </span>
                 )}
               </div>
+            )}
+
+            {/**
+              * LA CONVOCATORIA, AL FINAL DEL BLOQUE DEL EVENTO.
+              *
+              * Abajo y no arriba: lo primero que el organizador viene a hacer acá es corregir
+              * o bajar un evento, y la convocatoria es una decisión sobre un evento que ya
+              * está bien. Ponerla primero le pondría una pregunta antes de lo que vino a
+              * hacer.
+              *
+              * SOLO SI `convocatorias` LLEGÓ. Sin la prop, MisEventos se comporta exactamente
+              * como antes — que es lo que permite que otros lugares lo sigan usando sin
+              * cargar con una consulta que no miran.
+              */}
+            {convocatorias && (
+              <ConvocatoriaDeEventoPanel
+                eventId={e.id}
+                eventTitle={e.title}
+                eventDate={e.date}
+                convocatoria={convocatorias[e.id] ?? null}
+              />
             )}
           </div>
         ))}

@@ -5,6 +5,7 @@ import { CesionInbox } from "@/components/cesion-inbox";
 import { CollectiveInbox } from "@/components/collective-inbox";
 import { FranjaCensura } from "@/components/franja-censura";
 import { MisEventos } from "@/components/mis-eventos";
+import { getConvocatoriaDeEvento } from "@/lib/convocatorias-read";
 import { MisNoticias } from "@/components/mis-noticias";
 import { ColabInbox } from "@/components/colab-inbox";
 import { CreateCollectiveButton } from "@/components/create-collective-button";
@@ -162,6 +163,22 @@ export async function PanelColectivo({
       : [[], [], []];
 
   /**
+   * LAS CONVOCATORIAS DE ESOS EVENTOS, UNA CONSULTA POR EVENTO.
+   *
+   * Son N consultas y eso se puede mejorar, pero el N es el de los eventos PROPIOS de UN
+   * colectivo —unidades, no cientos— y cada una trae sus postulaciones con el JOIN a
+   * artists. Agruparlas en una sola haría una consulta con dos niveles de agregación para
+   * ahorrar round-trips que no se notan a esta escala.
+   *
+   * Si algún día un colectivo tiene cincuenta eventos abiertos, esto es lo primero a
+   * cambiar — y se va a notar en el tiempo que reporta /api/smoke, que mide cada lectura.
+   */
+  const convocatorias: Record<number, Awaited<ReturnType<typeof getConvocatoriaDeEvento>>> = {};
+  for (const ev of misEventos) {
+    convocatorias[ev.id] = await getConvocatoriaDeEvento(ev.id);
+  }
+
+  /**
    * A nombre de quién se puede publicar: lo que esta cuenta PUEDE EDITAR —lo
    * propio y donde es residente— menos lo que esté bajado por moderación.
    *
@@ -277,7 +294,7 @@ export async function PanelColectivo({
       {/* Lo que publicaste y en qué anda. Acá se corrige un evento
           con la fecha mal —que hasta esta tanda solo podía arreglar el
           admin— y acá se lee el motivo si a algo lo bajó un moderador. */}
-      <MisEventos eventos={misEventos} />
+      <MisEventos eventos={misEventos} convocatorias={convocatorias} />
 
       <MisNoticias noticias={misNoticias} />
 

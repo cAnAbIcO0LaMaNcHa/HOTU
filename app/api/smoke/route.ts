@@ -286,7 +286,17 @@ export async function GET(request: Request) {
    * tocar ni el JOIN de artists ni el subquery de postulaciones, y el OK no hablaría de nada.
    * Si no hay eventos se OMITE en vez de pasar vacía.
    */
-  await correr("/eventos", "getConvocatoriasAbiertas", () => getConvocatoriasAbiertas());
+  /**
+   * LAS DOS RAMAS, porque el filtro de visibilidad es la parte que puede romperse. Con esDj en
+   * false se agrega el AND sobre ec.visibilidad; con true no. Correr solo una dejaría la otra
+   * sin ejecutar nunca contra producción, que es la forma de /admin en 500 por 66 commits.
+   */
+  await correr("/eventos", "getConvocatoriasAbiertas(publicas)", () =>
+    getConvocatoriasAbiertas(false)
+  );
+  await correr("/eventos", "getConvocatoriasAbiertas(todas)", () =>
+    getConvocatoriasAbiertas(true)
+  );
 
   let idDeEvento: number | null = null;
   try {
