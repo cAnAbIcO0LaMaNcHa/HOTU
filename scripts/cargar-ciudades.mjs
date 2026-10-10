@@ -143,7 +143,29 @@ function describirDestino(cadena) {
     const u = new URL(cadena);
     return `${u.hostname}${u.pathname}`;
   } catch {
-    throw new Error("Eso no parece una cadena de conexión de Postgres.");
+    /**
+     * EL MENSAJE NO MUESTRA NADA DE LO RECIBIDO, ni un prefijo ni el largo.
+     *
+     * Si la cadena llegó entera, imprimir un trozo filtraría justo lo que la entrada oculta
+     * estaba protegiendo. Y el largo tampoco es gratis: le dice a quien mire la pantalla
+     * cuánto tiene que adivinar.
+     *
+     * LA CAUSA MÁS PROBABLE NO ES QUE ESTÉ MAL, ES QUE NO SE PEGÓ. En Git Bash bajo winpty,
+     * Ctrl+V no pega: la terminal no lo interpreta y lo que llega es un carácter de control o
+     * nada. Pasó en la primera carga de main, y el error de entonces —"eso no parece una
+     * cadena"— mandaba a revisar la cadena, que estaba perfecta. Decir CÓMO se pega convierte
+     * un callejón en un paso.
+     */
+    throw new Error(
+      [
+        "Eso no parece una cadena de conexión de Postgres.",
+        "",
+        "Si creés que la pegaste bien, probablemente no se pegó: en Git Bash, Ctrl+V NO pega.",
+        "Usá Shift+Insert, o clic derecho sobre la ventana.",
+        "",
+        "No se escribió nada, y no se muestra nada de lo que recibí.",
+      ].join("\n")
+    );
   }
 }
 
