@@ -262,6 +262,22 @@ export async function updateArtistProfile(
     return { ok: false, status: 400, error: "Nothing to update" };
   }
 
+  /**
+   * SI CAMBIA EL TEXTO DE LA CIUDAD, city_id VUELVE A NULL.
+   *
+   * city_id es la columna nueva de la transición a cities, y hasta el paso 3 el formulario
+   * sigue mandando solo texto. Sin esta línea, un DJ que se mude deja city en "Medellín" y
+   * city_id apuntando a Bogotá, y NO HAY CÓMO ENTERARSE: nada lee city_id todavía, y el
+   * backfill no vuelve a mirar una fila que ya lo tiene.
+   *
+   * NULL es la respuesta correcta y no un parche: significa "no sé qué ciudad es", que es la
+   * verdad, y deja la fila disponible para que /api/setup-city-id-backfill la resuelva de
+   * nuevo. Un id viejo significa "sé", y eso sería mentira.
+   *
+   * Las expresiones del SET se evalúan contra la fila VIEJA, así que el `city` de la
+   * comparación es el valor anterior. Y la comparación es IS DISTINCT FROM: guardar el mismo
+   * texto no es un cambio y no tiene por qué tirar el id.
+   */
   // COALESCE keeps every column the patch did not mention untouched, so a
   // partial save from one section never wipes another section's fields.
   await sql`
@@ -269,6 +285,11 @@ export async function updateArtistProfile(
       name          = COALESCE(${values.name ?? null}, name),
       genre         = COALESCE(${values.genre ?? null}, genre),
       city          = COALESCE(${values.city ?? null}, city),
+      city_id       = CASE
+                        WHEN ${values.city ?? null}::text IS NOT NULL
+                         AND ${values.city ?? null}::text IS DISTINCT FROM city
+                        THEN NULL ELSE city_id
+                      END,
       bio           = COALESCE(${values.bio ?? null}, bio),
       origin        = CASE WHEN ${"origin" in values} THEN ${values.origin ?? null}::text ELSE origin END,
       role          = CASE WHEN ${"role" in values} THEN ${values.role ?? null}::text ELSE role END,

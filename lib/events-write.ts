@@ -577,12 +577,26 @@ export async function updateCommunityEvent(
    */
   const finDelDiaNuevo = `${date}T23:59:59${OFFSET_BOGOTA}`;
 
+  /**
+   * SI CAMBIA EL TEXTO DE LA CIUDAD, city_id VUELVE A NULL.
+   *
+   * Mismo criterio que en artists-write, y por el mismo agujero: hasta el paso 3 de la
+   * transición a cities el formulario manda solo texto, así que sin esta línea una fiesta que
+   * se mueve de ciudad queda con el city_id de la anterior y NADA lo delata — ninguna página
+   * lee esa columna todavía, y el backfill no vuelve a mirar una fila que ya la tiene.
+   *
+   * NULL dice "no sé", que es la verdad, y deja que /api/setup-city-id-backfill la resuelva de
+   * nuevo. Las expresiones del SET se evalúan contra la fila VIEJA, así que el `city` del lado
+   * derecho es el valor anterior; IS DISTINCT FROM para que guardar el mismo texto no cuente
+   * como cambio.
+   */
   const [, , recortadas] = await sql.transaction([
     sql`
       UPDATE events SET
         title = ${title}, event_date = ${date}, venue = ${venue}, city = ${city}, lineup = ${lineup},
         starts_at = ${startsAt}, end_at = ${endAt}, flyer_url = ${flyerUrl},
-        door_price_cop = ${doorPrice}
+        door_price_cop = ${doorPrice},
+        city_id = CASE WHEN ${city}::text IS DISTINCT FROM city THEN NULL ELSE city_id END
       WHERE id = ${id}
     `,
     sentenciaDeRegistro(rol, {

@@ -37,7 +37,11 @@ export async function POST(request: Request) {
     const rows = await sql`
       UPDATE events
       SET title = ${title}, venue = ${venue}, city = ${city},
-          event_date = ${eventDate}, flyer_url = ${flyerUrl}
+          event_date = ${eventDate}, flyer_url = ${flyerUrl},
+          -- Si cambia el texto de la ciudad, city_id vuelve a NULL. Igual que en
+          -- events-write: un id que ya no corresponde al texto no se nota, y acá tampoco
+          -- iba a notarse por ser una ruta de prueba.
+          city_id = CASE WHEN ${city}::text IS DISTINCT FROM city THEN NULL ELSE city_id END
       WHERE id = (SELECT event_id FROM tickets ORDER BY id LIMIT 1)
       RETURNING id, title
     `;
