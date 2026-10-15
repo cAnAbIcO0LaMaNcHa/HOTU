@@ -104,6 +104,7 @@ import { getAllRoleAssignments } from "@/lib/roles";
 import { getEliminaciones, listarCuentas } from "@/lib/accounts-delete";
 import { getReclamosPendientes } from "@/lib/claims-write";
 import { getMailOutbox } from "@/lib/mail";
+import { buscarCiudades } from "@/lib/ciudades";
 import {
   getConvocatoriaDeEvento,
   getConvocatoriasAbiertas,
@@ -339,6 +340,26 @@ export async function GET(request: Request) {
   await correr("/admin/roles", "getAllRoleAssignments", () => getAllRoleAssignments());
   await correr("/admin/pedidos", "getAllOrdersAdmin", () => getAllOrdersAdmin());
   await correr("/admin/limpieza", "listarCuentas", () => listarCuentas());
+
+  /**
+   * EL AUTOCOMPLETADO DE CIUDADES, que no estaba y tenía que estar.
+   *
+   * Lo marcó el migration-reviewer: /api/ciudades es un lector NUEVO de cities y el smoke no
+   * tenía ni una lectura de esa tabla, así que desplegar la consulta del selector antes de
+   * correr su migración daba 500 en cada tecleo y el chequeo post-deploy NO lo veía. Es
+   * exactamente la trampa que este archivo existe para evitar: una lista incompleta que dice
+   * que todo está OK.
+   *
+   * LA CONSULTA LLEVA ARGUMENTOS REALES, por lo mismo que getLineupsByEvent más arriba:
+   * buscarCiudades('', '') devolvería [] sin tocar la base y el OK no diría nada. Con
+   * ('COL','bogo') tiene que traer Bogotá, así que toca el índice, la columna generada y las
+   * dos ramas del UNION.
+   *
+   * Y ES UNA RUTA, NO UNA PÁGINA. Se nombra igual porque la pregunta que el smoke contesta es
+   * "¿esta lectura sigue andando en producción?", y una ruta de API tiene esa pregunta tanto
+   * como una página — con la diferencia de que a una página alguien la mira.
+   */
+  await correr("/api/ciudades", "buscarCiudades", () => buscarCiudades("COL", "bogo"));
 
   const roto = resultados.filter((r) => !r.ok);
   const omitidas = resultados.filter((r) => r.omitido);

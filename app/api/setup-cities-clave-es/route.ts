@@ -265,9 +265,57 @@ export async function GET(request: Request) {
       sql(`DROP INDEX IF EXISTS ${INDICE}`),
       sql(INDICE_ESPERADO),
     ]);
+    /**
+     * EL LOG DICE SI LA TABLA SE REESCRIBIÓ O NO, y antes afirmaba que sí siempre.
+     *
+     * En la segunda corrida el ADD COLUMN IF NOT EXISTS no hace nada y la tabla NO se
+     * reescribe —sólo se reconstruye el índice—, así que "La tabla se reescribió una vez" era
+     * falso justo en el camino que la regla del repo obliga a recorrer. Lo encontró el
+     * migration-reviewer, y es la segunda vez en este tramo que un log afirma sin mirar.
+     */
     log.push(
-      `cities.${COLUMNA} agregada y ${INDICE} creado. La tabla se reescribió una vez.`
+      formaAntes.existe
+        ? `cities.${COLUMNA} ya existía: la tabla NO se reescribió, sólo se reconstruyó ${INDICE}.`
+        : `cities.${COLUMNA} agregada y ${INDICE} creado. La tabla se reescribió una vez.`
     );
+
+    /**
+     * ANALYZE, Y POR QUÉ ESTÁ ACÁ AUNQUE EL RIESGO NO SE HAYA MATERIALIZADO.
+     *
+     * El reviewer marcó que una columna recién generada no tiene estadísticas, que un rewrite
+     * por ALTER no cuenta como filas modificadas para el autovacuum, y que cities casi no se
+     * escribe —sólo el cargador—. O sea que el autoanalyze podría no dispararse nunca y el
+     * planner elegiría con selectividad por omisión, pudiendo preferir recorrer por población
+     * y filtrar. Resultados iguales, más lento, sin error: el modo de falla favorito de este
+     * archivo.
+     *
+     * MEDIDO en dev, y el riesgo NO se dio: clave_es no figura en pg_stats —el último
+     * autoanalyze fue anterior a la columna— y el plan usa cities_pais_clave_es_idx igual, con
+     * 0 filas descartadas en 0,4 ms. Así que esto no es un arreglo, es sacar la pregunta de
+     * encima: con estadísticas, la elección del plan deja de depender de los defaults.
+     *
+     * VA FUERA DE LA TRANSACCIÓN a propósito. Si fallara, la columna y el índice ya están y la
+     * migración no tiene por qué deshacerse por no haber podido juntar estadísticas; se avisa
+     * y se puede correr a mano.
+     */
+    try {
+      await sql(`ANALYZE cities`);
+      const [st] = await sql`
+        SELECT COUNT(*)::int AS n FROM pg_stats
+        WHERE schemaname = 'public' AND tablename = 'cities' AND attname = ${COLUMNA}`;
+      log.push(
+        st.n > 0
+          ? `ANALYZE corrido: ${COLUMNA} ya tiene estadísticas, así que el planner no elige por defaults.`
+          : `ANALYZE corrido pero ${COLUMNA} NO quedó en pg_stats. El índice se usa igual —medido—, ` +
+              "pero conviene mirar por qué."
+      );
+    } catch (e) {
+      log.push(
+        "No pude correr ANALYZE cities: " +
+          (e instanceof Error ? e.message : String(e)) +
+          ". La columna y el índice SÍ quedaron; corré ANALYZE cities a mano."
+      );
+    }
 
     const despues = await medir();
     const problemas = verificar(await leerForma());
