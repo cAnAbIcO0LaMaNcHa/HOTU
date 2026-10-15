@@ -82,6 +82,7 @@ import { NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { normalizarEnSql } from "@/lib/convocatorias";
 import { normalizarNombre } from "@/lib/lineup-import";
+import { estadoDeRecarga } from "@/lib/ciudades-tramo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -402,21 +403,14 @@ export async function GET(request: Request) {
               "reescribe la tabla y reconstruye los dos índices."
       );
       /**
-       * ESTA LÍNEA SÓLO VALE SI TODAVÍA NO ESTÁ APLICADA, y antes se imprimía siempre.
-       *
-       * Con la migración ya corrida y la columna llena, decir "no cambia ninguna clave al
-       * correrse" es una afirmación sobre un evento que ya pasó, y encima falsa: las claves ya
-       * cambiaron, con la recarga. Un log que afirma sin mirar es peor que no loguear, y este
-       * se estaba mintiendo a sí mismo en el camino más común — el de volver a pedir el dryRun
-       * para comprobar que todo quedó bien.
+       * Ver estadoDeRecarga(): son TRES estados y acá había dos.
        */
       log.push(
-        yaEstaba
-          ? `La recarga ya pasó: ${antes.conAsciiNombre} de ${antes.filas} fila(s) tienen el ` +
-              "nombre ASCII de GeoNames."
-          : "NO CAMBIA NINGUNA CLAVE AL CORRERSE: ascii_nombre nace en NULL, así que el " +
-              "COALESCE cae al nombre local y clave queda idéntica. Las claves mejoran después, " +
-              "con la recarga."
+        estadoDeRecarga({
+          expresionAplicada: yaEstaba,
+          conAsciiNombre: antes.conAsciiNombre,
+          filas: antes.filas,
+        }).mensaje
       );
       for (const { tabla } of CON_CITY_ID) {
         log.push(
@@ -558,9 +552,18 @@ export async function GET(request: Request) {
         : `NO VERIFICADO: ${problemas.length} problema(s).`
     );
     for (const x of problemas) log.push(`  - ${x}`);
+    /**
+     * Y ACÁ LA MISMA FUNCIÓN, por el mismo motivo. Esta línea decía "SIGUIENTE PASO: correr el
+     * cargador" SIEMPRE, así que después de la recarga la corrida real seguía mandando a
+     * recargar. Menos grave que el otro caso —no afirma un hecho falso, da una instrucción de
+     * más— pero es la misma causa y se arregla en el mismo lugar.
+     */
     log.push(
-      "SIGUIENTE PASO, Y SIN ÉL ESTO NO ARREGLA NADA: correr scripts/cargar-ciudades.mjs para " +
-        "llenar ascii_nombre. Recién ahí las claves se vuelven ASCII y 'thane' encuentra Thāne."
+      estadoDeRecarga({
+        expresionAplicada: true,
+        conAsciiNombre: despues.conAsciiNombre,
+        filas: despues.filas,
+      }).mensaje
     );
 
     return NextResponse.json({

@@ -121,7 +121,45 @@ try {
     const ms = Number(plan.match(/Execution Time: ([\d.]+)/)?.[1] ?? "9999");
     chk(`${pais} "${q}": sin Seq Scan sobre cities`, !seq, plan.split("\n").find((l) => /Seq Scan/.test(l))?.trim());
     chk(`${pais} "${q}": el país está en la condición`, acotado, "el plan no menciona country_code");
-    chk(`${pais} "${q}": por debajo de 100 ms (dio ${ms.toFixed(1)})`, ms < 100, `${ms} ms`);
+    /**
+     * CUÁNTAS FILAS DESCARTÓ, NO CUÁNTOS MILISEGUNDOS TARDÓ.
+     *
+     * Acá había un umbral de 100 ms y falló: dio 134 contra 3,7 de la corrida anterior. La
+     * causa estaba clara y era transitoria —la tabla se había reescrito dos veces, el
+     * SET EXPRESSION y la recarga, así que la caché de Neon estaba fría— o sea un MAL por algo
+     * que no era una regresión.
+     *
+     * Un tiempo de pared contra una base remota por HTTP no es un invariante: depende de la
+     * caché, de la red y de si alguien más está consultando. Y una batería que falla por
+     * motivos que no son defectos se deja de leer, que es el costo real.
+     *
+     * Lo que sí es invariante es CUÁNTO TUVO QUE DESCARTAR, y el límite es EL TAMAÑO DEL PAÍS,
+     * no un número que yo elija.
+     *
+     * Primero puse 10.000 y falló con USA: descartó 17.096. No era un escape — USA tiene
+     * 17.343 filas, o sea que descartó el país entero. Eso es lo que hace la rama de nombre_es:
+     * Postgres deja cities_pais_clave_idx, recorre el país por cities_pais_poblacion_idx y
+     * filtra. Está medido y es aceptable: 32 ms en el peor país.
+     *
+     * Un umbral absoluto habría dado MAL por una consulta correcta, que es el mismo error que
+     * acababa de cometer con los milisegundos. El límite tiene que salir del dato: el scan
+     * puede recorrer su país y NO puede recorrer la tabla. La diferencia entre las dos cosas es
+     * de un orden de magnitud —17.343 contra 170.739— así que la aserción discrimina de sobra.
+     */
+    const [{ delPais }] = await sql(
+      `SELECT COUNT(*)::int AS "delPais" FROM cities WHERE country_code = $1`,
+      [pais]
+    );
+    const descartadas = Math.max(
+      0,
+      ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1]))
+    );
+    chk(
+      `${pais} "${q}": descartó ${descartadas}, acotado por el país (${delPais}), no por la ` +
+        `tabla (${ms.toFixed(1)} ms)`,
+      descartadas <= delPais,
+      `descartó ${descartadas} y el país tiene ${delPais}: el scan se salió del país`
+    );
   }
 
   console.log("\n== 1b. y la prueba falla con la consulta SIN país, que es el caso malo");
@@ -352,6 +390,55 @@ try {
       hoe.length === 0,
       `ahora da ${hoe.map((c) => c.nombre).join(", ")} — la ligadura se arregló y hay que decirlo`
     );
+  }
+
+  console.log("\n== 7b. EN QUÉ PUNTO DEL TRAMO ESTAMOS: tres estados, y había dos");
+  /**
+   * ESTO EXISTE PORQUE EL LOG MINTIÓ EN MAIN, Y SE VIO.
+   *
+   * El dryRun de /api/setup-cities-asciiname, corrido entre el paso 2 (reexpresar) y el paso 3
+   * (recargar), imprimió: "La recarga ya pasó: 0 de 171174 fila(s) tienen el nombre ASCII".
+   * Falso, y además contradiciéndose en la misma oración.
+   *
+   * La causa: la línea elegía con `yaEstaba`, que significa "la expresión de clave ya es la
+   * nueva" y NO "la recarga pasó". Entre esos dos pasos las dos cosas difieren, y el estado
+   * del medio es JUSTO el que alguien mira para decidir si ya puede recargar.
+   *
+   * SE PRUEBA LA FUNCIÓN PURA Y NO LA RUTA, a propósito: reproducir el estado del medio contra
+   * la base exige vaciar ascii_nombre en las 171.174 filas y recargarlas, dos minutos y
+   * tocando los datos. Una prueba así no se corre. Con la decisión afuera del handler, las
+   * tres ramas se ejercitan en milisegundos.
+   */
+  {
+    const { estadoDeRecarga } = await import("../../lib/ciudades-tramo.ts");
+
+    const a = estadoDeRecarga({ expresionAplicada: false, conAsciiNombre: 0, filas: 171174 });
+    chk("sin reexpresar -> 'sin-reexpresar'", a.estado === "sin-reexpresar", a.estado);
+    chk("y dice que no cambia ninguna clave", /NO CAMBIA NINGUNA CLAVE/.test(a.mensaje), a.mensaje);
+
+    /** EL CASO QUE FALLÓ EN MAIN. */
+    const b = estadoDeRecarga({ expresionAplicada: true, conAsciiNombre: 0, filas: 171174 });
+    chk("reexpresada y columna VACÍA -> 'falta-recargar'", b.estado === "falta-recargar", b.estado);
+    chk("y NO dice que la recarga ya pasó", !/ya pasó/.test(b.mensaje), b.mensaje);
+    chk("y manda a correr el cargador", /cargar-ciudades/.test(b.mensaje), b.mensaje);
+
+    const c = estadoDeRecarga({ expresionAplicada: true, conAsciiNombre: 171174, filas: 171174 });
+    chk("reexpresada y columna llena -> 'recargada'", c.estado === "recargada", c.estado);
+    chk("y recién ahí dice que la recarga pasó", /ya pasó/.test(c.mensaje), c.mensaje);
+    chk("y no habla de que falte nada", !/[Ff]altan/.test(c.mensaje), c.mensaje);
+
+    /**
+     * Y EL CUARTO ESTADO QUE NO ES UN ESTADO: una recarga a medias. No tiene nombre propio
+     * —es 'recargada'— pero el mensaje tiene que decir cuántas faltan, porque una carga que se
+     * cortó a mitad se ve igual que una completa si sólo se mira el estado.
+     */
+    const d = estadoDeRecarga({ expresionAplicada: true, conAsciiNombre: 100000, filas: 171174 });
+    chk("recarga a medias sigue siendo 'recargada'", d.estado === "recargada", d.estado);
+    chk("pero avisa que faltan 71174", /71174/.test(d.mensaje) && /a medias/.test(d.mensaje), d.mensaje);
+
+    /** El borde: una sola fila cargada ya no es "falta recargar". */
+    const e = estadoDeRecarga({ expresionAplicada: true, conAsciiNombre: 1, filas: 171174 });
+    chk("con UNA fila cargada ya no dice 'falta recargar'", e.estado === "recargada", e.estado);
   }
 
   console.log("\n== 8. getCiudad y getCiudades");
