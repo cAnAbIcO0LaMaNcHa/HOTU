@@ -266,6 +266,16 @@ async function main() {
     ciudades.push({
       id: Number(c[COL.geonameid]),
       nombre: c[COL.name],
+      /**
+       * EL asciiname DE GeoNames, que es lo que arregla el 9,53% de claves con diacríticos
+       * que normalizarEnSql no sabe sacar.
+       *
+       * Vacío se manda como NULL y no como '': la expresión de clave hace
+       * NULLIF(btrim(...), '') de todos modos, pero mandar la cadena vacía haría que
+       * COUNT(ascii_nombre) contara una fila que en los hechos no tiene nombre ASCII — y ese
+       * conteo es con lo que se mide si la carga sirvió.
+       */
+      ascii: c[COL.asciiname]?.trim() || null,
       pais: a3,
       admin1: c[COL.admin1] || null,
       poblacion: Number(c[COL.population]) || 0,
@@ -368,6 +378,15 @@ async function main() {
   const tiene = new Set(cols.map((c) => c.column_name));
   const faltan = [
     "geonames_id", "nombre", "nombre_es", "country_code", "admin1", "poblacion", "lat", "lng",
+    /**
+     * ascii_nombre ES OBLIGATORIA, y que falte tiene que cortar ANTES de escribir.
+     *
+     * Sin ella la carga "funciona" y no arregla nada: clave se vuelve a generar desde el
+     * nombre local y los 16.310 diacríticos siguen ahí. Una recarga de 171.174 filas que
+     * termina diciendo Listo y deja el defecto intacto es peor que un error — nadie la vuelve
+     * a correr, porque ya la corrió.
+     */
+    "ascii_nombre",
   ].filter((c) => !tiene.has(c));
   if (faltan.length > 0) {
     throw new Error(
@@ -384,17 +403,21 @@ async function main() {
   for (let i = 0; i < ciudades.length; i += TANDA) {
     const tanda = ciudades.slice(i, i + TANDA);
     await sql(
-      `INSERT INTO cities (geonames_id, nombre, nombre_es, country_code, admin1, poblacion, lat, lng)
+      `INSERT INTO cities
+         (geonames_id, nombre, ascii_nombre, nombre_es, country_code, admin1, poblacion, lat, lng)
        SELECT * FROM unnest(
-         $1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::numeric[], $8::numeric[]
+         $1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int[],
+         $8::numeric[], $9::numeric[]
        )
        ON CONFLICT (geonames_id) DO UPDATE SET
-         nombre = EXCLUDED.nombre, nombre_es = EXCLUDED.nombre_es,
+         nombre = EXCLUDED.nombre, ascii_nombre = EXCLUDED.ascii_nombre,
+         nombre_es = EXCLUDED.nombre_es,
          country_code = EXCLUDED.country_code, admin1 = EXCLUDED.admin1,
          poblacion = EXCLUDED.poblacion, lat = EXCLUDED.lat, lng = EXCLUDED.lng`,
       [
         tanda.map((c) => c.id),
         tanda.map((c) => c.nombre),
+        tanda.map((c) => c.ascii),
         tanda.map((c) => enEspanol.get(c.id) ?? null),
         tanda.map((c) => c.pais),
         tanda.map((c) => c.admin1),
@@ -415,6 +438,30 @@ async function main() {
     `\ncities: ${antes.n} -> ${despues.n} fila(s). Nuevas: ${despues.n - antes.n}, ` +
       `actualizadas: ${ciudades.length - (despues.n - antes.n)}. Con nombre en español: ${conEs.n}.`
   );
+
+  /**
+   * Y EL NÚMERO POR EL QUE ESTA RECARGA EXISTE, MEDIDO Y NO AFIRMADO.
+   *
+   * La carga podía terminar diciendo Listo y dejar las claves igual que antes —por una
+   * expresión de clave vieja, por un asciiname vacío en masa, por lo que sea—. Las claves
+   * no-ASCII eran 16.310 de 171.174 antes de esto; si después de recargar sigue dando un
+   * número parecido, la recarga no sirvió y hay que decirlo acá, no descubrirlo en el selector.
+   */
+  const [ascii] = await sql`
+    SELECT COUNT(ascii_nombre)::int AS con_ascii,
+           COUNT(*) FILTER (WHERE clave ~ '[^ -~]')::int AS no_ascii
+    FROM cities`;
+  console.log(
+    `Con nombre ASCII de GeoNames: ${ascii.con_ascii}. ` +
+      `Claves que todavía tienen algún carácter no-ASCII: ${ascii.no_ascii} ` +
+      `(eran 16310 antes de cargar ascii_nombre).`
+  );
+  if (ascii.con_ascii === 0) {
+    console.log(
+      "  ATENCIÓN: ninguna fila quedó con ascii_nombre. La columna existe pero no se llenó, " +
+        "así que las claves siguen saliendo del nombre local y el defecto está intacto."
+    );
+  }
 }
 
 main()
