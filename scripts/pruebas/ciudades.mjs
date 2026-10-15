@@ -213,59 +213,91 @@ try {
     chk(`el límite se recorta a ${MAXIMO_RESULTADOS} aunque se pida 50`, tope.length <= MAXIMO_RESULTADOS, `devolvió ${tope.length}`);
   }
 
-  console.log("\n== 7. EL LÍMITE CONOCIDO DE LA NORMALIZACIÓN, con su número");
+  console.log("\n== 7. LAS CLAVES SON ASCII, Y LAS TRES QUE NO LO SON");
   /**
-   * ACÁ NO SE AFIRMA QUE LOS DOS NORMALIZADORES COINCIDAN, PORQUE NO COINCIDEN.
+   * ESTA SECCIÓN DECÍA LO CONTRARIO, Y SE REESCRIBIÓ PORQUE SU PROPIO CHEQUEO LO PIDIÓ.
    *
-   * normalizarEnSql borra seis marcas combinantes y traduce una lista Latin-1 fija.
-   * normalizarNombre, en JS, hace NFD y borra el bloque U+0300–U+036F COMPLETO. Así que todo
-   * diacrítico fuera de esa lista —el macrón de "Thāne", la cedilla baja de "Al Mawşil", los
-   * tonos de "Huế"— sobrevive en cities.clave y desaparece del patrón que arma patronDe.
+   * Antes afirmaba un límite: 16.310 de 171.174 claves (9,53%) con diacríticos que
+   * normalizarEnSql no sabía sacar, y "thane" dando CERO resultados en India. Y tenía un chk
+   * que exigía que esa falla SIGUIERA ahí, con el mensaje "si ahora da resultados, el
+   * asciiname entró y hay que reescribir esta sección". Entró, dio MAL, y acá está reescrita.
    *
-   * Consecuencia MEDIDA: tipear "thane" en India da CERO resultados, porque la clave guardada
-   * es "thāne". Igual "rajkot" y "hue".
+   * Lo que cambió: /api/setup-cities-asciiname hizo que clave se derive del asciiname de
+   * GeoNames —COALESCE(NULLIF(btrim(ascii_nombre, blancos), ''), nombre)— y el cargador llenó
+   * la columna. MEDIDO en dev después de recargar: de 16.310 a 3.
    *
-   * LA DIVERGENCIA ES ANTERIOR A ESTA PIEZA. Existía desde que hay dos normalizadores, y nunca
-   * se disparó porque lo que se comparaba eran nombres en español, donde la lista Latin-1
-   * alcanza. Cargar las 171.174 ciudades del mundo no la creó: la volvió alcanzable.
+   * LAS TRES QUE QUEDAN SON LA LIGADURA œ: Hœnheim, Hœrdt y Gœrsdorf, todas francesas, y
+   * GeoNames tampoco las transcribe —su asciiname es idéntico al nombre—. Están fuera del
+   * alcance de la maquinaria por una razón concreta: translate() mapea UN carácter a UNO, y
+   * œ -> oe son dos. No es un descuido que se pueda arreglar agregando un carácter a la lista.
    *
-   * POR QUÉ ESTO NO ES UN chk EN ROJO. Una batería que falla siempre deja de leerse, y a los
-   * dos días su MAL es parte del paisaje. Así que se afirma lo que SÍ es cierto y se
-   * garantiza —Colombia limpia, Latin-1 coincidiendo— y el resto se IMPRIME con su número,
-   * que es lo que permite ver si empeora.
-   *
-   * El arreglo de verdad es cargar el asciiname de GeoNames —que la transliteración la haga la
-   * fuente y no una tabla a mano— y derivar clave de ahí. Eso es una migración más una recarga,
-   * y va en su propio tramo.
+   * Y OJO CON CÓMO SE CUENTA, que es donde me equivoqué. La primera medición usó la clase
+   * [^a-z0-9 '.()/-] y dio 248 — pero 245 de esas eran COMAS, BACKTICKS y CORCHETES, que son
+   * ASCII perfectamente normal y aparecen en nombres como "Mianzhu, Deyang, Sichuan" o el
+   * `Afrin con el que GeoNames escribe el ayn. Contar con un conjunto de caracteres
+   * "permitidos" hecho a mano convierte cualquier signo que uno no pensó en un falso positivo.
+   * La clase correcta es el rango imprimible ASCII, [^ -~], y da 3.
    */
   {
     const [esc] = await sql`SELECT
-      COUNT(*) FILTER (WHERE clave ~ '[^a-z0-9 ''.()/-]')::int AS mundo,
+      COUNT(*) FILTER (WHERE clave ~ '[^ -~]')::int AS mundo,
       COUNT(*)::int AS total FROM cities`;
     const [colombia] = await sql`SELECT
-      COUNT(*) FILTER (WHERE clave ~ '[^a-z0-9 ''.()/-]')::int AS malas,
+      COUNT(*) FILTER (WHERE clave ~ '[^ -~]')::int AS malas,
       COUNT(*)::int AS total FROM cities WHERE country_code = 'COL'`;
     console.log(
-      `   (claves con algo que no es ASCII: ${esc.mundo} de ${esc.total} en el mundo, ` +
-        `${(100 * esc.mundo / esc.total).toFixed(2)}%)`
+      `   (claves fuera del ASCII imprimible: ${esc.mundo} de ${esc.total}, ` +
+        `${(100 * esc.mundo / esc.total).toFixed(4)}%)`
     );
 
     /**
-     * LO QUE SÍ SE EXIGE: Colombia limpia. Es el único país donde HOTU opera —countries tiene
-     * una fila— así que es el único lugar donde este límite sería un defecto y no una
-     * limitación. Si algún día da distinto de 0, el selector se rompió donde importa.
+     * LA COLUMNA TIENE QUE ESTAR LLENA, y esto va primero porque sin eso todo lo de abajo
+     * pasaría por el camino viejo sin decirlo: con ascii_nombre en NULL el COALESCE cae al
+     * nombre local, las claves vuelven a tener diacríticos y los chequeos de más abajo
+     * fallarían sin explicar que lo que falta es la recarga.
      */
+    const [lleno] = await sql`SELECT COUNT(ascii_nombre)::int AS n, COUNT(*)::int AS total FROM cities`;
     chk(
-      `Colombia: 0 de ${colombia.total} claves con caracteres no-ASCII`,
+      `ascii_nombre está llena en las ${lleno.total} filas`,
+      lleno.n === lleno.total,
+      `sólo ${lleno.n} de ${lleno.total} — falta correr scripts/cargar-ciudades.mjs`
+    );
+
+    /** Colombia limpia: el único país donde HOTU opera. */
+    chk(
+      `Colombia: 0 de ${colombia.total} claves fuera del ASCII imprimible`,
       colombia.malas === 0,
       `${colombia.malas} claves sucias`
     );
 
-    /** Y que el límite no haya CRECIDO más allá de lo medido el 13 de octubre de 2026. */
+    /**
+     * EL NÚMERO EXACTO, Y HACIA LOS DOS LADOS.
+     *
+     * No es "<= 3": es exactamente 3. Si bajara, algo mejoró y esta sección miente sobre la
+     * ligadura; si subiera, la recarga trajo datos peores o la expresión de clave cambió. Las
+     * dos cosas merecen un MAL que mande a mirar, y un "<=" dejaría pasar la primera en
+     * silencio — que es cómo un número escrito deja de corresponder a la realidad.
+     */
     chk(
-      `el límite no empeoró (${esc.mundo} <= 16310 medidas)`,
-      esc.mundo <= 16310,
-      `subió a ${esc.mundo}: algo cambió en normalizarEnSql o en los datos`
+      `quedan exactamente 3 claves fuera del ASCII imprimible (dio ${esc.mundo})`,
+      esc.mundo === 3,
+      `son ${esc.mundo} y la sección dice 3`
+    );
+
+    /** Y que sean LAS TRES de la ligadura œ, no otras tres. */
+    const residuo = await sql`SELECT nombre FROM cities WHERE clave ~ '[^ -~]' ORDER BY nombre`;
+    chk(
+      "y son las tres francesas de la ligadura œ",
+      residuo.length === 3 && residuo.every((r) => /œ/.test(r.nombre)),
+      residuo.map((r) => r.nombre).join(", ")
+    );
+
+    /** Ninguna clave vacía: era el riesgo que marcó el migration-reviewer sobre el btrim. */
+    const [vacias] = await sql`SELECT COUNT(*)::int AS n FROM cities WHERE clave = ''`;
+    chk(
+      "ninguna clave quedó vacía",
+      vacias.n === 0,
+      `${vacias.n} ciudades con clave '' — no se pueden buscar`
     );
 
     /**
@@ -289,15 +321,36 @@ try {
     );
 
     /**
-     * Y LA FALLA CONOCIDA SE MIDE, no se describe. Si algún día esto empieza a encontrar
-     * Thāne, el límite se arregló y este chequeo lo dice — con un MAL que manda a actualizar
-     * esta sección, que es exactamente cuándo hay que actualizarla.
+     * Y LO QUE ANTES FALLABA, AHORA ANDA. Estas cuatro eran los ejemplos del defecto: se
+     * tipeaban sin diacríticos y daban cero. Quedan como chequeos porque son la prueba de que
+     * la recarga sirvió, y porque si alguien recreara cities desde setup-cities —que la deja
+     * con la expresión vieja— volverían a dar cero y se vería acá.
      */
-    const thane = await buscarCiudades("IND", "thane");
+    for (const [pais, escrito, esperado] of [
+      ["IND", "thane", "Thāne"],
+      ["IND", "rajkot", "Rājkot"],
+      ["VNM", "hue", "Huế"],
+      ["TUR", "istanbul", "Istanbul"],
+    ]) {
+      const r = await buscarCiudades(pais, escrito);
+      chk(
+        `${pais} "${escrito}" (sin diacríticos) encuentra ${esperado}`,
+        r.some((c) => c.nombre === esperado),
+        r.map((c) => c.nombre).join(", ") || "nada"
+      );
+    }
+
+    /**
+     * LA LIGADURA SIGUE SIN ENCONTRARSE, y se afirma en vez de omitirse: "hoenheim" no da
+     * nada y no hay forma de que dé con translate(), que es 1 a 1. Dejarlo sin medir haría
+     * que la sección de arriba pareciera una limitación razonada cuando en realidad nadie la
+     * comprobó.
+     */
+    const hoe = await buscarCiudades("FRA", "hoenheim");
     chk(
-      "la falla conocida sigue siendo la que está escrita: 'thane' da 0 en India",
-      thane.length === 0,
-      `ahora da ${thane.length} — el asciiname entró y hay que reescribir esta sección`
+      "y 'hoenheim' sigue sin encontrar Hœnheim, que es el residuo escrito",
+      hoe.length === 0,
+      `ahora da ${hoe.map((c) => c.nombre).join(", ")} — la ligadura se arregló y hay que decirlo`
     );
   }
 
