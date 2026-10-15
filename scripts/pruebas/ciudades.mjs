@@ -61,6 +61,7 @@ const {
   paisValido,
   patronDe,
   sqlDeBusqueda,
+  juzgarPlanDeBusqueda,
   MAXIMO_RESULTADOS,
   MINIMO_PARA_BUSCAR,
 } = await import("../../lib/ciudades.ts");
@@ -155,11 +156,27 @@ try {
       0,
       ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1]))
     );
+    /**
+     * ESTA ASERCIÓN ERA `descartadas <= delPais` Y NO PODÍA DISPARAR NUNCA.
+     *
+     * Lo descubrí probando al revés: le saqué cities_pais_clave_es_idx a dev y el plan malo
+     * descarta 17.275 de las 17.343 filas de USA y 7.113 de las 7.113 de India. Recorrer el
+     * país descarta COMO MÁXIMO el país, así que un `<=` pasa igual en los dos estados. La
+     * aserción decía OK en el estado que tenía que reprobar.
+     *
+     * Es el tercer umbral elegido a mano que falla en este tramo —100 ms, 10.000 filas, y
+     * este—, y lo que los tres tienen en común es que yo inventé el número. La propiedad que
+     * SÍ distingue los dos planes es estructural: cada clave entra en la condición del índice,
+     * o queda en un filtro. Vive en lib/ciudades.ts para que el smoke de producción use
+     * exactamente el mismo juicio.
+     */
+    const juicio = juzgarPlanDeBusqueda(plan, delPais);
     chk(
-      `${pais} "${q}": descartó ${descartadas}, acotado por el país (${delPais}), no por la ` +
-        `tabla (${ms.toFixed(1)} ms)`,
-      descartadas <= delPais,
-      `descartó ${descartadas} y el país tiene ${delPais}: el scan se salió del país`
+      `${pais} "${q}": plan sano — clave_es indexada y sin recorrer el país ` +
+        `(descartó ${descartadas} de ${delPais}, ${ms.toFixed(1)} ms)`,
+      juicio.ok,
+      `claveEsIndexada:${juicio.claveEsIndexada} seqScan:${juicio.seqScan} ` +
+        `recorrioElPais:${juicio.recorrioElPais}`
     );
     /**
      * Y QUE EL ÍNDICE QUE USA EMPIECE POR EL PAÍS. Es lo que vuelve la cota de arriba una
@@ -233,6 +250,7 @@ try {
         WHERE country_code = $1
           AND (clave LIKE $2 OR (nombre_es IS NOT NULL AND ${normalizarEnSql("nombre_es")} LIKE $2))
         ORDER BY poblacion DESC, nombre ASC LIMIT ${n}`;
+    const patologicos = [];
     const descartaDe = (plan) =>
       Math.max(0, ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1])));
 
@@ -252,15 +270,35 @@ try {
           .map((r) => r["QUERY PLAN"])
           .join("\n")
       );
+      /**
+       * ESTA ASERCIÓN DECÍA "el OR viejo SIGUE recorriendo el país" PARA LOS DOS CASOS, Y
+       * DISPARÓ. Hizo lo que tenía que hacer, así que lo que sigue es la reescritura que pidió.
+       *
+       * Qué cambió: el ANALYZE de la migración de clave_es le dio estadísticas frescas a
+       * cities, y con eso el OR viejo dejó de usar un Bitmap Heap Scan y pasó a recorrer
+       * cities_pais_poblacion_idx CORTANDO TEMPRANO. Medido para USA "new": descarta 435 y no
+       * 17.096, en 0,8 ms y no 18,5.
+       *
+       * O SEA QUE LA MEDICIÓN QUE JUSTIFICÓ EL UNION ESTABA TOMADA SIN ESTADÍSTICAS. Con
+       * estadísticas la diferencia para ese caso es 0,8 ms contra 0,4: real pero no 46 veces.
+       *
+       * Y EL UNION SIGUE SIENDO LO CORRECTO, por una razón mejor que la que yo tenía. El corte
+       * temprano del OR sólo funciona si lo tipeado es FRECUENTE: necesita encontrar ocho
+       * coincidencias cerca del tope de población. Para un prefijo raro no corta nunca y tiene
+       * que recorrer el país — India "mum" matchea UNA ciudad y sigue descartando 7.113 de
+       * 7.113. O sea que el rendimiento del OR depende de qué tan común sea lo que alguien
+       * escribe, y el caso malo es el caso común: unas pocas letras de una ciudad chica. El
+       * UNION descarta 0 en todos.
+       *
+       * Así que la aserción por caso pasa a ser "el UNION nunca descarta más que el OR", que
+       * es cierta siempre, y la de "el OR todavía es patológico" se exige UNA VEZ sobre el
+       * conjunto: si dejara de serlo en todos, la comparación ya no probaría nada.
+       */
+      patologicos.push({ pais, q, viejo, nuevo, delPais });
       chk(
-        `${pais} "${q}": el OR viejo SIGUE recorriendo el país (descarta ${viejo} de ${delPais})`,
-        viejo > delPais * 0.9,
-        `descartó sólo ${viejo}: el OR dejó de ser malo y esta comparación ya no prueba nada`
-      );
-      chk(
-        `${pais} "${q}": el UNION descarta ${nuevo}, muchísimo menos que ${viejo}`,
-        nuevo * 10 < viejo,
-        `nuevo ${nuevo} contra viejo ${viejo}: el UNION no mejoró`
+        `${pais} "${q}": el UNION descarta ${nuevo}, nunca más que el OR (${viejo})`,
+        nuevo <= viejo,
+        `nuevo ${nuevo} contra viejo ${viejo}: el UNION descarta MÁS`
       );
       /** Y LO MISMO, que es lo que hace que la mejora no sea a costa del resultado. */
       const rv = await sql(orViejo(MAXIMO_RESULTADOS), [pais, patron]);
@@ -272,6 +310,22 @@ try {
         `viejo ${rv.map((x) => x.nombre).join(",")} / nuevo ${rn.map((x) => x.nombre).join(",")}`
       );
     }
+
+    /**
+     * Y AL MENOS UNO TIENE QUE SEGUIR SIENDO PATOLÓGICO. Es lo que vuelve la comparación una
+     * prueba: si el OR dejara de recorrer el país en TODOS los casos, esta copia ya no sería
+     * la forma que se reemplazo y estaríamos midiendo la nueva contra sí misma. El día que
+     * esto se ponga rojo, hay que venir a reescribir la sección — no a subirle el umbral.
+     */
+    const peor = patologicos.find((p) => p.viejo >= p.delPais * 0.9);
+    chk(
+      "al menos un caso muestra al OR viejo recorriendo el país entero" +
+        (peor ? ` (${peor.pais} "${peor.q}": ${peor.viejo} de ${peor.delPais})` : ""),
+      Boolean(peor),
+      "ninguno: " +
+        patologicos.map((p) => `${p.pais} ${p.viejo}/${p.delPais}`).join(", ") +
+        " — el OR dejó de ser malo y la comparación ya no prueba nada"
+    );
   }
 
   console.log("\n== 2. los metacaracteres de LIKE se escapan, de punta a punta");

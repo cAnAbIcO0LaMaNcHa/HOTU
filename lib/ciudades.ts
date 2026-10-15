@@ -195,6 +195,110 @@ export async function buscarCiudades(
   return filas.map(aCiudad);
 }
 
+/**
+ * EL PLAN DE LA BÚSQUEDA, PARA PODER MIRARLO EN PRODUCCIÓN.
+ *
+ * Existe porque el DATABASE_URL de main no está en localhost —a propósito— así que un EXPLAIN
+ * contra producción sólo lo puede correr algo que viva adentro de producción. Lo usa
+ * /api/smoke, que va con SMOKE_SECRET.
+ *
+ * EXPLICA LA CONSULTA REAL, la que devuelve sqlDeBusqueda, y no una copia: una copia sólo
+ * probaría que sé escribirla, y el día que la de verdad cambiara el chequeo seguiría en verde.
+ *
+ * Devuelve el texto del plan y nada más. Quien llama decide qué leer de ahí; acá no se
+ * interpreta, porque interpretar de dos formas distintas en dos lugares es cómo las dos se
+ * desincronizan.
+ */
+export async function explicarBusqueda(pais: string, patron: string): Promise<string> {
+  const filas = (await sql(`EXPLAIN (ANALYZE) ${sqlDeBusqueda(MAXIMO_RESULTADOS)}`, [
+    pais,
+    patron,
+  ])) as { "QUERY PLAN": string }[];
+  return filas.map((f) => f["QUERY PLAN"]).join("\n");
+}
+
+/** Cuántas ciudades tiene un país. Sirve para poner el número de filas descartadas en escala. */
+export async function contarCiudadesDePais(pais: string): Promise<number> {
+  const [r] = (await sql(`SELECT COUNT(*)::int AS n FROM cities WHERE country_code = $1`, [
+    pais,
+  ])) as { n: number }[];
+  return Number(r.n);
+}
+
+/**
+ * SI EL PLAN DE LA BÚSQUEDA ES SANO. CUATRO INTENTOS, Y VALE LA PENA QUE QUEDEN LOS CUATRO.
+ *
+ * ============================================================
+ * LOS TRES QUE FALLARON, Y POR QUÉ
+ * ============================================================
+ *
+ * 1. "por debajo de 100 ms" — falló con la caché fría después de dos reescrituras de la
+ *    tabla. Reprobó algo que no era una regresión.
+ *
+ * 2. "menos de 10.000 filas descartadas" — falló con USA, que descarta su país entero en una
+ *    rama de forma legítima. Otra vez un número mío reprobando una consulta correcta.
+ *
+ * 3. "descartadas > filas del país" — ESE NO PODÍA DISPARAR NUNCA, y es el peor de los tres
+ *    porque parecía razonable. Medido quitándole el índice a clave_es en dev: el plan malo
+ *    descarta 17.275 de las 17.343 de USA y 7.113 de las 7.113 de India. Recorrer el país
+ *    descarta COMO MÁXIMO el país, así que un `>` es imposible y un `<=` pasa en los dos
+ *    estados. La aserción decía OK justo donde tenía que gritar, y sólo se vio probando al
+ *    revés.
+ *
+ * 4. "las dos claves en la condición del índice" — falló con MEX "san", y ahí el error era
+ *    distinto: prohibía un plan MEJOR. "san" tiene cientos de coincidencias en México, así
+ *    que Postgres recorre por población y corta a las ocho, descartando 109 de 8.947. Eso es
+ *    más barato que ir por el índice de clave y después ordenar. Las dos ramas NO son
+ *    simétricas.
+ *
+ * ============================================================
+ * LO QUE SÍ DISTINGUE LOS DOS PLANES
+ * ============================================================
+ *
+ * LA RAMA DE clave_es, ESTRUCTURALMENTE. No tiene plan alternativo: nada más que
+ * cities_pais_clave_es_idx puede responder `clave_es LIKE`. Medido, las dos formas:
+ *
+ *   BIEN  Index Cond: (country_code = 'USA' AND clave_es >= 'new' AND clave_es < 'nex')
+ *   MAL   Index Cond: (country_code = 'USA')
+ *         Filter: (clave_es IS NOT NULL AND clave_es ~~ 'new%')
+ *
+ * Con índice la clave entra en la CONDICIÓN; sin índice queda en un FILTRO. Eso no es un
+ * número y no cambia con la caché.
+ *
+ * LA RAMA DE clave, EN PROPORCIÓN, porque sí tiene alternativa buena. Y acá el umbral es
+ * defendible precisamente porque su valor no importa: los planes sanos descartan 0, 0, 0 y
+ * 109 —el peor, 1,2% del país— y los enfermos descartan 99,6% y 100%. Cualquier corte entre
+ * 2% y 98% da el mismo resultado, así que la mitad no es una elección de gusto sino el centro
+ * de un hueco de 80 veces.
+ */
+export function juzgarPlanDeBusqueda(
+  plan: string,
+  filasDelPais: number
+): {
+  ok: boolean;
+  claveEsIndexada: boolean;
+  seqScan: boolean;
+  descartadas: number;
+  recorrioElPais: boolean;
+} {
+  /** Sólo las líneas de Index Cond: una mención en un Filter es justamente el caso malo. */
+  const condiciones = [...plan.matchAll(/Index Cond: \((.*)\)/g)].map((m) => m[1]);
+  const claveEsIndexada = condiciones.some((c) => /\bclave_es\b/.test(c));
+  const seqScan = /Seq Scan on cities/.test(plan);
+  const descartadas = Math.max(
+    0,
+    ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1]))
+  );
+  const recorrioElPais = filasDelPais > 0 && descartadas >= filasDelPais / 2;
+  return {
+    ok: claveEsIndexada && !seqScan && !recorrioElPais,
+    claveEsIndexada,
+    seqScan,
+    descartadas,
+    recorrioElPais,
+  };
+}
+
 /** Una ciudad por su id, para pintar un city_id ya guardado. null si no existe. */
 export async function getCiudad(id: number): Promise<Ciudad | null> {
   if (!Number.isInteger(id)) return null;

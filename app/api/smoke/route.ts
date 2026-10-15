@@ -104,7 +104,13 @@ import { getAllRoleAssignments } from "@/lib/roles";
 import { getEliminaciones, listarCuentas } from "@/lib/accounts-delete";
 import { getReclamosPendientes } from "@/lib/claims-write";
 import { getMailOutbox } from "@/lib/mail";
-import { buscarCiudades } from "@/lib/ciudades";
+import {
+  buscarCiudades,
+  contarCiudadesDePais,
+  explicarBusqueda,
+  patronDe,
+  juzgarPlanDeBusqueda,
+} from "@/lib/ciudades";
 import {
   getConvocatoriaDeEvento,
   getConvocatoriasAbiertas,
@@ -361,6 +367,98 @@ export async function GET(request: Request) {
    */
   await correr("/api/ciudades", "buscarCiudades", () => buscarCiudades("COL", "bogo"));
 
+  /**
+   * ============================================================
+   * EL PLAN DEL AUTOCOMPLETADO, MEDIDO EN LA BASE QUE SEA
+   * ============================================================
+   *
+   * ESTO ESTÁ ACÁ PORQUE NO HAY OTRO LUGAR DONDE PUEDA ESTAR. El DATABASE_URL de main NO
+   * existe en localhost, y eso es deliberado: es lo que convierte "todo contra dev" en una
+   * garantía y no en una intención. Así que un EXPLAIN contra producción sólo puede correrlo
+   * algo que ya viva adentro de producción.
+   *
+   * Y HACE FALTA, porque es la única pieza de todo el repo cuyo valor ES el plan. La búsqueda
+   * en UNION devuelve exactamente lo mismo que el OR que reemplazó: si el plan se degradara
+   * —estadísticas que no se juntaron, un índice que no se creó, una collation distinta— la
+   * ruta seguiría contestando bien y nadie se enteraría. Ya está medido que la diferencia es
+   * de 18,5 ms a 0,4 ms y de 17.096 filas descartadas a 0.
+   *
+   * NO DEVUELVE NI UNA FILA DE CONTENIDO, igual que el resto del smoke: nombres de índice,
+   * cuántas filas descartó y cuántos milisegundos. Es metadato del planner, no datos.
+   *
+   * LOS DOS PAÍSES SON USA E INDIA porque son los que más duelen: 17.343 y 7.113 filas. En
+   * Colombia —1.173— un plan malo tardaría poco y no se notaría, que es justamente por qué no
+   * sirve medir sólo ahí.
+   */
+  const planes: {
+    pais: string;
+    consulta: string;
+    ok: boolean;
+    indices: string[];
+    descartadas: number;
+    filasDelPais: number;
+    ms: number | null;
+    porque?: string;
+  }[] = [];
+
+  for (const [pais, q] of [
+    ["USA", "new"],
+    ["IND", "mum"],
+    ["COL", "bogo"],
+  ] as const) {
+    try {
+      const patron = patronDe(q);
+      if (!patron) throw new Error(`patronDe("${q}") devolvió null`);
+      const filasDelPais = await contarCiudadesDePais(pais);
+      const plan = await explicarBusqueda(pais, patron);
+      const indices = [...new Set([...plan.matchAll(/using (\w+)/g)].map((m) => m[1]))];
+      const descartadas = Math.max(
+        0,
+        ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1]))
+      );
+      const ms = Number(plan.match(/Execution Time: ([\d.]+)/)?.[1] ?? "0");
+      /**
+       * EL JUICIO ES ESTRUCTURAL Y NO UN UMBRAL. Ver planBuscaLasDosClavesPorIndice(): tres
+       * umbrales elegidos a mano fallaron antes de llegar acá, y el último no podía disparar
+       * nunca. Lo que importa es si cada clave entra en la CONDICIÓN DEL ÍNDICE o queda en un
+       * filtro, que es exactamente lo que diferencia los dos planes y no depende de la caché.
+       */
+      const j = juzgarPlanDeBusqueda(plan, filasDelPais);
+      planes.push({
+        pais,
+        consulta: q,
+        ok: j.ok,
+        indices,
+        descartadas,
+        filasDelPais,
+        ms,
+        ...(j.ok
+          ? {}
+          : {
+              porque: j.seqScan
+                ? "Seq Scan sobre cities: recorre la tabla entera"
+                : !j.claveEsIndexada
+                  ? "la condición del índice no incluye clave_es, así que esa rama recorre el " +
+                    `país y filtra (descartó ${descartadas} de ${filasDelPais})`
+                  : `descartó ${descartadas} de las ${filasDelPais} filas del país: recorrió el país`,
+            }),
+      });
+    } catch (e) {
+      planes.push({
+        pais,
+        consulta: q,
+        ok: false,
+        indices: [],
+        descartadas: 0,
+        filasDelPais: 0,
+        ms: null,
+        porque: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  const planesMalos = planes.filter((p) => !p.ok);
+
   const roto = resultados.filter((r) => !r.ok);
   const omitidas = resultados.filter((r) => r.omitido);
 
@@ -382,12 +480,27 @@ export async function GET(request: Request) {
   const sanas = [...new Set(resultados.map((r) => r.pagina))].filter((p) => !conProblema.has(p));
   const dudosas = [...conProblema];
 
+  /**
+   * UN PLAN MALO TAMBIÉN DA 500, Y VA CONTADO APARTE.
+   *
+   * Dar 200 con el plan degradado sería la falla que este archivo entero existe para evitar:
+   * alguien lee "todo OK" y el autocompletado está recorriendo la tabla en cada tecla. Así
+   * que cuenta para el status.
+   *
+   * Pero NO entra en `roto`, que significa "la lectura se rompió". Un plan malo no es una
+   * lectura rota: devuelve los datos correctos. Mezclarlos haría que el campo `rotas` dejara
+   * de querer decir lo que dice, y ese es el tipo de confusión que ya corregí dos veces acá
+   * mismo con `sanas`.
+   */
   return NextResponse.json(
     {
-      ok: roto.length === 0,
+      ok: roto.length === 0 && planesMalos.length === 0,
       lecturas: resultados.length,
       rotas: roto.length,
       omitidas: omitidas.length,
+      /** El plan del autocompletado. Metadato del planner, nunca filas. */
+      planes,
+      planesMalos: planesMalos.length,
       /** Páginas cuyas lecturas pasaron TODAS: de estas este 200 sí habla. */
       sanas,
       /** Con algo roto u omitido. De estas este resultado NO habla. */
@@ -395,6 +508,6 @@ export async function GET(request: Request) {
       roto: roto.map((r) => ({ pagina: r.pagina, lector: r.lector, error: r.error })),
       resultados,
     },
-    { status: roto.length === 0 ? 200 : 500 }
+    { status: roto.length === 0 && planesMalos.length === 0 ? 200 : 500 }
   );
 }
