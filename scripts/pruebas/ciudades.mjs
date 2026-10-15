@@ -106,6 +106,7 @@ try {
   console.log(`   (collation de la base: ${col})`);
 
   console.log("\n== 1. EL PLAN: el país acota el scan y cities nunca se recorre entera");
+  const indicesVistos = [];
   for (const [pais, q] of [
     ["COL", "bogo"],
     ["USA", "new"],
@@ -160,7 +161,38 @@ try {
       descartadas <= delPais,
       `descartó ${descartadas} y el país tiene ${delPais}: el scan se salió del país`
     );
+    /**
+     * Y QUE EL ÍNDICE QUE USA EMPIECE POR EL PAÍS. Es lo que vuelve la cota de arriba una
+     * propiedad del plan y no una coincidencia del dato: un país chico pasaría la cota incluso
+     * con un Seq Scan de la tabla entera, porque descartar 170.739 también es "menos que la
+     * tabla" cuando el país tiene 171.174... no, pero sí pasaría con cualquier plan tonto en un
+     * país grande. Pedir que el índice lleve country_code adelante cierra eso.
+     */
+    const indices = [...new Set([...plan.matchAll(/using (\w+)/g)].map((m) => m[1]))];
+    chk(
+      `${pais} "${q}": usa un índice que arranca por el país (${indices.join(", ") || "ninguno"})`,
+      indices.length > 0 && indices.every((i) => i.startsWith("cities_pais_")),
+      indices.join(", ") || "el plan no usa ningún índice"
+    );
+    indicesVistos.push(...indices);
   }
+
+  /**
+   * EL ÍNDICE PARCIAL SE USA AL MENOS UNA VEZ, y esto va afuera del bucle a propósito.
+   *
+   * cities_pais_clave_es_idx es PARCIAL —WHERE clave_es IS NOT NULL— y el riesgo de un índice
+   * parcial es que Postgres no pruebe que la consulta implica el predicado y lo IGNORE EN
+   * SILENCIO: los resultados siguen siendo correctos, sólo que vuelve a recorrer el país.
+   *
+   * No se puede exigir por caso: con "new" en USA el plan usa sólo el de clave, y eso está
+   * bien. Lo que no puede pasar es que NINGUNA de las consultas medidas lo use, porque eso
+   * significaría que el índice está ahí de adorno.
+   */
+  chk(
+    "el índice PARCIAL de clave_es se usa en al menos una de las consultas medidas",
+    indicesVistos.includes("cities_pais_clave_es_idx"),
+    `los índices vistos fueron: ${[...new Set(indicesVistos)].join(", ")}`
+  );
 
   console.log("\n== 1b. y la prueba falla con la consulta SIN país, que es el caso malo");
   {
@@ -178,6 +210,68 @@ try {
      * detector de Seq Scan estuviera roto, acá daría MAL y se vería en la misma corrida.
      */
     chk("sin país la MISMA forma de consulta SÍ es Seq Scan", /Seq Scan on cities/.test(plan), "no detecta el caso malo");
+  }
+
+  console.log("\n== 1c. EL `OR` DE ANTES, CORRIENDO AL LADO, PARA QUE EL UNION SIGNIFIQUE ALGO");
+  /**
+   * LA FORMA VIEJA ESTÁ ACÁ A PROPÓSITO, igual que la implementación vieja de toISODate en
+   * fechas.mjs. Sin ella, "el UNION descarta 0 filas" es un número sin referencia: podría ser
+   * que la consulta nueva sea buena o que la medición no mida nada.
+   *
+   * La consulta de antes era `clave LIKE $2 OR normalizar(nombre_es) LIKE $2`. Ninguna de las
+   * dos ramas podía usar su índice a la vez, así que Postgres recorría el país y filtraba.
+   * MEDIDO antes del cambio: USA descartaba 17.096 de 17.343, en 18,5 ms.
+   *
+   * Y SE EXIGE QUE LA VIEJA SIGA SIENDO MALA. Si algún día dejara de descartar el país —porque
+   * Postgres aprendió a partir ese OR en dos índices, por ejemplo— esta copia ya no sería la
+   * que había y la comparación estaría midiendo la nueva contra sí misma. Ese día hay que venir
+   * a reescribir esto, y el MAL es lo que lo pide.
+   */
+  {
+    const orViejo = (n) =>
+      `SELECT ${"geonames_id, nombre, nombre_es, country_code, admin1, poblacion"} FROM cities
+        WHERE country_code = $1
+          AND (clave LIKE $2 OR (nombre_es IS NOT NULL AND ${normalizarEnSql("nombre_es")} LIKE $2))
+        ORDER BY poblacion DESC, nombre ASC LIMIT ${n}`;
+    const descartaDe = (plan) =>
+      Math.max(0, ...[...plan.matchAll(/Rows Removed by Filter: (\d+)/g)].map((m) => Number(m[1])));
+
+    for (const [pais, q] of [["USA", "new"], ["IND", "mum"]]) {
+      const patron = patronDe(q);
+      const [{ delPais }] = await sql(
+        `SELECT COUNT(*)::int AS "delPais" FROM cities WHERE country_code = $1`,
+        [pais]
+      );
+      const viejo = descartaDe(
+        (await sql(`EXPLAIN (ANALYZE) ${orViejo(MAXIMO_RESULTADOS)}`, [pais, patron]))
+          .map((r) => r["QUERY PLAN"])
+          .join("\n")
+      );
+      const nuevo = descartaDe(
+        (await sql(`EXPLAIN (ANALYZE) ${sqlDeBusqueda(MAXIMO_RESULTADOS)}`, [pais, patron]))
+          .map((r) => r["QUERY PLAN"])
+          .join("\n")
+      );
+      chk(
+        `${pais} "${q}": el OR viejo SIGUE recorriendo el país (descarta ${viejo} de ${delPais})`,
+        viejo > delPais * 0.9,
+        `descartó sólo ${viejo}: el OR dejó de ser malo y esta comparación ya no prueba nada`
+      );
+      chk(
+        `${pais} "${q}": el UNION descarta ${nuevo}, muchísimo menos que ${viejo}`,
+        nuevo * 10 < viejo,
+        `nuevo ${nuevo} contra viejo ${viejo}: el UNION no mejoró`
+      );
+      /** Y LO MISMO, que es lo que hace que la mejora no sea a costa del resultado. */
+      const rv = await sql(orViejo(MAXIMO_RESULTADOS), [pais, patron]);
+      const rn = await sql(sqlDeBusqueda(MAXIMO_RESULTADOS), [pais, patron]);
+      const ids = (xs) => JSON.stringify(xs.map((x) => Number(x.geonames_id)).sort((a, b) => a - b));
+      chk(
+        `${pais} "${q}": las dos formas devuelven exactamente las mismas ${rv.length} ciudades`,
+        ids(rv) === ids(rn) && rv.length > 0,
+        `viejo ${rv.map((x) => x.nombre).join(",")} / nuevo ${rn.map((x) => x.nombre).join(",")}`
+      );
+    }
   }
 
   console.log("\n== 2. los metacaracteres de LIKE se escapan, de punta a punta");

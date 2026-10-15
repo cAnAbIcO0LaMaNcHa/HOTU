@@ -134,12 +134,44 @@ const aCiudad = (r: FilaCiudad): Ciudad => ({
  * porque elige solo.
  */
 export function sqlDeBusqueda(tope: number): string {
-  return `SELECT ${COLUMNAS} FROM cities
-      WHERE country_code = $1
-        AND (clave LIKE $2
-             OR (nombre_es IS NOT NULL AND ${normalizarEnSql("nombre_es")} LIKE $2))
-      ORDER BY poblacion DESC, nombre ASC
-      LIMIT ${Math.min(Math.max(1, Math.trunc(tope)), MAXIMO_RESULTADOS)}`;
+  const n = Math.min(Math.max(1, Math.trunc(tope)), MAXIMO_RESULTADOS);
+  /**
+   * DOS RAMAS INDEXADAS UNIDAS, NO UN `OR`.
+   *
+   * Con el OR, Postgres no podía usar ningún índice para las dos condiciones a la vez y
+   * terminaba recorriendo el país completo y filtrando. Medido antes del cambio:
+   *
+   *   USA "new"   descartaba 17.096 de las 17.343 filas del país   18,9 ms
+   *   IND "mum"   descartaba  7.112 de las  7.113                   2,2 ms
+   *
+   * O sea el país entero leído en cada tecla. Cada rama por separado SÍ tiene su índice
+   * —cities_pais_clave_idx y cities_pais_clave_es_idx— y el UNION deja que Postgres use los
+   * dos y junte ocho filas de cada lado.
+   *
+   * EL LIMIT VA ADENTRO DE CADA RAMA, y es lo que hace la diferencia: sin él, cada rama
+   * materializaría todas sus coincidencias —"san" en México son cientos— antes de recortar.
+   * Con el LIMIT adentro, cada lado es un Index Scan con un top-N de ocho.
+   *
+   * UNION Y NO UNION ALL, porque una ciudad cuyo nombre local y español empiezan igual
+   * matchea las dos ramas y aparecería repetida. Las columnas son las mismas y geonames_id es
+   * la PK, así que la deduplicación por fila completa es exacta.
+   *
+   * `clave_es IS NOT NULL` ESTÁ DE MÁS Y VA IGUAL: el LIKE ya lo implica, pero el índice es
+   * PARCIAL sobre ese mismo predicado y escribirlo hace la implicación trivial de probar. Si
+   * Postgres no la probara, ignoraría el índice en silencio y la consulta seguiría dando los
+   * mismos resultados, nada más que lenta. La batería exige que el plan nombre los dos índices.
+   */
+  const rama = (col: string, extra = "") =>
+    `(SELECT ${COLUMNAS} FROM cities
+        WHERE country_code = $1 ${extra} AND ${col} LIKE $2
+        ORDER BY poblacion DESC LIMIT ${n})`;
+  return `SELECT ${COLUMNAS} FROM (
+      ${rama("clave")}
+      UNION
+      ${rama("clave_es", "AND clave_es IS NOT NULL")}
+    ) q
+    ORDER BY poblacion DESC, nombre ASC
+    LIMIT ${n}`;
 }
 
 /**
